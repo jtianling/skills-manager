@@ -20,6 +20,13 @@ Unified skills manager for AI coding tools. Manage skills in `~/.skills-manager/
 npm install -g skillsmgr
 ```
 
+Or use directly with npx (no installation required):
+
+```bash
+npx skillsmgr setup
+npx skillsmgr install anthropic
+```
+
 ## Quick Start
 
 ```bash
