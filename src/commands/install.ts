@@ -39,6 +39,9 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     return;
   }
 
+  // Get the default branch
+  const defaultBranch = await githubService.getDefaultBranch(owner, repo);
+
   // Get skill descriptions by fetching SKILL.md for each
   const skills: Array<{ name: string; description: string; path: string }> = [];
   const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
@@ -48,7 +51,7 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     // Fetch SKILL.md content via API
     try {
       const response = await fetch(
-        `https://raw.githubusercontent.com/${owner}/${repo}/main/${skill.path}/SKILL.md`
+        `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${skill.path}/SKILL.md`
       );
       if (response.ok) {
         const content = await response.text();
@@ -144,6 +147,9 @@ async function installFromGitHubUrl(
     return false; // Fall back to git clone
   }
 
+  // Get the default branch for raw content URLs
+  const defaultBranch = await githubService.getDefaultBranch(owner, repo);
+
   // Filter to only directories that have SKILL.md
   const skills: Array<{ name: string; description: string; path: string }> = [];
   const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
@@ -152,7 +158,7 @@ async function installFromGitHubUrl(
   for (const skill of skillsList) {
     try {
       const response = await fetch(
-        `https://raw.githubusercontent.com/${owner}/${repo}/main/${skill.path}/SKILL.md`
+        `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${skill.path}/SKILL.md`
       );
       if (response.ok) {
         const content = await response.text();

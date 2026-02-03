@@ -13,6 +13,31 @@ interface GitHubContent {
 
 export class GitHubService {
   private baseApiUrl = 'https://api.github.com';
+  private defaultBranchCache: Map<string, string> = new Map();
+
+  /**
+   * Get the default branch for a repository
+   */
+  async getDefaultBranch(owner: string, repo: string): Promise<string> {
+    const cacheKey = `${owner}/${repo}`;
+    if (this.defaultBranchCache.has(cacheKey)) {
+      return this.defaultBranchCache.get(cacheKey)!;
+    }
+
+    const url = `${this.baseApiUrl}/repos/${owner}/${repo}`;
+    const response = await fetch(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      return 'main'; // Fallback to main
+    }
+
+    const data = await response.json();
+    const branch = data.default_branch || 'main';
+    this.defaultBranchCache.set(cacheKey, branch);
+    return branch;
+  }
 
   /**
    * List skills in a GitHub repository's skills directory
