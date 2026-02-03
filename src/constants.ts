@@ -8,13 +8,15 @@ export const SKILL_SOURCES = ['official', 'community', 'custom'] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
 
 export const SUPPORTED_TOOLS = [
-  'claude-code',
-  'cursor',
-  'windsurf',
-  'cline',
-  'roo-code',
-  'kilo-code',
   'antigravity',
+  'roo-code',
+  'claude-code',
+  'opencode',
+  'cline',
+  'cursor',
+  'kilo-code',
+  'trae',
+  'windsurf',
 ] as const;
 
 export type ToolName = (typeof SUPPORTED_TOOLS)[number];

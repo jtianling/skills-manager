@@ -1,31 +1,10 @@
 import { ToolConfig, ToolName } from '../types.js';
 
 export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
-  'claude-code': {
-    name: 'claude-code',
-    displayName: 'Claude Code',
-    skillsDir: '.claude/skills',
-    supportsLink: true,
-    supportsModeSpecific: false,
-  },
-  'cursor': {
-    name: 'cursor',
-    displayName: 'Cursor',
-    skillsDir: '.cursor/skills',
-    supportsLink: true,
-    supportsModeSpecific: false,
-  },
-  'windsurf': {
-    name: 'windsurf',
-    displayName: 'Windsurf',
-    skillsDir: '.windsurf/skills',
-    supportsLink: true,
-    supportsModeSpecific: false,
-  },
-  'cline': {
-    name: 'cline',
-    displayName: 'Cline',
-    skillsDir: '.cline/skills',
+  'antigravity': {
+    name: 'antigravity',
+    displayName: 'Antigravity',
+    skillsDir: '.agent/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
@@ -38,6 +17,34 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     modePattern: 'skills-{mode}',
     availableModes: ['code', 'architect'],
   },
+  'claude-code': {
+    name: 'claude-code',
+    displayName: 'Claude Code',
+    skillsDir: '.claude/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
+  'opencode': {
+    name: 'opencode',
+    displayName: 'OpenCode',
+    skillsDir: '.opencode/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
+  'cline': {
+    name: 'cline',
+    displayName: 'Cline',
+    skillsDir: '.cline/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
+  'cursor': {
+    name: 'cursor',
+    displayName: 'Cursor',
+    skillsDir: '.cursor/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
   'kilo-code': {
     name: 'kilo-code',
     displayName: 'Kilo Code',
@@ -47,10 +54,17 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     modePattern: 'skills-{mode}',
     availableModes: ['code', 'architect'],
   },
-  'antigravity': {
-    name: 'antigravity',
-    displayName: 'Antigravity',
-    skillsDir: '.agent/skills',
+  'trae': {
+    name: 'trae',
+    displayName: 'Trae',
+    skillsDir: '.trae/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
+  'windsurf': {
+    name: 'windsurf',
+    displayName: 'Windsurf',
+    skillsDir: '.windsurf/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
