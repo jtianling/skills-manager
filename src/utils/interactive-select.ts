@@ -243,8 +243,9 @@ export async function interactiveCheckbox(
 
       // When search is enabled, prioritize typing over shortcuts
       // Check for typeable characters first (but not control sequences)
-      if (enableSearch && str && str.length === 1 && !key.ctrl && !key.meta) {
-        if (/^[a-zA-Z0-9\-_. ]$/.test(str)) {
+      // Note: space is excluded here - it's used for selection
+      if (enableSearch && str && str.length === 1 && !key.ctrl && !key.meta && key.name !== 'space') {
+        if (/^[a-zA-Z0-9\-_.]$/.test(str)) {
           updateSearch(searchQuery + str);
           render();
           return;

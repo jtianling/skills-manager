@@ -5,7 +5,7 @@ import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
 import { SkillsService } from '../services/skills.js';
 import { InstallOptions } from '../types.js';
-import { fileExists, getDirectoriesInDir, readFileContent } from '../utils/fs.js';
+import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
 
@@ -270,7 +270,15 @@ async function installViaGitClone(
   const selectedNames = await promptSkillsToInstall(skills);
   if (selectedNames.length === 0) {
     console.log('No skills selected');
+    // Remove the cloned repo since nothing was selected
+    removeDir(repoPath);
     return;
+  }
+
+  // Remove unselected skills
+  const unselectedSkills = skills.filter((s) => !selectedNames.includes(s.name));
+  for (const skill of unselectedSkills) {
+    removeDir(skill.path);
   }
 
   console.log(`\n✓ Installed ${selectedNames.length} skills to ${repoPath}`);
