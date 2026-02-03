@@ -5,14 +5,17 @@ import { tmpdir } from 'os';
 import { ensureDir, copyFile, linkFile, isSymlink, readFileContent, fileExists, getDirectoriesInDir } from './fs.js';
 
 describe('fs utils', () => {
-  const testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}`);
+  let testDir: string;
 
   beforeEach(() => {
+    testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
   afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
+    if (testDir && existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   });
 
   describe('ensureDir', () => {

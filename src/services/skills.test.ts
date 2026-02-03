@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { SkillsService } from './skills.js';
 
 describe('SkillsService', () => {
-  const testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}`);
+  let testDir: string;
   let service: SkillsService;
 
   beforeEach(() => {
+    testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(join(testDir, 'official', 'anthropic', 'code-review'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'awesome', 'react-patterns'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'my-skill'), { recursive: true });
@@ -30,7 +31,9 @@ describe('SkillsService', () => {
   });
 
   afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
+    if (testDir && existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   });
 
   describe('getAllSkills', () => {

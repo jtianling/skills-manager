@@ -81,7 +81,7 @@ export async function promptSkills(
   skills: SkillInfo[],
   deployedSkillNames: string[] = []
 ): Promise<string[]> {
-  // Group skills by source
+  // Group skills by source and build choices
   const grouped: Record<string, SkillInfo[]> = {};
   for (const skill of skills) {
     if (!grouped[skill.source]) {
@@ -90,37 +90,34 @@ export async function promptSkills(
     grouped[skill.source].push(skill);
   }
 
-  const choices: Array<{ name: string; value: string; checked?: boolean } | inquirer.Separator> = [];
+  const choices: Array<{
+    name: string;
+    description: string;
+    value: string;
+    checked?: boolean;
+    group?: string;
+    suffix?: string;
+  }> = [];
 
   for (const [source, sourceSkills] of Object.entries(grouped)) {
-    choices.push(new inquirer.Separator(`── ${source} ──`));
     for (const skill of sourceSkills) {
       const isDeployed = deployedSkillNames.includes(skill.name);
       choices.push({
-        name: isDeployed
-          ? `${skill.name.padEnd(20)} [deployed]  ${skill.description}`
-          : `${skill.name.padEnd(20)} ${skill.description}`,
+        name: skill.name,
+        description: skill.description,
         value: skill.name,
         checked: isDeployed,
+        group: source,
+        suffix: isDeployed ? '[deployed]' : undefined,
       });
     }
   }
 
-  try {
-    const { selectedSkills } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedSkills',
-        message: 'Select skills to deploy:',
-        choices,
-        pageSize: 20,
-      },
-    ]);
-
-    return selectedSkills;
-  } catch (error) {
-    handlePromptError(error);
-  }
+  return interactiveCheckbox({
+    message: 'Select skills to deploy:',
+    choices,
+    pageSize: 15,
+  });
 }
 
 export async function promptSkillsToInstall(

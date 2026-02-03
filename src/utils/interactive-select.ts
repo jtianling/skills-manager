@@ -31,12 +31,20 @@ export interface SelectChoice {
   description?: string;
   value: string;
   checked?: boolean;
+  group?: string; // Optional group name for separators
+  suffix?: string; // Optional suffix like "[deployed]"
 }
 
 interface SelectOptions {
   message: string;
   choices: SelectChoice[];
   pageSize?: number;
+}
+
+interface DisplayItem {
+  type: 'separator' | 'choice';
+  text?: string; // For separators
+  choiceIndex?: number; // Index in choices array for choice items
 }
 
 /**
@@ -46,12 +54,29 @@ export async function interactiveCheckbox(
   options: SelectOptions
 ): Promise<string[]> {
   const { message, choices, pageSize = 15 } = options;
+
+  // Build display items with group separators
+  const displayItems: DisplayItem[] = [];
+  let currentGroup: string | undefined;
+
+  choices.forEach((choice, index) => {
+    if (choice.group && choice.group !== currentGroup) {
+      currentGroup = choice.group;
+      displayItems.push({ type: 'separator', text: `── ${choice.group} ──` });
+    }
+    displayItems.push({ type: 'choice', choiceIndex: index });
+  });
+
   const selected = new Set<number>(
     choices
       .map((c, i) => (c.checked ? i : -1))
       .filter((i) => i >= 0)
   );
-  let cursor = 0;
+
+  // Find first choice item for initial cursor
+  let cursor = displayItems.findIndex((item) => item.type === 'choice');
+  if (cursor === -1) cursor = 0;
+
   let scrollOffset = 0;
   let lastRenderedLines = 0;
 
@@ -80,38 +105,49 @@ export async function interactiveCheckbox(
 
       // Calculate visible range
       const visibleStart = scrollOffset;
-      const visibleEnd = Math.min(scrollOffset + pageSize, choices.length);
+      const visibleEnd = Math.min(scrollOffset + pageSize, displayItems.length);
 
       // Show scroll indicator if needed
       if (scrollOffset > 0) {
         lines.push('  \x1b[2m↑ more above\x1b[0m');
       }
 
-      // Print choices
+      // Print items
       for (let i = visibleStart; i < visibleEnd; i++) {
-        const choice = choices[i];
-        const isSelected = selected.has(i);
-        const isCursor = i === cursor;
+        const item = displayItems[i];
 
-        const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
-        const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
-        const highlight = isCursor ? '\x1b[36m' : '';
-        const reset = '\x1b[0m';
+        if (item.type === 'separator') {
+          lines.push(`  \x1b[33m${item.text}\x1b[0m`);
+        } else {
+          const choice = choices[item.choiceIndex!];
+          const isSelected = selected.has(item.choiceIndex!);
+          const isCursor = i === cursor;
 
-        lines.push(`${prefix} ${checkbox} ${highlight}${choice.name}${reset}`);
+          const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
+          const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
+          const highlight = isCursor ? '\x1b[36m' : '';
+          const reset = '\x1b[0m';
+          const suffix = choice.suffix ? ` \x1b[33m${choice.suffix}\x1b[0m` : '';
 
-        // Show description only for current item (multi-line wrapped)
-        if (isCursor && choice.description) {
-          const maxWidth = process.stdout.columns ? process.stdout.columns - 6 : 74;
-          const descLines = wrapText(choice.description, maxWidth);
-          for (const descLine of descLines) {
-            lines.push(`    \x1b[2m${descLine}\x1b[0m`);
+          lines.push(
+            `${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
+          );
+
+          // Show description only for current item (multi-line wrapped)
+          if (isCursor && choice.description) {
+            const maxWidth = process.stdout.columns
+              ? process.stdout.columns - 6
+              : 74;
+            const descLines = wrapText(choice.description, maxWidth);
+            for (const descLine of descLines) {
+              lines.push(`    \x1b[2m${descLine}\x1b[0m`);
+            }
           }
         }
       }
 
       // Show scroll indicator if needed
-      if (visibleEnd < choices.length) {
+      if (visibleEnd < displayItems.length) {
         lines.push('  \x1b[2m↓ more below\x1b[0m');
       }
 
@@ -136,30 +172,48 @@ export async function interactiveCheckbox(
       rl.close();
     };
 
+    const findPrevChoice = (from: number): number => {
+      for (let i = from - 1; i >= 0; i--) {
+        if (displayItems[i].type === 'choice') return i;
+      }
+      return from; // Stay at current if no previous choice
+    };
+
+    const findNextChoice = (from: number): number => {
+      for (let i = from + 1; i < displayItems.length; i++) {
+        if (displayItems[i].type === 'choice') return i;
+      }
+      return from; // Stay at current if no next choice
+    };
+
     const handleKeypress = (_str: string | undefined, key: readline.Key) => {
       if (!key) return;
 
       if (key.name === 'up' || (key.name === 'k' && !key.ctrl)) {
-        cursor = Math.max(0, cursor - 1);
+        cursor = findPrevChoice(cursor);
         // Adjust scroll if cursor goes above visible area
         if (cursor < scrollOffset) {
           scrollOffset = cursor;
         }
         render();
       } else if (key.name === 'down' || (key.name === 'j' && !key.ctrl)) {
-        cursor = Math.min(choices.length - 1, cursor + 1);
+        cursor = findNextChoice(cursor);
         // Adjust scroll if cursor goes below visible area
         if (cursor >= scrollOffset + pageSize) {
           scrollOffset = cursor - pageSize + 1;
         }
         render();
       } else if (key.name === 'space') {
-        if (selected.has(cursor)) {
-          selected.delete(cursor);
-        } else {
-          selected.add(cursor);
+        const item = displayItems[cursor];
+        if (item.type === 'choice') {
+          const choiceIndex = item.choiceIndex!;
+          if (selected.has(choiceIndex)) {
+            selected.delete(choiceIndex);
+          } else {
+            selected.add(choiceIndex);
+          }
+          render();
         }
-        render();
       } else if (key.name === 'a' && !key.ctrl) {
         // Toggle all
         if (selected.size === choices.length) {
