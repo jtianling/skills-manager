@@ -11,6 +11,7 @@ export interface ScannedSkill {
   source: string;
   deployMode: 'link' | 'copy';
   path: string;
+  conflict?: boolean;
 }
 
 export interface ScannedToolDeployment {
@@ -162,13 +163,14 @@ export class DeploymentScanner {
   }
 
   private scanCopiedSkill(skillPath: string, name: string): ScannedSkill | null {
-    const source = this.findSourceByName(name);
+    const { source, conflict } = this.findSourceByName(name);
 
     return {
       name,
       source: source || 'unknown',
       deployMode: 'copy',
       path: skillPath,
+      conflict,
     };
   }
 
@@ -198,14 +200,17 @@ export class DeploymentScanner {
     return null;
   }
 
-  private findSourceByName(skillName: string): string | null {
+  private findSourceByName(skillName: string): { source: string | null; conflict: boolean } {
     const matches = this.skillsService.findSkillsByName(skillName);
 
     if (matches.length === 0) {
-      return null;
+      return { source: null, conflict: false };
     }
 
-    // Return first match (could be multiple with same name)
-    return matches[0].source;
+    if (matches.length > 1) {
+      return { source: null, conflict: true };
+    }
+
+    return { source: matches[0].source, conflict: false };
   }
 }

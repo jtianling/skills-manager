@@ -32,6 +32,12 @@ export async function executeSync(): Promise<void> {
     console.log(`${config.displayName} (${deployment.targetDir}/):`);
 
     for (const skill of deployment.skills) {
+      // Skip conflicting skills
+      if (skill.conflict) {
+        console.log(`  ⚠ ${skill.name}: conflict (skipped)`);
+        continue;
+      }
+
       const deployedPath = skill.path;
 
       // Try to find source path

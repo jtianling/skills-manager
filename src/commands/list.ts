@@ -70,7 +70,11 @@ async function listDeployed(): Promise<void> {
 
     for (const skill of deployment.skills) {
       const modeStr = skill.deployMode === 'link' ? 'link' : 'copy';
-      console.log(`  ◉ ${skill.name.padEnd(16)} (${modeStr}) ← ${skill.source}`);
+      if (skill.conflict) {
+        console.log(`  ⚠ ${skill.name.padEnd(16)} (${modeStr}) ← conflict`);
+      } else {
+        console.log(`  ◉ ${skill.name.padEnd(16)} (${modeStr}) ← ${skill.source}`);
+      }
     }
     console.log();
   }
