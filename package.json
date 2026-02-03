@@ -1,0 +1,44 @@
+{
+  "name": "skillsmgr",
+  "version": "0.1.0",
+  "description": "Unified skills manager for AI coding tools",
+  "type": "module",
+  "bin": {
+    "skillsmgr": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src/templates"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "skills",
+    "claude-code",
+    "cursor",
+    "windsurf",
+    "cline",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "inquirer": "^13.2.0"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.9",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
