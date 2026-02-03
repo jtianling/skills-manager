@@ -7,8 +7,7 @@
     "skillsmgr": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "src/templates"
+    "dist"
   ],
   "scripts": {
     "build": "tsup",
@@ -23,10 +22,21 @@
     "cursor",
     "windsurf",
     "cline",
+    "roo-code",
+    "kilo-code",
+    "antigravity",
     "cli"
   ],
-  "author": "",
+  "author": "jtianling <jtianling@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jtianling/skills-manager.git"
+  },
+  "homepage": "https://github.com/jtianling/skills-manager#readme",
+  "bugs": {
+    "url": "https://github.com/jtianling/skills-manager/issues"
+  },
   "engines": {
     "node": ">=18"
   },
