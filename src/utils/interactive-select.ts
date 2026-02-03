@@ -188,11 +188,11 @@ export async function interactiveCheckbox(
       // Show instructions
       if (enableSearch) {
         lines.push(
-          '\x1b[2m(Type to search, ↑↓ move, space select, a toggle filtered, enter confirm)\x1b[0m'
+          '\x1b[2m(Type to search, ↑↓ move, space select, ctrl+a toggle filtered, enter confirm)\x1b[0m'
         );
       } else {
         lines.push(
-          '\x1b[2m(↑↓ move, space select, a toggle all, enter confirm)\x1b[0m'
+          '\x1b[2m(↑↓/jk move, space select, ctrl+a toggle all, enter confirm)\x1b[0m'
         );
       }
 
@@ -241,14 +241,25 @@ export async function interactiveCheckbox(
     const handleKeypress = (str: string | undefined, key: readline.Key) => {
       if (!key) return;
 
-      if (key.name === 'up' || (key.name === 'k' && !key.ctrl)) {
+      // When search is enabled, prioritize typing over shortcuts
+      // Check for typeable characters first (but not control sequences)
+      if (enableSearch && str && str.length === 1 && !key.ctrl && !key.meta) {
+        if (/^[a-zA-Z0-9\-_. ]$/.test(str)) {
+          updateSearch(searchQuery + str);
+          render();
+          return;
+        }
+      }
+
+      // Navigation: arrow keys always work, j/k only when search is disabled
+      if (key.name === 'up' || (!enableSearch && key.name === 'k' && !key.ctrl)) {
         cursor = findPrevChoice(cursor);
         // Adjust scroll if cursor goes above visible area
         if (cursor < scrollOffset) {
           scrollOffset = cursor;
         }
         render();
-      } else if (key.name === 'down' || (key.name === 'j' && !key.ctrl)) {
+      } else if (key.name === 'down' || (!enableSearch && key.name === 'j' && !key.ctrl)) {
         cursor = findNextChoice(cursor);
         // Adjust scroll if cursor goes below visible area
         if (cursor >= scrollOffset + pageSize) {
@@ -266,8 +277,8 @@ export async function interactiveCheckbox(
           }
           render();
         }
-      } else if (key.name === 'a' && !key.ctrl) {
-        // Toggle all (or filtered items if search is active)
+      } else if (key.name === 'a' && key.ctrl) {
+        // Ctrl+A: Toggle all (or filtered items if search is active)
         const indicesToToggle = enableSearch && searchQuery
           ? filteredIndices
           : choices.map((_, i) => i);
@@ -315,12 +326,6 @@ export async function interactiveCheckbox(
         // Handle backspace for search
         if (enableSearch && searchQuery.length > 0) {
           updateSearch(searchQuery.slice(0, -1));
-          render();
-        }
-      } else if (enableSearch && str && str.length === 1 && !key.ctrl && !key.meta) {
-        // Handle typing for search (printable characters)
-        if (/^[a-zA-Z0-9\-_. ]$/.test(str)) {
-          updateSearch(searchQuery + str);
           render();
         }
       }
