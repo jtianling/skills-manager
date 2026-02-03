@@ -124,6 +124,18 @@ npx skillsmgr remove code-review --tool claude-code
 npx skillsmgr sync
 ```
 
+### `npx skillsmgr update`
+
+从远程更新已安装的 skills 到最新版本。
+
+```bash
+# 更新所有已安装的源
+npx skillsmgr update
+
+# 更新特定源
+npx skillsmgr update anthropic
+```
+
 ## 目录结构
 
 ```

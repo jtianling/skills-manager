@@ -124,6 +124,18 @@ Sync and verify deployed skills.
 npx skillsmgr sync
 ```
 
+### `npx skillsmgr update`
+
+Update installed skills to latest version from remote.
+
+```bash
+# Update all installed sources
+npx skillsmgr update
+
+# Update specific source
+npx skillsmgr update anthropic
+```
+
 ## Directory Structure
 
 ```

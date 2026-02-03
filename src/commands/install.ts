@@ -3,11 +3,13 @@ import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
-import { SkillsService } from '../services/skills.js';
+import { SourcesService } from '../services/sources.js';
 import { InstallOptions } from '../types.js';
 import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
+
+const sourcesService = new SourcesService();
 
 /**
  * Parse SKILL.md frontmatter to extract description
@@ -97,6 +99,13 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
   }
 
   console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
+
+  // Save source info
+  sourcesService.addSource('official/anthropic', {
+    url: 'https://github.com/anthropics/skills',
+    type: 'official',
+    repoName: 'anthropic',
+  });
 }
 
 /**
@@ -209,6 +218,19 @@ async function installFromGitHubUrl(
   }
 
   console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
+
+  // Save source info
+  const sourceKey = isAnthropic
+    ? 'official/anthropic'
+    : options.custom
+      ? `custom/${repo}`
+      : `community/${repo}`;
+  sourcesService.addSource(sourceKey, {
+    url: `https://github.com/${owner}/${repo}`,
+    type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
+    repoName: repo,
+  });
+
   return true;
 }
 
@@ -270,6 +292,7 @@ async function installViaGitClone(
 
   if (options.all) {
     console.log(`✓ Installed ${skills.length} skills to ${repoPath}`);
+    saveGitCloneSource(source, repoPath, options);
     return;
   }
 
@@ -288,6 +311,44 @@ async function installViaGitClone(
   }
 
   console.log(`\n✓ Installed ${selectedNames.length} skills to ${repoPath}`);
+  saveGitCloneSource(source, repoPath, options);
+}
+
+/**
+ * Save source info for git clone installs
+ */
+function saveGitCloneSource(source: string, repoPath: string, options: InstallOptions): void {
+  // Extract repo name from path
+  const repoName = repoPath.split('/').pop() || source;
+
+  // Determine type and key
+  let type: 'official' | 'community' | 'custom';
+  let sourceKey: string;
+
+  if (source === 'anthropic' || repoPath.includes('/official/')) {
+    type = 'official';
+    sourceKey = 'official/anthropic';
+  } else if (options.custom || repoPath.includes('/custom/')) {
+    type = 'custom';
+    sourceKey = `custom/${repoName}`;
+  } else {
+    type = 'community';
+    sourceKey = `community/${repoName}`;
+  }
+
+  // Normalize URL
+  let url = source;
+  if (source === 'anthropic') {
+    url = 'https://github.com/anthropics/skills';
+  } else if (!source.startsWith('http')) {
+    url = `https://github.com/${source}`;
+  }
+
+  sourcesService.addSource(sourceKey, {
+    url,
+    type,
+    repoName,
+  });
 }
 
 export async function executeInstall(
