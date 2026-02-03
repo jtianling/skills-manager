@@ -19,7 +19,8 @@ export async function executeSetup(): Promise<void> {
   }
 
   // Copy example skill template
-  const templateDir = join(__dirname, '..', 'templates', 'example-skill');
+  // After bundling, templates are in the same directory as index.js (dist/)
+  const templateDir = join(__dirname, 'templates', 'example-skill');
   const targetDir = join(SKILLS_MANAGER_DIR, 'custom', 'example-skill');
 
   if (!fileExists(targetDir)) {
