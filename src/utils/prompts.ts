@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ToolName, SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS } from '../constants.js';
+import { interactiveCheckbox } from './interactive-select.js';
 
 /**
  * Handle Ctrl+C gracefully during prompts
@@ -126,25 +127,16 @@ export async function promptSkillsToInstall(
   skills: Array<{ name: string; description: string }>
 ): Promise<string[]> {
   const choices = skills.map((skill) => ({
-    name: `${skill.name.padEnd(20)} ${skill.description}`,
+    name: skill.name,
+    description: skill.description,
     value: skill.name,
   }));
 
-  try {
-    const { selectedSkills } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'selectedSkills',
-        message: 'Select skills to install:',
-        choices,
-        pageSize: 20,
-      },
-    ]);
-
-    return selectedSkills;
-  } catch (error) {
-    handlePromptError(error);
-  }
+  return interactiveCheckbox({
+    message: 'Select skills to install:',
+    choices,
+    pageSize: 15,
+  });
 }
 
 export async function promptConfirm(message: string): Promise<boolean> {
