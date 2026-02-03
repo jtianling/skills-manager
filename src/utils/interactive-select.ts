@@ -192,7 +192,7 @@ export async function interactiveCheckbox(
         );
       } else {
         lines.push(
-          '\x1b[2m(↑↓/jk move, space select, ctrl+a toggle all, enter confirm)\x1b[0m'
+          '\x1b[2m(↑↓ move, space select, ctrl+a toggle all, enter confirm)\x1b[0m'
         );
       }
 
@@ -251,15 +251,15 @@ export async function interactiveCheckbox(
         }
       }
 
-      // Navigation: arrow keys always work, j/k only when search is disabled
-      if (key.name === 'up' || (!enableSearch && key.name === 'k' && !key.ctrl)) {
+      // Navigation: arrow keys only
+      if (key.name === 'up') {
         cursor = findPrevChoice(cursor);
         // Adjust scroll if cursor goes above visible area
         if (cursor < scrollOffset) {
           scrollOffset = cursor;
         }
         render();
-      } else if (key.name === 'down' || (!enableSearch && key.name === 'j' && !key.ctrl)) {
+      } else if (key.name === 'down') {
         cursor = findNextChoice(cursor);
         // Adjust scroll if cursor goes below visible area
         if (cursor >= scrollOffset + pageSize) {
