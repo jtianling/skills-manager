@@ -7,6 +7,7 @@ import { SkillsService } from '../services/skills.js';
 import { InstallOptions } from '../types.js';
 import { fileExists, getDirectoriesInDir, readFileContent } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
+import { ProgressBar } from '../utils/progress.js';
 
 /**
  * Parse SKILL.md frontmatter to extract description
@@ -40,6 +41,8 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
 
   // Get skill descriptions by fetching SKILL.md for each
   const skills: Array<{ name: string; description: string; path: string }> = [];
+  const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
+  progress.start();
 
   for (const skill of skillsList) {
     // Fetch SKILL.md content via API
@@ -61,8 +64,10 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     } catch {
       skills.push({ name: skill.name, description: '', path: skill.path });
     }
+    progress.tick();
   }
 
+  progress.complete();
   console.log(`Found ${skills.length} skills.\n`);
 
   let selectedSkills = skills;
@@ -141,6 +146,9 @@ async function installFromGitHubUrl(
 
   // Filter to only directories that have SKILL.md
   const skills: Array<{ name: string; description: string; path: string }> = [];
+  const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
+  progress.start();
+
   for (const skill of skillsList) {
     try {
       const response = await fetch(
@@ -152,9 +160,12 @@ async function installFromGitHubUrl(
         skills.push({ name: skill.name, description, path: skill.path });
       }
     } catch {
-      continue;
+      // Skip skills without SKILL.md
     }
+    progress.tick();
   }
+
+  progress.complete();
 
   if (skills.length === 0) {
     return false;
