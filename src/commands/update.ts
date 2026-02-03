@@ -3,78 +3,27 @@ import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
-import { fileExists, removeDir } from '../utils/fs.js';
-import { ProgressBar } from '../utils/progress.js';
+import { fileExists, removeDir, readFileContent, getDirectoriesInDir } from '../utils/fs.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
 
-/**
- * Parse SKILL.md frontmatter to extract description
- */
-function parseSkillDescription(content: string): string {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!frontmatterMatch) {
-    return '';
-  }
-  const descMatch = frontmatterMatch[1].match(/^description:\s*(.+)$/m);
-  return descMatch ? descMatch[1].trim() : '';
+interface UpdateResult {
+  updated: number;
+  upToDate: number;
+  failed: number;
 }
 
-async function updateSource(key: string, info: SourceInfo): Promise<number> {
+async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult> {
+  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0 };
+
   const parsed = githubService.parseGitHubUrl(info.url);
   if (!parsed) {
     console.log(`  ⚠ Cannot parse URL: ${info.url}`);
-    return 0;
+    return result;
   }
 
   const { owner, repo } = parsed;
-
-  // Try common skills directory locations
-  let skillsList: Array<{ name: string; path: string }> = [];
-  const skillsPaths = ['skills', '.', 'src/skills'];
-
-  for (const skillsPath of skillsPaths) {
-    try {
-      skillsList = await githubService.listSkills(owner, repo, skillsPath);
-      if (skillsList.length > 0) break;
-    } catch {
-      continue;
-    }
-  }
-
-  if (skillsList.length === 0) {
-    console.log(`  ⚠ No skills found in ${owner}/${repo}`);
-    return 0;
-  }
-
-  // Get the default branch
-  const defaultBranch = await githubService.getDefaultBranch(owner, repo);
-
-  // Filter to only directories that have SKILL.md
-  const skills: Array<{ name: string; path: string }> = [];
-  const progress = new ProgressBar(skillsList.length, 'Checking skills');
-  progress.start();
-
-  for (const skill of skillsList) {
-    try {
-      const response = await fetch(
-        `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${skill.path}/SKILL.md`
-      );
-      if (response.ok) {
-        skills.push(skill);
-      }
-    } catch {
-      // Skip
-    }
-    progress.tick();
-  }
-
-  progress.complete();
-
-  if (skills.length === 0) {
-    return 0;
-  }
 
   // Determine target directory
   let targetBase: string;
@@ -86,26 +35,81 @@ async function updateSource(key: string, info: SourceInfo): Promise<number> {
     targetBase = join(SKILLS_MANAGER_DIR, 'community', info.repoName);
   }
 
-  // Download all skills (update)
-  let updatedCount = 0;
-  for (const skill of skills) {
-    const targetDir = join(targetBase, skill.name);
+  // Get locally installed skills
+  const localSkills = getDirectoriesInDir(targetBase);
+  if (localSkills.length === 0) {
+    console.log(`  No skills installed locally`);
+    return result;
+  }
+
+  // Get the default branch
+  const defaultBranch = await githubService.getDefaultBranch(owner, repo);
+
+  // Try common skills directory locations to find remote path pattern
+  let skillsBasePath = 'skills';
+  const skillsPaths = ['skills', '.', 'src/skills'];
+
+  for (const skillsPath of skillsPaths) {
     try {
-      // Remove existing and re-download
-      if (fileExists(targetDir)) {
-        removeDir(targetDir);
+      const testList = await githubService.listSkills(owner, repo, skillsPath);
+      if (testList.length > 0) {
+        skillsBasePath = skillsPath;
+        break;
       }
-      await githubService.downloadSkill(owner, repo, skill.path, targetDir);
-      updatedCount++;
     } catch {
-      console.log(`  ⚠ Failed to update ${skill.name}`);
+      continue;
+    }
+  }
+
+  // Update only locally installed skills
+  for (const localSkill of localSkills) {
+    const skillName = localSkill.name;
+    const targetDir = localSkill.path;
+    const localSkillMd = join(targetDir, 'SKILL.md');
+
+    // Check if local skill has SKILL.md
+    if (!fileExists(localSkillMd)) {
+      continue;
+    }
+
+    const remotePath = skillsBasePath === '.' ? skillName : `${skillsBasePath}/${skillName}`;
+
+    try {
+      // Fetch remote SKILL.md
+      const response = await fetch(
+        `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${remotePath}/SKILL.md`
+      );
+
+      if (!response.ok) {
+        console.log(`  ⚠ ${skillName}: not found in remote`);
+        result.failed++;
+        continue;
+      }
+
+      const remoteContent = await response.text();
+      const localContent = readFileContent(localSkillMd);
+
+      // Compare content
+      if (remoteContent === localContent) {
+        console.log(`  ✓ ${skillName}: up to date`);
+        result.upToDate++;
+      } else {
+        // Content changed, update
+        removeDir(targetDir);
+        await githubService.downloadSkill(owner, repo, remotePath, targetDir);
+        console.log(`  ↑ ${skillName}: updated`);
+        result.updated++;
+      }
+    } catch {
+      console.log(`  ✗ ${skillName}: failed to update`);
+      result.failed++;
     }
   }
 
   // Update timestamp
   sourcesService.updateTimestamp(key);
 
-  return updatedCount;
+  return result;
 }
 
 export async function executeUpdate(source?: string): Promise<void> {
@@ -138,9 +142,9 @@ export async function executeUpdate(source?: string): Promise<void> {
       return;
     }
 
-    console.log(`Updating ${matchingKey}...`);
-    const count = await updateSource(matchingKey, allSources[matchingKey]);
-    console.log(`\n✓ Updated ${count} skills from ${matchingKey}`);
+    console.log(`Updating ${matchingKey}...\n`);
+    const result = await updateSource(matchingKey, allSources[matchingKey]);
+    console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed`);
     return;
   }
 
@@ -148,14 +152,19 @@ export async function executeUpdate(source?: string): Promise<void> {
   console.log('Updating all installed sources...\n');
 
   let totalUpdated = 0;
+  let totalUpToDate = 0;
+  let totalFailed = 0;
+
   for (const [key, info] of Object.entries(allSources)) {
     console.log(`${key}:`);
-    const count = await updateSource(key, info);
-    console.log(`  ✓ ${count} skills updated\n`);
-    totalUpdated += count;
+    const result = await updateSource(key, info);
+    totalUpdated += result.updated;
+    totalUpToDate += result.upToDate;
+    totalFailed += result.failed;
+    console.log();
   }
 
-  console.log(`Done! Updated ${totalUpdated} skills from ${Object.keys(allSources).length} sources.`);
+  console.log(`Done! ${totalUpdated} updated, ${totalUpToDate} up to date, ${totalFailed} failed`);
 }
 
 export const updateCommand = new Command('update')
