@@ -2,6 +2,8 @@
 
 Unified skills manager for AI coding tools. Manage skills in `~/.skills-manager/` and deploy them to multiple AI tools.
 
+[中文文档](./README.zh-CN.md)
+
 ## Supported Tools
 
 | Tool | Skills Directory | Mode-Specific |
@@ -12,84 +14,73 @@ Unified skills manager for AI coding tools. Manage skills in `~/.skills-manager/
 | Cline | `.cline/skills/` | No |
 | Roo Code | `.roo/skills/` | Yes |
 | Kilo Code | `.kilocode/skills/` | Yes |
+| OpenCode | `.opencode/skills/` | No |
+| Trae | `.trae/skills/` | No |
 | Antigravity | `.agent/skills/` | No |
-
-## Installation
-
-```bash
-npm install -g skillsmgr
-```
-
-Or use directly with npx (no installation required):
-
-```bash
-npx skillsmgr setup
-npx skillsmgr install anthropic
-```
 
 ## Quick Start
 
 ```bash
 # Initialize skills manager
-skillsmgr setup
+npx skillsmgr setup
 
 # Install official Anthropic skills
-skillsmgr install anthropic
+npx skillsmgr install anthropic
 
 # Deploy skills to your project
 cd your-project
-skillsmgr init
+npx skillsmgr init
 ```
 
 ## Commands
 
-### `skillsmgr setup`
+### `npx skillsmgr setup`
 
 Initialize `~/.skills-manager/` directory structure with example skill.
 
 ```bash
-skillsmgr setup
+npx skillsmgr setup
 ```
 
-### `skillsmgr install <source>`
+### `npx skillsmgr install <source>`
 
 Download skills from a repository.
 
 ```bash
 # Install official Anthropic skills
-skillsmgr install anthropic
+npx skillsmgr install anthropic
 
 # Install from any GitHub repository
-skillsmgr install https://github.com/user/skills-repo
+npx skillsmgr install https://github.com/user/skills-repo
 
 # Install specific skill
-skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
+npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
 
 # Install all skills without prompting
-skillsmgr install anthropic --all
+npx skillsmgr install anthropic --all
 
 # Install to custom/ instead of community/
-skillsmgr install https://github.com/user/repo --custom
+npx skillsmgr install https://github.com/user/repo --custom
 ```
 
-### `skillsmgr list`
+### `npx skillsmgr list`
 
 List available skills.
 
 ```bash
 # List all available skills
-skillsmgr list
+npx skillsmgr list
 
 # List deployed skills in current project
-skillsmgr list --deployed
+npx skillsmgr list --deployed
 ```
 
-### `skillsmgr init`
+### `npx skillsmgr init`
 
 Interactive deployment of skills to current project.
 
 ```bash
-skillsmgr init
+npx skillsmgr init
 ```
 
 Features:
@@ -98,39 +89,39 @@ Features:
 - Choose skills to deploy with search filter
 - Incremental updates (add/remove skills)
 
-### `skillsmgr add <skill>`
+### `npx skillsmgr add <skill>`
 
 Quick add a skill to project.
 
 ```bash
 # Add to all configured tools
-skillsmgr add code-review
+npx skillsmgr add code-review
 
 # Add to specific tool
-skillsmgr add code-review --tool claude-code
+npx skillsmgr add code-review --tool claude-code
 
 # Use copy mode instead of symlink
-skillsmgr add code-review --copy
+npx skillsmgr add code-review --copy
 ```
 
-### `skillsmgr remove <skill>`
+### `npx skillsmgr remove <skill>`
 
 Remove a skill from project.
 
 ```bash
 # Remove from all tools
-skillsmgr remove code-review
+npx skillsmgr remove code-review
 
 # Remove from specific tool
-skillsmgr remove code-review --tool claude-code
+npx skillsmgr remove code-review --tool claude-code
 ```
 
-### `skillsmgr sync`
+### `npx skillsmgr sync`
 
 Sync and verify deployed skills.
 
 ```bash
-skillsmgr sync
+npx skillsmgr sync
 ```
 
 ## Directory Structure
@@ -151,7 +142,7 @@ skillsmgr sync
 ## Features
 
 - **Unified Management**: Manage all skills in one place
-- **Multi-tool Support**: Deploy to 7 different AI tools
+- **Multi-tool Support**: Deploy to 9 different AI tools
 - **Symlink by Default**: Changes sync automatically
 - **Search Filter**: Quick search for large skill repositories
 - **Progress Indicators**: Visual feedback during downloads

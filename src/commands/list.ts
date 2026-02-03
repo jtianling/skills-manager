@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
-import { MetadataService } from '../services/metadata.js';
+import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { ListOptions, ToolName } from '../types.js';
+import { ListOptions } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 
 export async function executeList(options: ListOptions): Promise<void> {
@@ -43,16 +43,17 @@ async function listAvailable(): Promise<void> {
   for (const [source, sourceSkills] of Object.entries(grouped)) {
     console.log(`── ${source} (${sourceSkills.length} skill${sourceSkills.length > 1 ? 's' : ''}) ──`);
     for (const skill of sourceSkills) {
-      console.log(`  ${skill.name.padEnd(20)} ${skill.description}`);
+      console.log(`  ${skill.name}`);
     }
     console.log();
   }
 }
 
 async function listDeployed(): Promise<void> {
-  const metadataService = new MetadataService(process.cwd());
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+  const deployments = scanner.scanAllTools();
 
-  if (!metadataService.hasMetadata()) {
+  if (deployments.length === 0) {
     console.log('No skills deployed in current project.');
     console.log('\nRun: skillsmgr init');
     return;
@@ -60,16 +61,12 @@ async function listDeployed(): Promise<void> {
 
   console.log('Deployed skills in current project:\n');
 
-  const configuredTools = metadataService.getConfiguredTools();
+  for (const deployment of deployments) {
+    const config = TOOL_CONFIGS[deployment.toolName];
+    const displayName = config?.displayName || deployment.toolName;
+    const dirSuffix = deployment.mode && deployment.mode !== 'all' ? ` [${deployment.mode}]` : '';
 
-  for (const toolName of configuredTools) {
-    const deployment = metadataService.getToolDeployment(toolName);
-    if (!deployment) continue;
-
-    const config = TOOL_CONFIGS[toolName as ToolName];
-    const displayName = config?.displayName || toolName;
-
-    console.log(`${displayName} (${deployment.targetDir}/):`);
+    console.log(`${displayName} (${deployment.targetDir}/)${dirSuffix}:`);
 
     for (const skill of deployment.skills) {
       const modeStr = skill.deployMode === 'link' ? 'link' : 'copy';

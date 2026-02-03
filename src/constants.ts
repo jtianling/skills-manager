@@ -2,7 +2,6 @@ import { homedir } from 'os';
 import { join } from 'path';
 
 export const SKILLS_MANAGER_DIR = join(homedir(), '.skills-manager');
-export const METADATA_FILENAME = '.skillsmgr.json';
 
 export const SKILL_SOURCES = ['official', 'community', 'custom'] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];

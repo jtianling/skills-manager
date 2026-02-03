@@ -1,10 +1,10 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
-import { MetadataService } from '../services/metadata.js';
+import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS, getTargetDir } from '../tools/configs.js';
-import { InitOptions, ToolName, DeployedSkill } from '../types.js';
+import { InitOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptTools, promptMode, promptSkills } from '../utils/prompts.js';
 
@@ -15,7 +15,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
-  const metadataService = new MetadataService(process.cwd());
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
 
   const allSkills = skillsService.getAllSkills();
@@ -26,7 +26,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
   }
 
   // Get configured tools for marking in prompt
-  const configuredTools = metadataService.getConfiguredTools();
+  const configuredTools = scanner.getConfiguredTools();
 
   // Prompt for tools
   const selectedTools = await promptTools(configuredTools);
@@ -46,7 +46,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
   // Get currently deployed skills for each tool
   const deployedSkillNames = new Set<string>();
   for (const toolName of selectedTools) {
-    const deployed = metadataService.getDeployedSkills(toolName);
+    const deployed = scanner.getDeployedSkills(toolName as ToolName);
     deployed.forEach((s) => deployedSkillNames.add(s.name));
   }
 
@@ -75,7 +75,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
     console.log(`${config.displayName}:`);
 
     // Get previously deployed skills
-    const previouslyDeployed = metadataService.getDeployedSkills(toolName);
+    const previouslyDeployed = scanner.getDeployedSkills(toolName as ToolName);
     const previousNames = new Set(previouslyDeployed.map((s) => s.name));
 
     // Determine changes
@@ -101,15 +101,6 @@ export async function executeInit(options: InitOptions): Promise<void> {
       deployer.deploySkill(skill, config, deployMode, mode);
       console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
     }
-
-    // Update metadata
-    const newDeployedSkills: DeployedSkill[] = selectedSkills.map((skill) => ({
-      name: skill.name,
-      source: skill.source,
-      deployMode,
-    }));
-
-    metadataService.addDeployment(toolName, targetDir, mode, newDeployedSkills);
 
     console.log();
   }

@@ -9,6 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
   rmSync,
+  readlinkSync,
 } from 'fs';
 import { dirname, join } from 'path';
 
@@ -36,6 +37,14 @@ export function isSymlink(path: string): boolean {
     return lstatSync(path).isSymbolicLink();
   } catch {
     return false;
+  }
+}
+
+export function readSymlinkTarget(path: string): string | null {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return null;
   }
 }
 

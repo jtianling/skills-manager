@@ -1,10 +1,10 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
-import { MetadataService } from '../services/metadata.js';
+import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { AddOptions, ToolName, DeployedSkill } from '../types.js';
+import { AddOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptSelect } from '../utils/prompts.js';
 
@@ -18,7 +18,7 @@ export async function executeAdd(
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
-  const metadataService = new MetadataService(process.cwd());
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
 
   // Find skill(s) by name
@@ -42,16 +42,16 @@ export async function executeAdd(
   }
 
   // Determine target tools
-  let targetTools: string[];
+  let targetTools: ToolName[];
   if (options.tool) {
     if (!TOOL_CONFIGS[options.tool as ToolName]) {
       console.log(`Unknown tool: ${options.tool}`);
       process.exit(1);
     }
-    targetTools = [options.tool];
+    targetTools = [options.tool as ToolName];
   } else {
-    // Use configured tools from metadata
-    targetTools = metadataService.getConfiguredTools();
+    // Use configured tools from scanner
+    targetTools = scanner.getConfiguredTools();
     if (targetTools.length === 0) {
       console.log('No tools configured. Run: skillsmgr init');
       process.exit(1);
@@ -63,24 +63,21 @@ export async function executeAdd(
   console.log(`Adding ${skillName} to configured tools...`);
 
   for (const toolName of targetTools) {
-    const config = TOOL_CONFIGS[toolName as ToolName];
-    const deployment = metadataService.getToolDeployment(toolName);
-    const mode = deployment?.mode || 'all';
+    const config = TOOL_CONFIGS[toolName];
+    const deployments = scanner.scanToolDeployment(toolName, config);
+    // Use 'all' mode if no specific mode found
+    const mode = deployments.length > 0 && deployments[0].mode ? deployments[0].mode : 'all';
 
-    deployer.deploySkill(skill, config, deployMode, mode);
-
-    // Update metadata
-    const existingSkills = metadataService.getDeployedSkills(toolName);
+    // Check if skill already exists
+    const existingSkills = scanner.getDeployedSkills(toolName);
     const alreadyExists = existingSkills.some((s) => s.name === skill.name);
 
-    if (!alreadyExists) {
-      const newSkill: DeployedSkill = {
-        name: skill.name,
-        source: skill.source,
-        deployMode,
-      };
-      metadataService.updateDeployment(toolName, [...existingSkills, newSkill]);
+    if (alreadyExists) {
+      console.log(`  · ${config.displayName} (already deployed)`);
+      continue;
     }
+
+    deployer.deploySkill(skill, config, deployMode, mode);
 
     console.log(
       `  ✓ ${config.displayName} (${deployMode === 'link' ? 'linked' : 'copied'})`

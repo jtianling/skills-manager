@@ -1,48 +1,55 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
-import { MetadataService } from '../services/metadata.js';
+import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
+import { SkillsService } from '../services/skills.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { ToolName } from '../types.js';
 import { fileExists, isSymlink, readFileContent } from '../utils/fs.js';
 import { promptSyncAction, promptOrphanAction } from '../utils/prompts.js';
 
 export async function executeSync(): Promise<void> {
-  const metadataService = new MetadataService(process.cwd());
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
 
-  if (!metadataService.hasMetadata()) {
+  const deployments = scanner.scanAllTools();
+
+  if (deployments.length === 0) {
     console.log('No skills deployed in current project.');
     process.exit(1);
   }
 
   console.log('Checking deployed skills...\n');
 
-  const configuredTools = metadataService.getConfiguredTools();
   let updatedCount = 0;
   let removedCount = 0;
-  let untrackedCount = 0;
 
-  for (const toolName of configuredTools) {
-    const config = TOOL_CONFIGS[toolName as ToolName];
-    const deployment = metadataService.getToolDeployment(toolName);
-    if (!deployment) continue;
+  for (const deployment of deployments) {
+    const config = TOOL_CONFIGS[deployment.toolName];
+    const mode = deployment.mode || 'all';
 
     console.log(`${config.displayName} (${deployment.targetDir}/):`);
 
     for (const skill of deployment.skills) {
-      const deployedPath = join(process.cwd(), deployment.targetDir, skill.name);
-      const sourcePath = join(SKILLS_MANAGER_DIR, skill.source, skill.name);
+      const deployedPath = skill.path;
+
+      // Try to find source path
+      let sourcePath: string | null = null;
+      if (skill.source !== 'unknown') {
+        // Try to find the skill in the system directory
+        const sourceSkill = skillsService.getSkillByName(skill.name);
+        if (sourceSkill) {
+          sourcePath = sourceSkill.path;
+        }
+      }
 
       // Check if source still exists
-      if (!fileExists(sourcePath)) {
-        console.log(`  ✗ ${skill.name}: orphaned (source deleted)`);
+      if (!sourcePath || !fileExists(sourcePath)) {
+        console.log(`  ✗ ${skill.name}: orphaned (source not found)`);
         const action = await promptOrphanAction(skill.name);
         if (action === 'remove') {
-          deployer.removeSkill(skill.name, config, deployment.mode);
-          const remaining = deployment.skills.filter((s) => s.name !== skill.name);
-          metadataService.updateDeployment(toolName, remaining);
+          deployer.removeSkill(skill.name, config, mode);
           console.log(`  ✓ Removed ${skill.name}`);
           removedCount++;
         }
@@ -81,7 +88,7 @@ export async function executeSync(): Promise<void> {
                   { name: skill.name, description: '', path: sourcePath, source: skill.source },
                   config,
                   'copy',
-                  deployment.mode
+                  mode
                 );
                 console.log(`  ✓ Updated ${skill.name}`);
                 updatedCount++;
@@ -91,7 +98,7 @@ export async function executeSync(): Promise<void> {
                 { name: skill.name, description: '', path: sourcePath, source: skill.source },
                 config,
                 'copy',
-                deployment.mode
+                mode
               );
               console.log(`  ✓ Updated ${skill.name}`);
               updatedCount++;
@@ -107,7 +114,7 @@ export async function executeSync(): Promise<void> {
   }
 
   console.log(
-    `Sync complete: ${updatedCount} updated, ${removedCount} removed, ${untrackedCount} untracked`
+    `Sync complete: ${updatedCount} updated, ${removedCount} removed`
   );
 }
 
