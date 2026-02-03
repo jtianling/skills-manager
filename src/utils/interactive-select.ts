@@ -1,5 +1,31 @@
 import * as readline from 'readline';
 
+/**
+ * Wrap text to fit within maxWidth, breaking at word boundaries
+ */
+function wrapText(text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    if (currentLine.length === 0) {
+      currentLine = word;
+    } else if (currentLine.length + 1 + word.length <= maxWidth) {
+      currentLine += ' ' + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
 export interface SelectChoice {
   name: string;
   description?: string;
@@ -74,14 +100,13 @@ export async function interactiveCheckbox(
 
         lines.push(`${prefix} ${checkbox} ${highlight}${choice.name}${reset}`);
 
-        // Show description only for current item
+        // Show description only for current item (multi-line wrapped)
         if (isCursor && choice.description) {
           const maxWidth = process.stdout.columns ? process.stdout.columns - 6 : 74;
-          const desc =
-            choice.description.length > maxWidth
-              ? choice.description.substring(0, maxWidth - 3) + '...'
-              : choice.description;
-          lines.push(`    \x1b[2m${desc}\x1b[0m`);
+          const descLines = wrapText(choice.description, maxWidth);
+          for (const descLine of descLines) {
+            lines.push(`    \x1b[2m${descLine}\x1b[0m`);
+          }
         }
       }
 
