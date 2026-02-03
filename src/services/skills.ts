@@ -61,7 +61,11 @@ export class SkillsService {
       // official or community - has repo subdirectories
       const repoDirs = getDirectoriesInDir(sourceDir);
       for (const repoDir of repoDirs) {
-        const skillDirs = getDirectoriesInDir(repoDir.path);
+        // Check if skills are in a 'skills/' subdirectory (e.g., anthropic/skills repo structure)
+        const skillsSubdir = join(repoDir.path, 'skills');
+        const searchDir = fileExists(skillsSubdir) ? skillsSubdir : repoDir.path;
+
+        const skillDirs = getDirectoriesInDir(searchDir);
         for (const skillDir of skillDirs) {
           const source = `${sourcePrefix}/${repoDir.name}`;
           const skill = this.loadSkill(skillDir.path, source);

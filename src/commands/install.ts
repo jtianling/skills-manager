@@ -34,7 +34,15 @@ export async function executeInstall(
   const repoPath = gitService.clone(source, options.custom || false);
 
   // Find all skills in the repo
-  const skillDirs = getDirectoriesInDir(repoPath);
+  // For anthropic repo, skills are in the skills/ subdirectory
+  let skillsRoot = repoPath;
+  if (source === 'anthropic') {
+    const skillsSubdir = join(repoPath, 'skills');
+    if (fileExists(skillsSubdir)) {
+      skillsRoot = skillsSubdir;
+    }
+  }
+  const skillDirs = getDirectoriesInDir(skillsRoot);
   const skills: Array<{ name: string; description: string; path: string }> = [];
 
   for (const dir of skillDirs) {
