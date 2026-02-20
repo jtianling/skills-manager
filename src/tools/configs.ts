@@ -8,6 +8,13 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     supportsLink: true,
     supportsModeSpecific: false,
   },
+  'codex-cli': {
+    name: 'codex-cli',
+    displayName: 'Codex CLI',
+    skillsDir: '.agents/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
   'roo-code': {
     name: 'roo-code',
     displayName: 'Roo Code',
@@ -21,6 +28,13 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'claude-code',
     displayName: 'Claude Code',
     skillsDir: '.claude/skills',
+    supportsLink: true,
+    supportsModeSpecific: false,
+  },
+  'gemini-cli': {
+    name: 'gemini-cli',
+    displayName: 'Gemini CLI',
+    skillsDir: '.gemini/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },

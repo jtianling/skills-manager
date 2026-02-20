@@ -8,8 +8,10 @@ export type SkillSource = (typeof SKILL_SOURCES)[number];
 
 export const SUPPORTED_TOOLS = [
   'antigravity',
+  'codex-cli',
   'roo-code',
   'claude-code',
+  'gemini-cli',
   'opencode',
   'cline',
   'cursor',
