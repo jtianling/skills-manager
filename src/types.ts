@@ -9,6 +9,13 @@ export interface SkillInfo {
   source: string; // e.g., "official/anthropic" or "community/awesome-skills"
 }
 
+export interface CommandInfo {
+  name: string; // command name without .md extension
+  description: string;
+  path: string; // full path to the .md file
+  source: string; // e.g., "official/anthropic"
+}
+
 export interface DeployedSkill {
   name: string;
   source: string;
@@ -31,6 +38,7 @@ export interface ToolConfig {
   name: ToolName;
   displayName: string;
   skillsDir: string;
+  commandsDir?: string;
   supportsLink: boolean;
   supportsModeSpecific: boolean;
   modePattern?: string;

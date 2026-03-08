@@ -78,6 +78,26 @@ export interface DirInfo {
   path: string;
 }
 
+export interface FileInfo {
+  name: string;
+  path: string;
+}
+
+export function getFilesInDir(dir: string, ext?: string): FileInfo[] {
+  if (!existsSync(dir)) {
+    return [];
+  }
+
+  const entries = readdirSync(dir, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isFile() && (!ext || e.name.endsWith(ext)))
+    .map((e) => ({
+      name: e.name,
+      path: join(dir, e.name),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function getDirectoriesInDir(dir: string): DirInfo[] {
   if (!existsSync(dir)) {
     return [];

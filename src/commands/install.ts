@@ -5,22 +5,59 @@ import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService } from '../services/sources.js';
 import { InstallOptions } from '../types.js';
-import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
+import { fileExists, getDirectoriesInDir, getFilesInDir, readFileContent, removeDir, ensureDir } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
 
 const sourcesService = new SourcesService();
 
 /**
- * Parse SKILL.md frontmatter to extract description
+ * Parse SKILL.md or command .md frontmatter to extract description
  */
-function parseSkillDescription(content: string): string {
+function parseMdDescription(content: string): string {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatterMatch) {
     return '';
   }
   const descMatch = frontmatterMatch[1].match(/^description:\s*(.+)$/m);
   return descMatch ? descMatch[1].trim() : '';
+}
+
+/**
+ * Install commands from a GitHub repo alongside skills
+ */
+async function installCommandsFromGitHub(
+  githubService: GitHubService,
+  owner: string,
+  repo: string,
+  targetBase: string,
+  defaultBranch: string
+): Promise<number> {
+  // Try common commands directory locations
+  const commandsPaths = ['commands', 'src/commands'];
+  let commandsList: Array<{ name: string; path: string }> = [];
+
+  for (const commandsPath of commandsPaths) {
+    commandsList = await githubService.listCommands(owner, repo, commandsPath);
+    if (commandsList.length > 0) break;
+  }
+
+  if (commandsList.length === 0) {
+    return 0;
+  }
+
+  console.log(`\nFound ${commandsList.length} commands, installing...`);
+  const commandsTargetDir = join(targetBase, 'commands');
+  ensureDir(commandsTargetDir);
+
+  for (const cmd of commandsList) {
+    const targetPath = join(commandsTargetDir, cmd.name);
+    process.stdout.write(`  ${cmd.name.replace(/\.md$/, '')}...`);
+    await githubService.downloadCommandFile(owner, repo, cmd.path, targetPath);
+    console.log(' ✓');
+  }
+
+  return commandsList.length;
 }
 
 /**
@@ -36,13 +73,30 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
   // List skills via API
   const skillsList = await githubService.listSkills(owner, repo, 'skills');
 
-  if (skillsList.length === 0) {
-    console.log('No skills found in repository');
-    return;
-  }
-
   // Get the default branch
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
+  const targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+
+  // Also check for commands
+  let commandsCount = 0;
+
+  if (skillsList.length === 0) {
+    // No skills, try commands only
+    commandsCount = await installCommandsFromGitHub(
+      githubService, owner, repo, targetBase, defaultBranch
+    );
+    if (commandsCount === 0) {
+      console.log('No skills or commands found in repository');
+      return;
+    }
+    console.log(`\n✓ Installed ${commandsCount} commands to ${targetBase}`);
+    sourcesService.addSource('official/anthropic', {
+      url: 'https://github.com/anthropics/skills',
+      type: 'official',
+      repoName: 'anthropic',
+    });
+    return;
+  }
 
   // Get skill descriptions by fetching SKILL.md for each
   const skills: Array<{ name: string; description: string; path: string }> = [];
@@ -57,7 +111,7 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
       );
       if (response.ok) {
         const content = await response.text();
-        const description = parseSkillDescription(content);
+        const description = parseMdDescription(content);
         skills.push({
           name: skill.name,
           description,
@@ -89,7 +143,6 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
 
   // Download selected skills
   console.log(`\nDownloading ${selectedSkills.length} skills...`);
-  const targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
 
   for (const skill of selectedSkills) {
     const targetDir = join(targetBase, skill.name);
@@ -98,7 +151,14 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     console.log(' ✓');
   }
 
-  console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
+  // Also install commands automatically
+  commandsCount = await installCommandsFromGitHub(
+    githubService, owner, repo, targetBase, defaultBranch
+  );
+
+  const parts = [`${selectedSkills.length} skills`];
+  if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+  console.log(`\n✓ Installed ${parts.join(' and ')} to ${targetBase}`);
 
   // Save source info
   sourcesService.addSource('official/anthropic', {
@@ -137,7 +197,7 @@ async function installFromGitHubUrl(
   }
 
   // Otherwise, list and download skills from repo
-  console.log(`Fetching available skills from ${owner}/${repo}...`);
+  console.log(`Fetching available content from ${owner}/${repo}...`);
 
   // Try common skills directory locations
   let skillsList: Array<{ name: string; path: string }> = [];
@@ -152,12 +212,41 @@ async function installFromGitHubUrl(
     }
   }
 
-  if (skillsList.length === 0) {
-    return false; // Fall back to git clone
-  }
-
   // Get the default branch for raw content URLs
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
+
+  let targetBase: string;
+  if (isAnthropic) {
+    targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+  } else if (options.custom) {
+    targetBase = join(SKILLS_MANAGER_DIR, 'custom', repo);
+  } else {
+    targetBase = join(SKILLS_MANAGER_DIR, 'community', repo);
+  }
+
+  // If no skills found, try commands only
+  if (skillsList.length === 0) {
+    const commandsCount = await installCommandsFromGitHub(
+      githubService, owner, repo, targetBase, defaultBranch
+    );
+    if (commandsCount === 0) {
+      return false; // Fall back to git clone
+    }
+
+    console.log(`\n✓ Installed ${commandsCount} commands to ${targetBase}`);
+
+    const sourceKey = isAnthropic
+      ? 'official/anthropic'
+      : options.custom
+        ? `custom/${repo}`
+        : `community/${repo}`;
+    sourcesService.addSource(sourceKey, {
+      url: `https://github.com/${owner}/${repo}`,
+      type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
+      repoName: repo,
+    });
+    return true;
+  }
 
   // Filter to only directories that have SKILL.md
   const skills: Array<{ name: string; description: string; path: string }> = [];
@@ -171,7 +260,7 @@ async function installFromGitHubUrl(
       );
       if (response.ok) {
         const content = await response.text();
-        const description = parseSkillDescription(content);
+        const description = parseMdDescription(content);
         skills.push({ name: skill.name, description, path: skill.path });
       }
     } catch {
@@ -183,7 +272,26 @@ async function installFromGitHubUrl(
   progress.complete();
 
   if (skills.length === 0) {
-    return false;
+    // No valid skills, but maybe commands?
+    const commandsCount = await installCommandsFromGitHub(
+      githubService, owner, repo, targetBase, defaultBranch
+    );
+    if (commandsCount === 0) {
+      return false;
+    }
+    console.log(`\n✓ Installed ${commandsCount} commands to ${targetBase}`);
+
+    const sourceKey = isAnthropic
+      ? 'official/anthropic'
+      : options.custom
+        ? `custom/${repo}`
+        : `community/${repo}`;
+    sourcesService.addSource(sourceKey, {
+      url: `https://github.com/${owner}/${repo}`,
+      type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
+      repoName: repo,
+    });
+    return true;
   }
 
   console.log(`Found ${skills.length} skills.\n`);
@@ -201,15 +309,6 @@ async function installFromGitHubUrl(
   // Download selected skills
   console.log(`\nDownloading ${selectedSkills.length} skills...`);
 
-  let targetBase: string;
-  if (isAnthropic) {
-    targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
-  } else if (options.custom) {
-    targetBase = join(SKILLS_MANAGER_DIR, 'custom', repo);
-  } else {
-    targetBase = join(SKILLS_MANAGER_DIR, 'community', repo);
-  }
-
   for (const skill of selectedSkills) {
     const targetDir = join(targetBase, skill.name);
     process.stdout.write(`  ${skill.name}...`);
@@ -217,7 +316,14 @@ async function installFromGitHubUrl(
     console.log(' ✓');
   }
 
-  console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
+  // Also install commands automatically
+  const commandsCount = await installCommandsFromGitHub(
+    githubService, owner, repo, targetBase, defaultBranch
+  );
+
+  const parts = [`${selectedSkills.length} skills`];
+  if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+  console.log(`\n✓ Installed ${parts.join(' and ')} to ${targetBase}`);
 
   // Save source info
   const sourceKey = isAnthropic
@@ -232,6 +338,21 @@ async function installFromGitHubUrl(
   });
 
   return true;
+}
+
+/**
+ * Count commands found via git clone
+ */
+function countCommandsInRepo(repoPath: string): number {
+  const commandsDirs = ['commands', 'src/commands'];
+  for (const dir of commandsDirs) {
+    const commandsDir = join(repoPath, dir);
+    if (fileExists(commandsDir)) {
+      const mdFiles = getFilesInDir(commandsDir, '.md');
+      return mdFiles.length;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -274,7 +395,7 @@ async function installViaGitClone(
     const skillMdPath = join(dir.path, 'SKILL.md');
     if (fileExists(skillMdPath)) {
       const content = readFileContent(skillMdPath);
-      const description = parseSkillDescription(content);
+      const description = parseMdDescription(content);
       skills.push({
         name: dir.name,
         description,
@@ -283,15 +404,32 @@ async function installViaGitClone(
     }
   }
 
-  if (skills.length === 0) {
-    console.log('No skills found in repository');
+  // Count commands in the repo
+  const commandsCount = countCommandsInRepo(repoPath);
+
+  if (skills.length === 0 && commandsCount === 0) {
+    console.log('No skills or commands found in repository');
     return;
   }
 
-  console.log(`Found ${skills.length} skills.\n`);
+  if (skills.length > 0) {
+    console.log(`Found ${skills.length} skills.\n`);
+  }
+  if (commandsCount > 0) {
+    console.log(`Found ${commandsCount} commands (will be installed automatically).\n`);
+  }
+
+  if (skills.length === 0) {
+    // Commands only - already cloned
+    console.log(`✓ Installed ${commandsCount} commands to ${repoPath}`);
+    saveGitCloneSource(source, repoPath, options);
+    return;
+  }
 
   if (options.all) {
-    console.log(`✓ Installed ${skills.length} skills to ${repoPath}`);
+    const parts = [`${skills.length} skills`];
+    if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+    console.log(`✓ Installed ${parts.join(' and ')} to ${repoPath}`);
     saveGitCloneSource(source, repoPath, options);
     return;
   }
@@ -310,7 +448,9 @@ async function installViaGitClone(
     removeDir(skill.path);
   }
 
-  console.log(`\n✓ Installed ${selectedNames.length} skills to ${repoPath}`);
+  const parts = [`${selectedNames.length} skills`];
+  if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+  console.log(`\n✓ Installed ${parts.join(' and ')} to ${repoPath}`);
   saveGitCloneSource(source, repoPath, options);
 }
 
@@ -385,7 +525,7 @@ export async function executeInstall(
 }
 
 export const installCommand = new Command('install')
-  .description('Download skills from a repository')
+  .description('Download skills and commands from a repository')
   .argument('<source>', 'Repository URL or "anthropic" for official skills')
   .option('--all', 'Install all skills without prompting')
   .option('--custom', 'Install to custom/ instead of community/')
