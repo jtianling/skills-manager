@@ -40,7 +40,11 @@ export async function executeSync(): Promise<void> {
 
     // --- Sync skills ---
     for (const skill of deployment.skills) {
-      // Skip conflicting skills
+      if (skill.source === 'unknown' && !skill.conflict) {
+        console.log(`  ~ ${skill.name} (unmanaged)`);
+        continue;
+      }
+
       if (skill.conflict) {
         console.log(`  ⚠ ${skill.name}: conflict (skipped)`);
         continue;
@@ -125,6 +129,11 @@ export async function executeSync(): Promise<void> {
 
     // --- Sync commands ---
     for (const command of deployment.commands) {
+      if (command.source === 'unknown') {
+        console.log(`  ~ /${command.name} (unmanaged)`);
+        continue;
+      }
+
       const deployedPath = command.path;
 
       // Try to find source

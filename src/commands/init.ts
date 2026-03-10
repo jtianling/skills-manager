@@ -108,7 +108,10 @@ export async function executeInit(options: InitOptions): Promise<void> {
       const toAdd = selectedSkills.filter((s) => !previousNames.has(s.name));
       const toKeep = selectedSkills.filter((s) => previousNames.has(s.name));
       const toRemove = previouslyDeployed.filter(
-        (s) => !selectedSkillNames.includes(s.name)
+        (s) => !selectedSkillNames.includes(s.name) && s.source !== 'unknown'
+      );
+      const unmanagedSkills = previouslyDeployed.filter(
+        (s) => s.source === 'unknown'
       );
 
       for (const skill of toRemove) {
@@ -124,6 +127,10 @@ export async function executeInit(options: InitOptions): Promise<void> {
         deployer.deploySkill(skill, config, deployMode, mode);
         console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
       }
+
+      for (const skill of unmanagedSkills) {
+        console.log(`  ~ ${skill.name} (unmanaged)`);
+      }
     }
 
     // --- Deploy commands ---
@@ -134,7 +141,10 @@ export async function executeInit(options: InitOptions): Promise<void> {
       const toAdd = selectedCommands.filter((c) => !previousNames.has(c.name));
       const toKeep = selectedCommands.filter((c) => previousNames.has(c.name));
       const toRemove = previouslyDeployed.filter(
-        (c) => !selectedCommandNames.includes(c.name)
+        (c) => !selectedCommandNames.includes(c.name) && c.source !== 'unknown'
+      );
+      const unmanagedCommands = previouslyDeployed.filter(
+        (c) => c.source === 'unknown'
       );
 
       for (const cmd of toRemove) {
@@ -149,6 +159,10 @@ export async function executeInit(options: InitOptions): Promise<void> {
       for (const cmd of toAdd) {
         deployer.deployCommand(cmd, config, deployMode);
         console.log(`  ✓ /${cmd.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+      }
+
+      for (const cmd of unmanagedCommands) {
+        console.log(`  ~ /${cmd.name} (unmanaged)`);
       }
     }
 
