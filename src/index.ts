@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name('skillsmgr')
   .description('Unified skills manager for AI coding tools')
-  .version('0.1.0');
+  .version('0.5.0');
 
 program.addCommand(setupCommand);
 program.addCommand(installCommand);

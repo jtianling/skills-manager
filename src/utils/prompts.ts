@@ -217,19 +217,22 @@ export async function promptSelect<T extends string>(
 }
 
 export async function promptSyncAction(
-  filename: string
+  filename: string,
+  showDiff: boolean = true
 ): Promise<'overwrite' | 'skip' | 'diff'> {
+  const choices = [
+    { name: 'Overwrite', value: 'overwrite' },
+    { name: 'Skip', value: 'skip' },
+    ...(showDiff ? [{ name: 'Show diff', value: 'diff' }] : []),
+  ];
+
   try {
     const { action } = await inquirer.prompt([
       {
         type: 'list',
         name: 'action',
         message: `${filename}: source changed`,
-        choices: [
-          { name: 'Overwrite', value: 'overwrite' },
-          { name: 'Skip', value: 'skip' },
-          { name: 'Show diff', value: 'diff' },
-        ],
+        choices,
       },
     ]);
 

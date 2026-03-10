@@ -4,11 +4,17 @@ import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { RemoveOptions, ToolName } from '../types.js';
+import { fileExists } from '../utils/fs.js';
 
 export async function executeRemove(
   name: string,
   options: RemoveOptions
 ): Promise<void> {
+  if (!fileExists(SKILLS_MANAGER_DIR)) {
+    console.log('Skills manager not set up. Run: skillsmgr setup');
+    process.exit(1);
+  }
+
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
 

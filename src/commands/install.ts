@@ -86,8 +86,8 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
       githubService, owner, repo, targetBase, defaultBranch
     );
     if (commandsCount === 0) {
-      console.log('No skills or commands found in repository');
-      return;
+      console.error('Error: No skills or commands found in repository');
+      process.exit(1);
     }
     console.log(`\n✓ Installed ${commandsCount} commands to ${targetBase}`);
     sourcesService.addSource('official/anthropic', {
@@ -408,8 +408,8 @@ async function installViaGitClone(
   const commandsCount = countCommandsInRepo(repoPath);
 
   if (skills.length === 0 && commandsCount === 0) {
-    console.log('No skills or commands found in repository');
-    return;
+    console.error('Error: No skills or commands found in repository');
+    process.exit(1);
   }
 
   if (skills.length > 0) {
@@ -505,6 +505,12 @@ export async function executeInstall(
     if (source === 'anthropic') {
       await installFromAnthropic(options);
       return;
+    }
+
+    // Support owner/repo shorthand (e.g., "Fission-AI/OpenSpec") → GitHub URL
+    if (!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)) {
+      source = `https://github.com/${source.replace(/\/$/, '')}`;
+      console.log(`Resolved to ${source}`);
     }
 
     // Try GitHub API for GitHub URLs

@@ -12,7 +12,7 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
   'codex-cli': {
     name: 'codex-cli',
     displayName: 'Codex CLI',
-    skillsDir: '.agents/skills',
+    skillsDir: '.codex/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },

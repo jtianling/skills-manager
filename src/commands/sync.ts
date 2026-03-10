@@ -10,6 +10,11 @@ import { fileExists, isSymlink, readFileContent } from '../utils/fs.js';
 import { promptSyncAction, promptOrphanAction } from '../utils/prompts.js';
 
 export async function executeSync(): Promise<void> {
+  if (!fileExists(SKILLS_MANAGER_DIR)) {
+    console.log('Skills manager not set up. Run: skillsmgr setup');
+    process.exit(1);
+  }
+
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -148,7 +153,7 @@ export async function executeSync(): Promise<void> {
 
         if (sourceContent !== deployedContent) {
           console.log(`  ⚠ /${command.name}: source changed (copy)`);
-          const action = await promptSyncAction(command.name);
+          const action = await promptSyncAction(command.name, false);
 
           if (action === 'overwrite') {
             deployer.deployCommand(
