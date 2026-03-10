@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { setupCommand } from './commands/setup.js';
 import { installCommand } from './commands/install.js';
@@ -8,12 +9,15 @@ import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { syncCommand } from './commands/sync.js';
 
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json');
+
 const program = new Command();
 
 program
   .name('skillsmgr')
   .description('Unified skills manager for AI coding tools')
-  .version('0.5.0');
+  .version(version);
 
 program.addCommand(setupCommand);
 program.addCommand(installCommand);
