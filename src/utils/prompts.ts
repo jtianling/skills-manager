@@ -25,30 +25,15 @@ export async function promptTools(configuredTools?: string[]): Promise<string[]>
     return {
       name: isConfigured ? `${config.displayName} [configured]` : config.displayName,
       value: tool,
-      checked: isConfigured,
+      checked: isConfigured ?? false,
+      suffix: isConfigured ? '[configured]' : undefined,
     };
   });
 
-  try {
-    const { tools } = await inquirer.prompt([
-      {
-        type: 'checkbox',
-        name: 'tools',
-        message: 'Select target tools:',
-        choices,
-        validate: (answer: string[]) => {
-          if (answer.length === 0) {
-            return 'You must select at least one tool.';
-          }
-          return true;
-        },
-      },
-    ]);
-
-    return tools;
-  } catch (error) {
-    handlePromptError(error);
-  }
+  return interactiveCheckbox({
+    message: 'Select target tools:',
+    choices,
+  });
 }
 
 export async function promptMode(toolName: string, modes: string[]): Promise<string> {

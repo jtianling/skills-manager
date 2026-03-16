@@ -75,14 +75,29 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
       const remotePath = skillsBasePath === '.' ? skillName : `${skillsBasePath}/${skillName}`;
 
       try {
-        // Fetch remote SKILL.md
+        // Fetch remote SKILL.md via standard path
         const response = await fetch(
           `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${remotePath}/SKILL.md`
         );
 
         if (!response.ok) {
-          console.log(`  ⚠ ${skillName}: not found in remote`);
-          result.failed++;
+          // Standard path failed, check if this is a root-skill repo
+          const rootContent = await githubService.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
+          if (rootContent) {
+            const localContent = readFileContent(localSkillMd);
+            if (rootContent === localContent) {
+              console.log(`  ✓ ${skillName}: up to date`);
+              result.upToDate++;
+            } else {
+              removeDir(targetDir);
+              await githubService.downloadRepoRoot(owner, repo, targetDir);
+              console.log(`  ↑ ${skillName}: updated`);
+              result.updated++;
+            }
+          } else {
+            console.log(`  ⚠ ${skillName}: not found in remote`);
+            result.failed++;
+          }
           continue;
         }
 

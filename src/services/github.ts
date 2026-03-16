@@ -216,6 +216,29 @@ export class GitHubService {
   /**
    * Parse a GitHub URL to extract owner, repo, and optional path
    */
+  async fetchRootFile(
+    owner: string,
+    repo: string,
+    branch: string,
+    fileName: string
+  ): Promise<string | null> {
+    const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${fileName}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return null;
+    }
+    return response.text();
+  }
+
+  async downloadRepoRoot(
+    owner: string,
+    repo: string,
+    targetDir: string
+  ): Promise<void> {
+    ensureDir(targetDir);
+    await this.downloadDirectory(owner, repo, '', targetDir);
+  }
+
   parseGitHubUrl(url: string): {
     owner: string;
     repo: string;

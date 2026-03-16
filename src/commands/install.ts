@@ -5,6 +5,7 @@ import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService } from '../services/sources.js';
 import { InstallOptions } from '../types.js';
+import { mkdirSync, readdirSync, renameSync } from 'fs';
 import { fileExists, getDirectoriesInDir, getFilesInDir, readFileContent, removeDir, ensureDir } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
@@ -14,13 +15,23 @@ const sourcesService = new SourcesService();
 /**
  * Parse SKILL.md or command .md frontmatter to extract description
  */
-function parseMdDescription(content: string): string {
+function parseMdFrontmatter(content: string): Record<string, string> {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatterMatch) {
-    return '';
+    return {};
   }
-  const descMatch = frontmatterMatch[1].match(/^description:\s*(.+)$/m);
-  return descMatch ? descMatch[1].trim() : '';
+  const result: Record<string, string> = {};
+  for (const line of frontmatterMatch[1].split('\n')) {
+    const match = line.match(/^(\w+):\s*(.+)$/);
+    if (match) {
+      result[match[1]] = match[2].trim();
+    }
+  }
+  return result;
+}
+
+function parseMdDescription(content: string): string {
+  return parseMdFrontmatter(content).description ?? '';
 }
 
 /**
@@ -224,8 +235,43 @@ async function installFromGitHubUrl(
     targetBase = join(SKILLS_MANAGER_DIR, 'community', repo);
   }
 
-  // If no skills found, try commands only
+  // If no skills found, check root SKILL.md then try commands only
   if (skillsList.length === 0) {
+    const rootSkillContent = await githubService.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
+
+    if (rootSkillContent) {
+      const frontmatter = parseMdFrontmatter(rootSkillContent);
+      const skillName = frontmatter.name || repo;
+      const description = frontmatter.description ?? '';
+
+      console.log(`Found root skill: ${skillName}${description ? ` - ${description}` : ''}`);
+
+      const skillTargetDir = join(targetBase, skillName);
+      process.stdout.write(`  Downloading ${skillName}...`);
+      await githubService.downloadRepoRoot(owner, repo, skillTargetDir);
+      console.log(' ✓');
+
+      const commandsCount = await installCommandsFromGitHub(
+        githubService, owner, repo, targetBase, defaultBranch
+      );
+
+      const parts = ['1 skill'];
+      if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+      console.log(`\n✓ Installed ${parts.join(' and ')} to ${targetBase}`);
+
+      const sourceKey = isAnthropic
+        ? 'official/anthropic'
+        : options.custom
+          ? `custom/${repo}`
+          : `community/${repo}`;
+      sourcesService.addSource(sourceKey, {
+        url: `https://github.com/${owner}/${repo}`,
+        type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: repo,
+      });
+      return true;
+    }
+
     const commandsCount = await installCommandsFromGitHub(
       githubService, owner, repo, targetBase, defaultBranch
     );
@@ -272,7 +318,43 @@ async function installFromGitHubUrl(
   progress.complete();
 
   if (skills.length === 0) {
-    // No valid skills, but maybe commands?
+    // No valid subdirectory skills, check root SKILL.md
+    const rootSkillContent = await githubService.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
+
+    if (rootSkillContent) {
+      const frontmatter = parseMdFrontmatter(rootSkillContent);
+      const skillName = frontmatter.name || repo;
+      const description = frontmatter.description ?? '';
+
+      console.log(`Found root skill: ${skillName}${description ? ` - ${description}` : ''}`);
+
+      const skillTargetDir = join(targetBase, skillName);
+      process.stdout.write(`  Downloading ${skillName}...`);
+      await githubService.downloadRepoRoot(owner, repo, skillTargetDir);
+      console.log(' ✓');
+
+      const commandsCount = await installCommandsFromGitHub(
+        githubService, owner, repo, targetBase, defaultBranch
+      );
+
+      const parts = ['1 skill'];
+      if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+      console.log(`\n✓ Installed ${parts.join(' and ')} to ${targetBase}`);
+
+      const sourceKey = isAnthropic
+        ? 'official/anthropic'
+        : options.custom
+          ? `custom/${repo}`
+          : `community/${repo}`;
+      sourcesService.addSource(sourceKey, {
+        url: `https://github.com/${owner}/${repo}`,
+        type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: repo,
+      });
+      return true;
+    }
+
+    // No root skill either, try commands only
     const commandsCount = await installCommandsFromGitHub(
       githubService, owner, repo, targetBase, defaultBranch
     );
@@ -401,6 +483,37 @@ async function installViaGitClone(
         description,
         path: dir.path,
       });
+    }
+  }
+
+  // If no subdirectory skills found, check root SKILL.md
+  if (skills.length === 0) {
+    const rootSkillMd = join(repoPath, 'SKILL.md');
+    if (fileExists(rootSkillMd)) {
+      const content = readFileContent(rootSkillMd);
+      const frontmatter = parseMdFrontmatter(content);
+      const repoName = repoPath.split('/').pop() || source;
+      const skillName = frontmatter.name || repoName;
+
+      console.log(`Found root skill: ${skillName}`);
+
+      const skillSubdir = join(repoPath, skillName);
+      mkdirSync(skillSubdir, { recursive: true });
+
+      const entries = readdirSync(repoPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name === '.git' || entry.name === skillName) continue;
+        renameSync(join(repoPath, entry.name), join(skillSubdir, entry.name));
+      }
+
+      removeDir(join(repoPath, '.git'));
+
+      const commandsCount = countCommandsInRepo(skillSubdir);
+      const parts = ['1 skill'];
+      if (commandsCount > 0) parts.push(`${commandsCount} commands`);
+      console.log(`✓ Installed ${parts.join(' and ')} to ${repoPath}`);
+      saveGitCloneSource(source, repoPath, options);
+      return;
     }
   }
 
