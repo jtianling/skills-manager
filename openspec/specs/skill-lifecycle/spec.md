@@ -136,12 +136,26 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 **增量部署** (通过 `init` 命令):
 1. 扫描所有已选工具的已部署 skill, 将名称收集到 Set 中
 2. 用户选择 skill 时, 已部署的默认选中
-3. 部署时对每个工具分三类处理:
-   - `toRemove`: 之前部署过但不在新选择中的 → `deployer.removeSkill()`
+3. 部署时对每个工具分四类处理:
+   - `toRemove`: 之前部署过, 不在新选择中, 且 `source !== 'unknown'` 的 → `deployer.removeSkill()`
    - `toKeep`: 之前部署过且仍在新选择中的 → 不做任何操作
    - `toAdd`: 新选择中新增的 → `deployer.deploySkill()`
+   - `unmanaged`: `source === 'unknown'` 的 → 不做任何操作, 输出 `~ name (unmanaged)` 标记
 4. 注意: `toKeep` 不会重新部署, 即使 deployMode 从 link 变为 copy 也不会更新
-5. Commands 也实现了完全相同的增量逻辑 (toRemove/toKeep/toAdd), 参见 command-lifecycle spec
+5. 未托管 skill 不参与 toRemove 计算, 始终被保留
+6. Commands 也实现了完全相同的增量逻辑, 参见 command-lifecycle spec
+
+#### Scenario: init 遇到未托管 skill 时保留
+- **WHEN** 目标目录存在 `source === 'unknown'` 的 skill (用户手动创建, 不在 skills-manager 注册表中)
+- **THEN** 该 skill 不被删除, 输出 `~ skill-name (unmanaged)`, 其他 toRemove/toKeep/toAdd 逻辑正常运行
+
+#### Scenario: init 仅移除被管理的取消选中 skill
+- **WHEN** 目标目录有 `source !== 'unknown'` 的已部署 skill, 且用户在 init 中未选中它
+- **THEN** 该 skill 被移除, 输出 `✗ skill-name (removed)`
+
+#### Scenario: init 混合场景 — 管理和未托管 skill 共存
+- **WHEN** 目标目录同时有被管理的 skill (source 为 "official/anthropic") 和未托管的 skill (source 为 "unknown")
+- **THEN** 被管理的 skill 按正常 toRemove/toKeep/toAdd 逻辑处理, 未托管的 skill 保持不变并输出 unmanaged 标记
 
 ### 3. 移除
 
@@ -167,15 +181,16 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 **检查逻辑** (对每个已部署的 skill):
 
-1. **冲突检测**: `skill.conflict === true` 时, 输出 "⚠ name: conflict (skipped)" 并跳过
-2. **查找源路径**: 如果 `skill.source !== 'unknown'`, 通过 `skillsService.getSkillByName()` 查找
-3. **孤立检测**: 源路径不存在或 `fileExists(sourcePath)` 返回 false:
+1. **未托管检测**: `skill.source === 'unknown'` 且 `skill.conflict !== true` 时, 输出 `~ name (unmanaged)` 并跳过后续检查
+2. **冲突检测**: `skill.conflict === true` 时, 输出 "⚠ name: conflict (skipped)" 并跳过
+3. **查找源路径**: 如果 `skill.source !== 'unknown'`, 通过 `skillsService.getSkillByName()` 查找
+4. **孤立检测**: 源路径不存在或 `fileExists(sourcePath)` 返回 false:
    - 输出 "✗ name: orphaned (source not found)"
    - 提示用户选择: 移除 (调用 `deployer.removeSkill()`) 或保留
-4. **Symlink 检测**: `isSymlink(deployedPath)` 返回 true:
+5. **Symlink 检测**: `isSymlink(deployedPath)` 返回 true:
    - 输出 "✓ name: up to date (link)"
    - 不做进一步内容对比 (symlink 天然保持同步)
-5. **Copy 内容对比**: 仅对比 `SKILL.md` 文件:
+6. **Copy 内容对比**: 仅对比 `SKILL.md` 文件:
    - 源路径的 SKILL.md: `{sourcePath}/SKILL.md`
    - 部署路径的 SKILL.md: `{deployedPath}/SKILL.md`
    - 两个文件都存在时才对比, 否则跳过
@@ -191,6 +206,14 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - **Overwrite**: 重新部署 (调用 `deployer.deploySkill()`, mode 固定为 'copy')
 - **Skip**: 不做任何操作
 - **Show diff**: 显示本地和源的 SKILL.md 内容 (各取前 500 字符, 使用 `.slice(0, 500)`), 然后再次提示 Overwrite/Skip/Show diff. 注意: diff 选项后再次选择 diff 会重复显示相同内容
+
+#### Scenario: sync 遇到未托管 skill
+- **WHEN** 已部署 skill 的 source 为 "unknown" 且无冲突
+- **THEN** 输出 `~ skill-name (unmanaged)`, 不提示任何操作, 不检查源文件
+
+#### Scenario: sync 区分未托管和孤立
+- **WHEN** skill 的 source 不为 "unknown" 但源文件已不存在
+- **THEN** 仍然显示 "orphaned" 并提示用户操作 (保持现有行为)
 
 ### 5. 更新
 
@@ -213,6 +236,38 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - `sync` 命令: 跳过冲突 skill, 不检查其内容
 - `list --deployed`: 显示 "⚠ name (copy) ← conflict"
 - `init` 命令: 不受影响, 因为 skill 选择是基于 name 而非 source
+
+### Requirement: Root-level SKILL.md recognition
+
+当仓库根目录存在 SKILL.md 且仓库内不存在子目录形式的 skill 时, 系统 SHALL 将整个仓库视为单个 skill.  安装后的存储结构 SHALL 为 `~/.skills-manager/{source}/{repo}/{skill-name}/SKILL.md`, 其中 `skill-name` 优先取 SKILL.md frontmatter 中的 `name` 字段, 无 name 时 fallback 为仓库名.
+
+#### Scenario: Root SKILL.md repo installed via GitHub API
+- **WHEN** 用户执行 `install https://github.com/owner/repo` 且仓库内无子目录 skill, 但根目录存在 SKILL.md (frontmatter name 为 "deep-research")
+- **THEN** 系统将整个仓库内容下载到 `~/.skills-manager/community/repo/deep-research/`, 该目录包含 SKILL.md 及仓库中所有其他文件和目录
+
+#### Scenario: Root SKILL.md repo installed via git clone
+- **WHEN** GitHub API 不可用, 回退到 git clone 安装, 仓库根目录存在 SKILL.md (frontmatter name 为 "deep-research")
+- **THEN** 克隆完成后, 系统将非 `.git` 文件移入 `{repoPath}/deep-research/` 子目录, 最终结构与 GitHub API 安装一致
+
+#### Scenario: Root SKILL.md without name in frontmatter
+- **WHEN** 根目录 SKILL.md 的 frontmatter 中没有 name 字段
+- **THEN** skill name 使用仓库名作为 fallback
+
+#### Scenario: Root SKILL.md with --custom option
+- **WHEN** 用户使用 `--custom` 选项安装根目录 skill 仓库
+- **THEN** 系统将 skill 存储到 `~/.skills-manager/custom/repo/{skill-name}/`
+
+#### Scenario: Repo has both subdirectory skills and root SKILL.md
+- **WHEN** 仓库同时包含子目录形式的 skill (如 `skills/code-review/SKILL.md`) 和根目录 SKILL.md
+- **THEN** 系统 SHALL 优先识别子目录 skill, 忽略根目录 SKILL.md (现有行为不变)
+
+### Requirement: Single-skill repo skips selection prompt
+
+根目录 skill 仓库只有一个 skill, 系统 SHALL 直接安装, 不提示用户选择.
+
+#### Scenario: Root skill repo does not prompt selection
+- **WHEN** 用户安装根目录 skill 仓库且未使用 `--all` 选项
+- **THEN** 系统直接安装该 skill, 不显示选择提示 (因为只有一个 skill)
 
 ## 前置条件
 

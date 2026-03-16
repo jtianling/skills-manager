@@ -36,23 +36,23 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 ### 工具选择 (promptTools)
 
-类型: inquirer checkbox
+类型: 自定义 interactiveCheckbox (与 skill/command 选择共用同一组件)
 触发: `init` 命令
 
 显示:
 ```
-? Select target tools: (Space to select, Enter to confirm)
-❯ ◯ Antigravity
+? Select target tools:
+❯ ◉ Claude Code [configured]
   ◯ Codex CLI
-  ◉ Claude Code [configured]
-  ◯ Cursor
+  ◯ Gemini CLI
   ...
 ```
 
 行为:
-- 按 `SUPPORTED_TOOLS` 顺序显示 (antigravity 在前, windsurf 在后)
+- 使用 `interactiveCheckbox` 替代 inquirer checkbox
+- 按 `SUPPORTED_TOOLS` 顺序显示 (claude-code 在前, windsurf 在后)
 - 已配置的工具标记 "[configured]" 并默认选中 (`checked: true`)
-- 验证: 至少选中一个工具, 否则提示 "You must select at least one tool."
+- 导航不循环: 在第一个选项时按上键不动, 在最后一个选项时按下键不动
 - 选中结果: 返回 `string[]` (工具标识符)
 
 ### 模式选择 (promptMode)
