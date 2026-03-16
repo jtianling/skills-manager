@@ -1,29 +1,37 @@
 # Tool Integration
 
-skillsmgr 支持 11 种 AI 编程工具, 每种工具有各自的目录约定和能力差异.
+skillsmgr 支持 12 种 AI 编程工具, 每种工具有各自的目录约定和能力差异.
 
 ## 支持的工具
 
-常量 `SUPPORTED_TOOLS` 定义了工具标识符列表, 顺序为:
+常量 `SUPPORTED_TOOLS` 定义了工具标识符列表, 分为两组:
+
+**优先组** (手动排序, 固定顺序):
 
 ```
-antigravity, codex-cli, roo-code, claude-code, gemini-cli,
-opencode, cline, cursor, kilo-code, trae, windsurf
+claude-code, codex, gemini-cli, opencode, openclaw, antigravity
+```
+
+**其余组** (按 displayName 字母顺序):
+
+```
+cline, cursor, kilo-code, roo-code, trae, windsurf
 ```
 
 此顺序影响 UI 中工具选择的显示顺序和 `scanAllTools()` 的遍历顺序.
 
 | 工具 | 标识符 | Skills 目录 | Commands 目录 | 模式支持 |
 |------|--------|------------|--------------|---------|
-| Antigravity | antigravity | .agent/skills | .agent/workflows | No |
-| Codex CLI | codex-cli | .codex/skills | - | No |
-| Roo Code | roo-code | .roo/skills | .roo/commands | Yes |
 | Claude Code | claude-code | .claude/skills | .claude/commands | No |
+| Codex | codex | .codex/skills | - | No |
 | Gemini CLI | gemini-cli | .gemini/skills | .gemini/commands | No |
 | OpenCode | opencode | .opencode/skills | .opencode/commands | No |
+| OpenClaw | openclaw | .openclaw/skills | - | No |
+| Antigravity | antigravity | .agent/skills | .agent/workflows | No |
 | Cline | cline | .cline/skills | - | No |
 | Cursor | cursor | .cursor/skills | .cursor/commands | No |
 | Kilo Code | kilo-code | .kilocode/skills | .kilocode/commands | Yes |
+| Roo Code | roo-code | .roo/skills | .roo/commands | Yes |
 | Trae | trae | .trae/skills | - | No |
 | Windsurf | windsurf | .windsurf/skills | .windsurf/workflows | No |
 
@@ -44,13 +52,13 @@ opencode, cline, cursor, kilo-code, trae, windsurf
 
 ### ToolName
 
-类型别名 `typeof SUPPORTED_TOOLS[number]`, 是 11 个工具标识符的联合类型.
+类型别名 `typeof SUPPORTED_TOOLS[number]`, 是 12 个工具标识符的联合类型.
 
 ## 能力维度详解
 
 ### 1. Skills 目录
 
-所有 11 个工具均支持 skills 部署.  部署时在项目中创建对应的目录结构:
+所有 12 个工具均支持 skills 部署.  部署时在项目中创建对应的目录结构:
 
 ```
 project/
@@ -61,6 +69,7 @@ project/
 ├── .cursor/skills/         # Cursor
 ├── .gemini/skills/         # Gemini CLI
 ├── .kilocode/skills/       # Kilo Code
+├── .openclaw/skills/       # OpenClaw
 ├── .opencode/skills/       # OpenCode
 ├── .roo/skills/            # Roo Code
 ├── .trae/skills/           # Trae
@@ -85,6 +94,7 @@ project/
 - Cline
 - Codex CLI
 - Trae
+- OpenClaw
 
 **注意**: Antigravity 和 Windsurf 使用 `workflows` 而非 `commands` 作为目录名.  代码层面无差异 — `commandsDir` 只是一个路径字符串, 部署逻辑不关心目录名语义.
 
@@ -143,7 +153,7 @@ project/
 ### 扫描流程
 
 `scanAllTools()`:
-1. 按 `SUPPORTED_TOOLS` 顺序遍历所有 11 个工具
+1. 按 `SUPPORTED_TOOLS` 顺序遍历所有 12 个工具
 2. 对每个工具调用 `scanToolDeployment()`
 3. 过滤掉 skills 和 commands 都为空的工具
 4. 返回 `ScannedToolDeployment[]`
@@ -187,7 +197,7 @@ project/
 ### 已配置工具
 
 `getConfiguredTools()`:
-1. 遍历所有 11 个工具
+1. 遍历所有 12 个工具
 2. 对每个工具调用 `scanToolDeployment()`
 3. 如果任一 deployment 中有 skills 或 commands → 视为已配置
 4. 返回 `ToolName[]`
@@ -222,7 +232,7 @@ project/
 - test_toolConfigs_onlyRooAndKilo_supportModeSpecific: 仅 roo-code 和 kilo-code 的 supportsModeSpecific 为 true
 - test_toolConfigs_modeSpecificTools_haveModePattern: 支持 mode 的工具都有 modePattern "skills-{mode}"
 - test_toolConfigs_modeSpecificTools_haveAvailableModes: 支持 mode 的工具都有 availableModes ["code", "architect"]
-- test_toolConfigs_commandsDir_correctTools: 正好 8 个工具有 commandsDir, 3 个没有 (cline, codex-cli, trae)
+- test_toolConfigs_commandsDir_correctTools: 正好 8 个工具有 commandsDir, 4 个没有 (cline, codex, trae, openclaw)
 - test_toolConfigs_workflowsDirTools: antigravity 和 windsurf 的 commandsDir 使用 "workflows" 而非 "commands"
 
 ### getTargetDir

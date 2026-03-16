@@ -7,15 +7,16 @@ export const SKILL_SOURCES = ['official', 'community', 'custom'] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
 
 export const SUPPORTED_TOOLS = [
-  'antigravity',
-  'codex-cli',
-  'roo-code',
   'claude-code',
+  'codex',
   'gemini-cli',
   'opencode',
+  'openclaw',
+  'antigravity',
   'cline',
   'cursor',
   'kilo-code',
+  'roo-code',
   'trae',
   'windsurf',
 ] as const;
