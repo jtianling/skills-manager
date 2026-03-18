@@ -294,7 +294,7 @@ async function installFromGitHubUrl(
     return true;
   }
 
-  // Filter to only directories that have SKILL.md
+  // Filter to only directories that have SKILL.md, expanding group dirs one level
   const skills: Array<{ name: string; description: string; path: string }> = [];
   const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
   progress.start();
@@ -308,9 +308,26 @@ async function installFromGitHubUrl(
         const content = await response.text();
         const description = parseMdDescription(content);
         skills.push({ name: skill.name, description, path: skill.path });
+      } else {
+        // No SKILL.md — treat as group directory, expand one level
+        const subDirs = await githubService.listSkills(owner, repo, skill.path);
+        for (const sub of subDirs) {
+          try {
+            const subResponse = await fetch(
+              `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${sub.path}/SKILL.md`
+            );
+            if (subResponse.ok) {
+              const content = await subResponse.text();
+              const description = parseMdDescription(content);
+              skills.push({ name: sub.name, description, path: sub.path });
+            }
+          } catch {
+            // Skip nested dirs without SKILL.md
+          }
+        }
       }
     } catch {
-      // Skip skills without SKILL.md
+      // Skip on network errors
     }
     progress.tick();
   }
@@ -461,28 +478,56 @@ async function installViaGitClone(
   // Clone the repository
   const repoPath = gitService.clone(source, options.custom || false);
 
-  // Find all skills in the repo
+  // Find all skills in the repo — check skills/ subdir for all repos
   let skillsRoot = repoPath;
-  if (source === 'anthropic') {
-    const skillsSubdir = join(repoPath, 'skills');
-    if (fileExists(skillsSubdir)) {
-      skillsRoot = skillsSubdir;
+  const skillsSubdir = join(repoPath, 'skills');
+  if (fileExists(skillsSubdir)) {
+    skillsRoot = skillsSubdir;
+  }
+
+  const skills: Array<{ name: string; description: string; path: string }> = [];
+
+  function scanForSkills(dir: string, maxDepth: number): void {
+    for (const subdir of getDirectoriesInDir(dir)) {
+      const skillMdPath = join(subdir.path, 'SKILL.md');
+      if (fileExists(skillMdPath)) {
+        const content = readFileContent(skillMdPath);
+        const description = parseMdDescription(content);
+        skills.push({ name: subdir.name, description, path: subdir.path });
+      } else if (maxDepth > 1) {
+        scanForSkills(subdir.path, maxDepth - 1);
+      }
     }
   }
 
-  const skillDirs = getDirectoriesInDir(skillsRoot);
-  const skills: Array<{ name: string; description: string; path: string }> = [];
+  scanForSkills(skillsRoot, 2);
 
-  for (const dir of skillDirs) {
-    const skillMdPath = join(dir.path, 'SKILL.md');
-    if (fileExists(skillMdPath)) {
-      const content = readFileContent(skillMdPath);
-      const description = parseMdDescription(content);
-      skills.push({
-        name: dir.name,
-        description,
-        path: dir.path,
-      });
+  // Flatten nested skills to {repoPath}/{skill-name}/
+  const groupDirsToClean = new Set<string>();
+  for (const skill of skills) {
+    const parentDir = join(skill.path, '..');
+    const isNested = parentDir !== repoPath && parentDir !== skillsRoot;
+    if (isNested) {
+      const flatPath = join(repoPath, skill.name);
+      if (!fileExists(flatPath)) {
+        renameSync(skill.path, flatPath);
+        skill.path = flatPath;
+        groupDirsToClean.add(parentDir);
+      }
+    }
+  }
+  // Clean up empty group directories
+  for (const groupDir of groupDirsToClean) {
+    const remaining = readdirSync(groupDir);
+    if (remaining.length === 0) {
+      removeDir(groupDir);
+    }
+  }
+  // Clean up skillsRoot if it's now empty and different from repoPath
+  if (skillsRoot !== repoPath && fileExists(skillsRoot)) {
+    const remaining = readdirSync(skillsRoot);
+    if (remaining.length === 0) {
+      removeDir(skillsRoot);
     }
   }
 
