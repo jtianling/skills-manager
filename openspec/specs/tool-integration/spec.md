@@ -20,20 +20,30 @@ cline, cursor, kilo-code, roo-code, trae, windsurf
 
 此顺序影响 UI 中工具选择的显示顺序和 `scanAllTools()` 的遍历顺序.
 
-| 工具 | 标识符 | Skills 目录 | Commands 目录 | 模式支持 |
-|------|--------|------------|--------------|---------|
-| Claude Code | claude-code | .claude/skills | .claude/commands | No |
-| Codex | codex | .codex/skills | - | No |
-| Gemini CLI | gemini-cli | .gemini/skills | .gemini/commands | No |
-| OpenCode | opencode | .opencode/skills | .opencode/commands | No |
-| OpenClaw | openclaw | .openclaw/skills | - | No |
-| Antigravity | antigravity | .agent/skills | .agent/workflows | No |
-| Cline | cline | .cline/skills | - | No |
-| Cursor | cursor | .cursor/skills | .cursor/commands | No |
-| Kilo Code | kilo-code | .kilocode/skills | .kilocode/commands | Yes |
-| Roo Code | roo-code | .roo/skills | .roo/commands | Yes |
-| Trae | trae | .trae/skills | - | No |
-| Windsurf | windsurf | .windsurf/skills | .windsurf/workflows | No |
+| 工具 | 标识符 | Skills 目录 | 模式支持 |
+|------|--------|------------|---------|
+| Claude Code | claude-code | .claude/skills | No |
+| Codex | codex | .agents/skills | No |
+| Gemini CLI | gemini-cli | .agents/skills | No |
+| OpenCode | opencode | .agents/skills | No |
+| OpenClaw | openclaw | .agents/skills | No |
+| Antigravity | antigravity | .agents/skills | No |
+| Cline | cline | .agents/skills | No |
+| Cursor | cursor | .cursor/skills | No |
+| Kilo Code | kilo-code | .kilocode/skills | Yes |
+| Roo Code | roo-code | .roo/skills | Yes |
+| Trae | trae | .trae/skills | No |
+| Windsurf | windsurf | .windsurf/skills | No |
+
+#### Scenario: 工具总表与 skillsDir 映射
+
+- **WHEN** 遍历 SUPPORTED_TOOLS 中的所有工具
+- **THEN** 每个工具的 skillsDir 与上表匹配
+
+#### Scenario: All tool configs only have skill properties
+
+- **WHEN** 遍历 TOOL_CONFIGS 中所有工具
+- **THEN** 每个配置只包含 name, displayName, skillsDir, supportsLink, supportsModeSpecific 以及可选的 modePattern, availableModes
 
 ## 数据模型
 
@@ -44,11 +54,15 @@ cline, cursor, kilo-code, roo-code, trae, windsurf
 | name | ToolName | - | 工具标识符, 与 SUPPORTED_TOOLS 中的值对应 |
 | displayName | string | - | 用户可见的显示名称 (如 "Claude Code", "Roo Code") |
 | skillsDir | string | - | skills 部署目录, 相对于项目根目录 |
-| commandsDir | string? | undefined | commands 部署目录, 不支持时为 undefined |
 | supportsLink | boolean | true | 是否支持 symlink, 当前所有工具均为 true |
 | supportsModeSpecific | boolean | false | 是否支持模式特定部署 |
 | modePattern | string? | undefined | 模式目录模式, 仅 mode-specific 工具有值 |
 | availableModes | string[]? | undefined | 可用模式列表, 仅 mode-specific 工具有值 |
+
+#### Scenario: ToolConfig no longer has commandsDir
+
+- **WHEN** 查询任意工具的 ToolConfig
+- **THEN** 不存在 `commandsDir` 属性
 
 ### ToolName
 
@@ -62,43 +76,38 @@ cline, cursor, kilo-code, roo-code, trae, windsurf
 
 ```
 project/
-├── .agent/skills/          # Antigravity
-├── .claude/skills/         # Claude Code
-├── .cline/skills/          # Cline
-├── .codex/skills/          # Codex CLI
-├── .cursor/skills/         # Cursor
-├── .gemini/skills/         # Gemini CLI
-├── .kilocode/skills/       # Kilo Code
-├── .openclaw/skills/       # OpenClaw
-├── .opencode/skills/       # OpenCode
-├── .roo/skills/            # Roo Code
-├── .trae/skills/           # Trae
-└── .windsurf/skills/       # Windsurf
+├── .agents/skills/        # Codex, Gemini CLI, OpenCode, OpenClaw, Antigravity, Cline
+├── .claude/skills/        # Claude Code
+├── .cursor/skills/        # Cursor
+├── .kilocode/skills/      # Kilo Code
+├── .roo/skills/           # Roo Code
+├── .trae/skills/          # Trae
+└── .windsurf/skills/      # Windsurf
 ```
 
-每个工具的 skills 目录是独立的.  同一个 skill 可以同时部署到多个工具.
+6 个工具 (Codex, Gemini CLI, OpenCode, OpenClaw, Antigravity, Cline) 共享 `.agents/skills` 目录.  其余 6 个工具保持各自专属目录.  同一个 skill 可以同时部署到多个工具.  当多个工具共享同一物理目录时, skill 只需部署一次, 文件系统幂等性保证不会重复.
 
-### 2. Commands 目录
+#### Scenario: Universal 工具的 skillsDir 为 .agents/skills
 
-8 个工具支持 commands (commandsDir 不为 undefined):
-- Claude Code: `.claude/commands`
-- Cursor: `.cursor/commands`
-- Roo Code: `.roo/commands`
-- Kilo Code: `.kilocode/commands`
-- Gemini CLI: `.gemini/commands`
-- OpenCode: `.opencode/commands`
-- Antigravity: `.agent/workflows` (目录名为 workflows)
-- Windsurf: `.windsurf/workflows` (目录名为 workflows)
+- **WHEN** 查询 codex, gemini-cli, opencode, openclaw, antigravity, cline 的 ToolConfig
+- **THEN** 它们的 skillsDir 均为 `.agents/skills`
 
-不支持 commands 的工具 (commandsDir 为 undefined):
-- Cline
-- Codex CLI
-- Trae
-- OpenClaw
+#### Scenario: 非 universal 工具保持专属目录
 
-**注意**: Antigravity 和 Windsurf 使用 `workflows` 而非 `commands` 作为目录名.  代码层面无差异 — `commandsDir` 只是一个路径字符串, 部署逻辑不关心目录名语义.
+- **WHEN** 查询 claude-code, cursor, kilo-code, roo-code, trae, windsurf 的 ToolConfig
+- **THEN** 它们的 skillsDir 保持各自原有值不变
 
-### 3. 模式特定部署 (Mode-Specific)
+#### Scenario: 多个 universal 工具部署同一 skill
+
+- **WHEN** 用户选择为 codex 和 cline 同时部署 skill "test-skill"
+- **THEN** 两者共享 `.agents/skills` 目录, skill 只在 `.agents/skills/test-skill/` 存在一份
+
+#### Scenario: 扫描共享目录
+
+- **WHEN** `.agents/skills/` 目录下有已部署的 skills
+- **THEN** 所有 6 个 universal 工具的 scanToolDeployment 都能扫描到这些 skills
+
+### 2. 模式特定部署 (Mode-Specific)
 
 仅 Roo Code 和 Kilo Code 支持.  两者配置完全对称:
 
@@ -136,9 +145,7 @@ project/
 | Kilo Code | code | .kilocode/skills-code |
 | Kilo Code | architect | .kilocode/skills-architect |
 
-**注意**: commands 目录不受 mode 影响.  `getCommandsTargetDir()` 直接返回 `toolConfig.commandsDir`, 没有 mode 参数.
-
-### 4. Symlink 支持
+### 3. Symlink 支持
 
 当前所有工具的 `supportsLink` 均为 true.  这意味着:
 - 默认部署方式为 symlink
@@ -148,21 +155,20 @@ project/
 
 ## 部署扫描
 
-`DeploymentScanner` 扫描项目目录以检测已部署的 skill 和 command.
+`DeploymentScanner` 扫描项目目录以检测已部署的 skill.
 
 ### 扫描流程
 
 `scanAllTools()`:
 1. 按 `SUPPORTED_TOOLS` 顺序遍历所有 12 个工具
 2. 对每个工具调用 `scanToolDeployment()`
-3. 过滤掉 skills 和 commands 都为空的工具
+3. 过滤掉 skills 为空的工具
 4. 返回 `ScannedToolDeployment[]`
 
 `scanToolDeployment(toolName, config)`:
 1. 扫描基础 skills 目录 (`config.skillsDir`)
-2. 如果工具有 commandsDir, 扫描 commands 目录
-3. 如果工具支持 mode-specific, 额外扫描每个 mode 的目录
-4. 返回 `ScannedToolDeployment[]` (可能多个, 对应不同 mode)
+2. 如果工具支持 mode-specific, 额外扫描每个 mode 的目录
+3. 返回 `ScannedToolDeployment[]` (可能多个, 对应不同 mode)
 
 ### Skill 扫描细节
 
@@ -173,15 +179,6 @@ project/
    - 检查 `{entry}/SKILL.md` 是否存在, 不存在则返回 null
    - 是 symlink: 读取 symlink target, 从路径中提取 source
    - 非 symlink (copy): 通过 `findSourceByName()` 在 SkillsService 中查找
-
-### Command 扫描细节
-
-`scanCommandsDirectory()`:
-1. 检查目录是否存在
-2. 只扫描 `.md` 文件 (`entry.isFile() && entry.name.endsWith('.md')`)
-3. 文件名去掉 `.md` 作为 command name
-4. 是 symlink: 从 target 路径提取 source
-5. 非 symlink (copy): 通过 `commandsService.findCommandsByName()` 查找, 唯一匹配则使用其 source, 否则 source 为 "unknown"
 
 ### Source 推断逻辑
 
@@ -199,7 +196,7 @@ project/
 `getConfiguredTools()`:
 1. 遍历所有 12 个工具
 2. 对每个工具调用 `scanToolDeployment()`
-3. 如果任一 deployment 中有 skills 或 commands → 视为已配置
+3. 如果任一 deployment 中有 skills → 视为已配置
 4. 返回 `ToolName[]`
 
 **使用场景**:
@@ -232,8 +229,6 @@ project/
 - test_toolConfigs_onlyRooAndKilo_supportModeSpecific: 仅 roo-code 和 kilo-code 的 supportsModeSpecific 为 true
 - test_toolConfigs_modeSpecificTools_haveModePattern: 支持 mode 的工具都有 modePattern "skills-{mode}"
 - test_toolConfigs_modeSpecificTools_haveAvailableModes: 支持 mode 的工具都有 availableModes ["code", "architect"]
-- test_toolConfigs_commandsDir_correctTools: 正好 8 个工具有 commandsDir, 4 个没有 (cline, codex, trae, openclaw)
-- test_toolConfigs_workflowsDirTools: antigravity 和 windsurf 的 commandsDir 使用 "workflows" 而非 "commands"
 
 ### getTargetDir
 
@@ -243,11 +238,6 @@ project/
 - test_getTargetDir_modeArchitect_kiloCode_returnsCorrectPath: kilo-code, mode="architect" → ".kilocode/skills-architect"
 - test_getTargetDir_modeOnNonModeSpecificTool_returnsSkillsDir: 对不支持 mode 的工具传入 mode 参数时, 仍返回 skillsDir
 - test_getTargetDir_modeUndefined_returnsSkillsDir: mode 为 undefined 时返回 skillsDir
-
-### getCommandsTargetDir
-
-- test_getCommandsTargetDir_hasCommandsDir_returnsIt: 有 commandsDir 的工具返回正确路径
-- test_getCommandsTargetDir_noCommandsDir_returnsUndefined: 没有 commandsDir 的工具返回 undefined
 
 ### getToolConfig
 

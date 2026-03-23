@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, existsSync, symlinkSync, copyFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DeploymentScanner } from '../services/scanner.js';
@@ -16,14 +16,7 @@ describe('preserve-unmanaged-skills', () => {
       '---\nname: managed-skill\ndescription: A managed skill\n---\n# Managed'
     );
 
-    mkdirSync(join(skillsManagerDir, 'official', 'anthropic', 'commands'), { recursive: true });
-    writeFileSync(
-      join(skillsManagerDir, 'official', 'anthropic', 'commands', 'managed-cmd.md'),
-      '---\nname: managed-cmd\ndescription: A managed command\n---\n# Managed Cmd'
-    );
-
     mkdirSync(join(projectDir, '.claude', 'skills'), { recursive: true });
-    mkdirSync(join(projectDir, '.claude', 'commands'), { recursive: true });
   });
 
   afterEach(() => {
@@ -56,22 +49,6 @@ describe('preserve-unmanaged-skills', () => {
       expect(managed).toBeDefined();
       expect(managed!.source).toBe('official/anthropic');
       expect(managed!.source).not.toBe('unknown');
-    });
-  });
-
-  describe('scanner identifies unmanaged commands', () => {
-    it('returns source "unknown" for a copied command not in registry', () => {
-      writeFileSync(
-        join(projectDir, '.claude', 'commands', 'user-cmd.md'),
-        '---\nname: user-cmd\n---\n# User command'
-      );
-
-      const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const commands = scanner.getDeployedCommands('claude-code');
-
-      const unmanaged = commands.find((c) => c.name === 'user-cmd');
-      expect(unmanaged).toBeDefined();
-      expect(unmanaged!.source).toBe('unknown');
     });
   });
 
@@ -115,32 +92,6 @@ describe('preserve-unmanaged-skills', () => {
       );
 
       expect(toRemove.length).toBe(0);
-    });
-
-    it('excludes unmanaged commands from toRemove', () => {
-      writeFileSync(
-        join(projectDir, '.claude', 'commands', 'user-cmd.md'),
-        '---\nname: user-cmd\n---\n# User command'
-      );
-
-      const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'commands', 'managed-cmd.md');
-      const targetPath = join(projectDir, '.claude', 'commands', 'managed-cmd.md');
-      copyFileSync(sourcePath, targetPath);
-
-      const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const previouslyDeployed = scanner.getDeployedCommands('claude-code');
-      const selectedCommandNames: string[] = [];
-
-      const toRemove = previouslyDeployed.filter(
-        (c) => !selectedCommandNames.includes(c.name) && c.source !== 'unknown'
-      );
-      const unmanaged = previouslyDeployed.filter(
-        (c) => c.source === 'unknown'
-      );
-
-      expect(toRemove.some((c) => c.name === 'user-cmd')).toBe(false);
-      expect(toRemove.some((c) => c.name === 'managed-cmd')).toBe(true);
-      expect(unmanaged.some((c) => c.name === 'user-cmd')).toBe(true);
     });
   });
 

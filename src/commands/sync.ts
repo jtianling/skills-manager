@@ -4,7 +4,6 @@ import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { SkillsService } from '../services/skills.js';
-import { CommandsService } from '../services/commands.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { fileExists, isSymlink, readFileContent } from '../utils/fs.js';
 import { promptSyncAction, promptOrphanAction } from '../utils/prompts.js';
@@ -18,16 +17,15 @@ export async function executeSync(): Promise<void> {
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
-  const commandsService = new CommandsService(SKILLS_MANAGER_DIR);
 
   const deployments = scanner.scanAllTools();
 
   if (deployments.length === 0) {
-    console.log('No skills or commands deployed in current project.');
+    console.log('No skills deployed in current project.');
     process.exit(1);
   }
 
-  console.log('Checking deployed skills and commands...\n');
+  console.log('Checking deployed skills...\n');
 
   let updatedCount = 0;
   let removedCount = 0;
@@ -38,7 +36,6 @@ export async function executeSync(): Promise<void> {
 
     console.log(`${config.displayName} (${deployment.targetDir}/):`);
 
-    // --- Sync skills ---
     for (const skill of deployment.skills) {
       if (skill.source === 'unknown' && !skill.conflict) {
         console.log(`  ~ ${skill.name} (unmanaged)`);
@@ -127,58 +124,6 @@ export async function executeSync(): Promise<void> {
       }
     }
 
-    // --- Sync commands ---
-    for (const command of deployment.commands) {
-      if (command.source === 'unknown') {
-        console.log(`  ~ /${command.name} (unmanaged)`);
-        continue;
-      }
-
-      const deployedPath = command.path;
-
-      // Try to find source
-      let sourceCommand = commandsService.getCommandByName(command.name);
-
-      if (!sourceCommand || !fileExists(sourceCommand.path)) {
-        console.log(`  ✗ /${command.name}: orphaned (source not found)`);
-        const action = await promptOrphanAction(command.name);
-        if (action === 'remove') {
-          deployer.removeCommand(command.name, config);
-          console.log(`  ✓ Removed /${command.name}`);
-          removedCount++;
-        }
-        continue;
-      }
-
-      if (isSymlink(deployedPath)) {
-        console.log(`  ✓ /${command.name}: up to date (link)`);
-        continue;
-      }
-
-      // For copied commands, check if content changed
-      if (command.deployMode === 'copy') {
-        const sourceContent = readFileContent(sourceCommand.path);
-        const deployedContent = readFileContent(deployedPath);
-
-        if (sourceContent !== deployedContent) {
-          console.log(`  ⚠ /${command.name}: source changed (copy)`);
-          const action = await promptSyncAction(command.name, false);
-
-          if (action === 'overwrite') {
-            deployer.deployCommand(
-              { name: command.name, description: '', path: sourceCommand.path, source: command.source },
-              config,
-              'copy'
-            );
-            console.log(`  ✓ Updated /${command.name}`);
-            updatedCount++;
-          }
-        } else {
-          console.log(`  ✓ /${command.name}: up to date (copy)`);
-        }
-      }
-    }
-
     console.log();
   }
 
@@ -188,7 +133,7 @@ export async function executeSync(): Promise<void> {
 }
 
 export const syncCommand = new Command('sync')
-  .description('Sync and verify deployed skills and commands')
+  .description('Sync and verify deployed skills')
   .action(async () => {
     await executeSync();
   });

@@ -11,13 +11,17 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | 命令 | 参数 | 选项 | 说明 |
 |------|------|------|------|
 | setup | - | - | 初始化 ~/.skills-manager/ |
-| install | \<source\> (必填) | --all, --custom | 下载 skill 和 command |
-| update | [source] (可选) | - | 更新已安装的 skill 和 command |
-| list | - | --deployed | 列出可用或已部署的 skill 和 command |
-| init | - | --copy | 交互式部署到当前项目 |
-| add | \<name\> (必填) | --tool \<tool\>, --copy | 快速添加单个 skill 或 command |
-| remove | \<name\> (必填) | --tool \<tool\> | 移除 skill 或 command |
-| sync | - | - | 同步验证已部署的 skill 和 command |
+| install | \<source\> (必填) | --all, --custom | Download skills from a repository |
+| update | [source] (可选) | - | Update installed skills to latest version |
+| list | - | --deployed | List available or deployed skills |
+| init | - | --copy | Deploy skills to current project |
+| add | \<name\> (必填) | --tool \<tool\>, --copy | Add a skill to the project |
+| remove | \<name\> (必填) | --tool \<tool\> | Remove a skill from the project |
+| sync | - | - | Sync and verify deployed skills |
+
+#### Scenario: CLI help shows skills-only descriptions
+- **WHEN** 用户执行 `skillsmgr --help`
+- **THEN** 所有命令描述只提及 skills, 不提及 commands
 
 ## 交互式提示
 
@@ -36,7 +40,7 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 ### 工具选择 (promptTools)
 
-类型: 自定义 interactiveCheckbox (与 skill/command 选择共用同一组件)
+类型: 自定义 interactiveCheckbox (与 skill 选择共用同一组件)
 触发: `init` 命令
 
 显示:
@@ -73,10 +77,10 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 - 后续项为各 mode, 显示名称首字母大写, 路径中 skills 替换为 skills-{mode}
 - 路径显示通过字符串替换: `config.skillsDir.replace('skills', 'skills-{mode}')`
 
-### Skill/Command 选择 (interactiveCheckbox)
+### Skill 选择 (interactiveCheckbox)
 
 类型: 自定义 readline 实现
-触发: `init` 命令的 skill 和 command 选择, `install` 命令的 skill 选择
+触发: `init` 命令的 skill 选择, `install` 命令的 skill 选择
 
 **核心参数**:
 - `pageSize`: 可视区域大小, 默认 15
@@ -133,10 +137,6 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 - 已部署的 skill 默认选中 (`checked: true`) 且标记 `[deployed]`
 - 按 source 分组
 
-**init 命令中 Command 选择**:
-- 同 skill, 但 name 带 `/` 前缀 (如 `/commit`)
-- 仅在有支持 commands 的工具被选中时显示
-
 **install 命令中的选择**:
 - 无分组 (没有 group 字段)
 - 无 `[deployed]` 标记
@@ -157,7 +157,6 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 返回: `'overwrite' | 'skip' | 'diff'`
 
-注意: command 同步时虽然使用相同的 `promptSyncAction`, 但实际代码中 command 变更时只调用一次, 没有 diff 后的二次提示. skill 同步中选择 diff 后会再次调用 promptSyncAction.
 
 **孤立项时** (promptOrphanAction):
 
@@ -173,7 +172,7 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 ### 冲突选择
 
-`add` 遇到多个同名 skill/command 时:
+`add` 遇到多个同名 skill 时:
 
 类型: inquirer list
 
@@ -244,12 +243,13 @@ Claude Code:
   ✗ old-skill (removed)
   · existing-skill (unchanged)
   ✓ new-skill (linked)
-  ✗ /old-command (removed)
-  · /existing-command (unchanged)
-  ✓ /new-command (linked)
 
-Done! Deployed 3 skills and 2 commands to 2 tools.
+Done! Deployed 3 skills to 2 tools.
 ```
+
+#### Scenario: init completion message
+- **WHEN** init 部署完成
+- **THEN** 输出 "Done! Deployed N skills to M tools.", 不再有 "and K commands" 部分
 
 `add` 命令:
 ```
@@ -262,7 +262,6 @@ Adding skill code-review to configured tools...
 ```
 Removing code-review...
   ✓ Removed skill from Claude Code
-  ✓ Removed command from Claude Code
 ```
 
 ### 列表输出格式
@@ -274,15 +273,18 @@ Available in ~/.skills-manager/:
 ── official/anthropic (5 skills) ──
   code-review
   tdd
-
-── official/anthropic (2 commands) ──
-  /commit
-  /review-pr
 ```
 
-- skills 和 commands 分开显示
 - 按 source 分组, 组标题显示数量, 复数形式 (1 skill / 2 skills)
-- 无 skill 和 command 时: "No skills or commands found in ~/.skills-manager/"
+- 无 skill 时: "No skills found in ~/.skills-manager/"
+
+#### Scenario: list available shows only skills
+- **WHEN** 执行 `list`
+- **THEN** 只显示 skill 分组, 不显示 command 分组
+
+#### Scenario: list empty state
+- **WHEN** 没有可用 skill
+- **THEN** 输出 "No skills found in ~/.skills-manager/"
 
 **已部署列表** (`list --deployed`):
 ```
@@ -291,20 +293,24 @@ Deployed in current project:
 Claude Code skills (.claude/skills/):
   ◉ code-review      (link) ← official/anthropic
   ⚠ my-skill         (copy) ← conflict
-
-Claude Code commands (.claude/commands/):
-  ◉ /commit          (link) ← official/anthropic
 ```
 
 - skill 名称 padEnd(16) 对齐
-- command 名称 padEnd(15) 对齐 (带 / 前缀)
 - mode-specific 部署显示 `[mode]` 后缀
 - conflict 状态用 ⚠ 前缀, source 显示 "conflict"
+
+#### Scenario: list deployed shows only skills
+- **WHEN** 执行 `list --deployed`
+- **THEN** 只显示各工具的 skill 部署状态, 不显示 commands 部分
+
+#### Scenario: list deployed empty state
+- **WHEN** 没有已部署 skill
+- **THEN** 输出 "No skills deployed in current project."
 
 ### Sync 输出格式
 
 ```
-Checking deployed skills and commands...
+Checking deployed skills...
 
 Claude Code (.claude/skills/):
   ⚠ conflicted-skill: conflict (skipped)
@@ -312,7 +318,6 @@ Claude Code (.claude/skills/):
   ✓ linked-skill: up to date (link)
   ⚠ changed-skill: source changed (copy)
   ✓ unchanged-skill: up to date (copy)
-  ✓ /linked-cmd: up to date (link)
 
 Sync complete: 1 updated, 1 removed
 ```
@@ -326,8 +331,6 @@ Updating official/anthropic...
   ↑ tdd: updated
   ⚠ old-skill: not found in remote
   ✗ broken-skill: failed to update
-  ✓ /commit: up to date
-  ↑ /review-pr: updated
 
 Done! 2 updated, 2 up to date, 1 failed
 ```
@@ -344,11 +347,7 @@ Downloading 3 skills...
   tdd... ✓
   testing... ✓
 
-Found 2 commands, installing...
-  commit.md... ✓
-  review-pr.md... ✓
-
-✓ Installed 3 skills and 2 commands to /path/to/target
+✓ Installed 3 skills to /path/to/target
 ```
 
 ## 错误处理
@@ -363,19 +362,35 @@ Found 2 commands, installing...
 | update | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | update | 有已安装的 source | 输出 "No installed sources found." + 提示, 正常返回 |
 | list | `~/.skills-manager/` 存在 (仅 available 模式) | process.exit(1), 提示 "Run: skillsmgr setup" |
-| list | 有可用 skill/command (仅 available 模式) | 输出提示信息, 正常返回 |
-| list --deployed | 有部署 | 输出 "No skills or commands deployed in current project.", 正常返回 |
+| list | 有可用 skill (仅 available 模式) | 输出提示信息, 正常返回 |
+| list --deployed | 有部署 | 输出 "No skills deployed in current project.", 正常返回 |
 | init | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| init | 有可用 skill/command | process.exit(1), 提示 "Run: skillsmgr install anthropic" |
+| init | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
 | add | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| add | name 匹配到 skill 或 command | process.exit(1), 提示 "'name' not found as a skill or command" |
+| add | name 匹配到 skill | process.exit(1), 提示 "'name' not found" |
 | add (无 --tool) | 有已配置工具 | process.exit(1), 提示 "Run: skillsmgr init" |
 | add (有 --tool) | tool 名称有效 | process.exit(1), 提示 "Unknown tool: name" |
 | remove (有 --tool) | tool 名称有效 | process.exit(1), 提示 "Unknown tool: name" |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| remove | 有已配置工具 | process.exit(1), 提示 "No skills or commands deployed in current project." |
+| remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
 | sync | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| sync | 有部署 | process.exit(1), 提示 "No skills or commands deployed in current project." |
+| sync | 有部署 | process.exit(1), 提示 "No skills deployed in current project." |
+
+#### Scenario: no content found error
+- **WHEN** 安装的仓库中没有 skill
+- **THEN** 错误消息为 "No skills found in repository", 不提及 commands
+
+#### Scenario: no deployment found error
+- **WHEN** 项目中没有已部署 skill
+- **THEN** 消息为 "No skills deployed in current project."
+
+#### Scenario: not found error
+- **WHEN** add/remove 时找不到 name
+- **THEN** 消息为 "'name' not found" 或类似, 不提及 "skill or command"
+
+#### Scenario: no available skills message
+- **WHEN** init 时没有可用 skill
+- **THEN** 输出 "No skills found. Run: skillsmgr install anthropic"
 
 ### 退出码
 
@@ -386,7 +401,7 @@ Found 2 commands, installing...
 ### 错误边界
 
 - `install` 命令: 最外层有 try-catch, 捕获 Error 输出 message 并 exit(1)
-- `update` 命令: 每个 skill/command 的更新有独立 try-catch, 失败不影响其他项
+- `update` 命令: 每个 skill 的更新有独立 try-catch, 失败不影响其他项
 - `sync` 命令: 无顶层 try-catch, 依赖各服务层的错误处理
 - 文件系统操作 (fs.ts): 大部分不捕获异常, 直接传播给调用者
 
@@ -479,7 +494,7 @@ Found 2 commands, installing...
 ### 前置条件
 
 - test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1)
-- test_precondition_noAvailableSkills_exits: 无可用 skill 和 command 时 exit(1) (init 命令)
+- test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (init 命令)
 - test_precondition_noConfiguredTools_exits: 无已配置工具时 exit(1) (add 命令)
 - test_precondition_unknownTool_exits: --tool 指定不存在的工具时 exit(1)
-- test_precondition_skillNotFound_exits: add 命令找不到 skill/command 时 exit(1)
+- test_precondition_skillNotFound_exits: add 命令找不到 skill 时 exit(1)

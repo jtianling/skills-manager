@@ -1,6 +1,6 @@
 import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { ToolName, SkillInfo, CommandInfo } from '../types.js';
+import { ToolName, SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS } from '../constants.js';
 import { interactiveCheckbox } from './interactive-select.js';
 
@@ -100,49 +100,6 @@ export async function promptSkills(
 
   return interactiveCheckbox({
     message: 'Select skills to deploy:',
-    choices,
-    pageSize: 15,
-  });
-}
-
-export async function promptCommands(
-  commands: CommandInfo[],
-  deployedCommandNames: string[] = []
-): Promise<string[]> {
-  // Group commands by source and build choices
-  const grouped: Record<string, CommandInfo[]> = {};
-  for (const command of commands) {
-    if (!grouped[command.source]) {
-      grouped[command.source] = [];
-    }
-    grouped[command.source].push(command);
-  }
-
-  const choices: Array<{
-    name: string;
-    description: string;
-    value: string;
-    checked?: boolean;
-    group?: string;
-    suffix?: string;
-  }> = [];
-
-  for (const [source, sourceCommands] of Object.entries(grouped)) {
-    for (const command of sourceCommands) {
-      const isDeployed = deployedCommandNames.includes(command.name);
-      choices.push({
-        name: `/${command.name}`,
-        description: command.description,
-        value: command.name,
-        checked: isDeployed,
-        group: source,
-        suffix: isDeployed ? '[deployed]' : undefined,
-      });
-    }
-  }
-
-  return interactiveCheckbox({
-    message: 'Select commands to deploy:',
     choices,
     pageSize: 15,
   });

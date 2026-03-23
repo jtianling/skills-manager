@@ -5,52 +5,48 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'claude-code',
     displayName: 'Claude Code',
     skillsDir: '.claude/skills',
-    commandsDir: '.claude/commands',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'codex': {
     name: 'codex',
     displayName: 'Codex',
-    skillsDir: '.codex/skills',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'gemini-cli': {
     name: 'gemini-cli',
     displayName: 'Gemini CLI',
-    skillsDir: '.gemini/skills',
-    commandsDir: '.gemini/commands',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'opencode': {
     name: 'opencode',
     displayName: 'OpenCode',
-    skillsDir: '.opencode/skills',
-    commandsDir: '.opencode/commands',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'openclaw': {
     name: 'openclaw',
     displayName: 'OpenClaw',
-    skillsDir: '.openclaw/skills',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'antigravity': {
     name: 'antigravity',
     displayName: 'Antigravity',
-    skillsDir: '.agent/skills',
-    commandsDir: '.agent/workflows',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
   'cline': {
     name: 'cline',
     displayName: 'Cline',
-    skillsDir: '.cline/skills',
+    skillsDir: '.agents/skills',
     supportsLink: true,
     supportsModeSpecific: false,
   },
@@ -58,7 +54,6 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'cursor',
     displayName: 'Cursor',
     skillsDir: '.cursor/skills',
-    commandsDir: '.cursor/commands',
     supportsLink: true,
     supportsModeSpecific: false,
   },
@@ -66,7 +61,6 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'kilo-code',
     displayName: 'Kilo Code',
     skillsDir: '.kilocode/skills',
-    commandsDir: '.kilocode/commands',
     supportsLink: true,
     supportsModeSpecific: true,
     modePattern: 'skills-{mode}',
@@ -76,7 +70,6 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'roo-code',
     displayName: 'Roo Code',
     skillsDir: '.roo/skills',
-    commandsDir: '.roo/commands',
     supportsLink: true,
     supportsModeSpecific: true,
     modePattern: 'skills-{mode}',
@@ -93,7 +86,6 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     name: 'windsurf',
     displayName: 'Windsurf',
     skillsDir: '.windsurf/skills',
-    commandsDir: '.windsurf/workflows',
     supportsLink: true,
     supportsModeSpecific: false,
   },
@@ -109,8 +101,4 @@ export function getTargetDir(config: ToolConfig, mode?: string): string {
     return `${baseDir}/${config.modePattern.replace('{mode}', mode)}`;
   }
   return config.skillsDir;
-}
-
-export function getCommandsTargetDir(config: ToolConfig): string | undefined {
-  return config.commandsDir;
 }

@@ -143,7 +143,14 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
    - `unmanaged`: `source === 'unknown'` 的 → 不做任何操作, 输出 `~ name (unmanaged)` 标记
 4. 注意: `toKeep` 不会重新部署, 即使 deployMode 从 link 变为 copy 也不会更新
 5. 未托管 skill 不参与 toRemove 计算, 始终被保留
-6. Commands 也实现了完全相同的增量逻辑, 参见 command-lifecycle spec
+
+#### Scenario: init no longer prompts for commands
+- **WHEN** 用户执行 `init` 命令
+- **THEN** 只显示工具选择和 skill 选择, 不显示 command 选择提示
+
+#### Scenario: init deploys only skills
+- **WHEN** 用户在 init 中选择了 skills 和工具
+- **THEN** 只有 skill 被部署到工具目录, 不部署 command
 
 #### Scenario: init 遇到未托管 skill 时保留
 - **WHEN** 目标目录存在 `source === 'unknown'` 的 skill (用户手动创建, 不在 skills-manager 注册表中)
@@ -163,8 +170,15 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 1. 确定目标工具: 指定 `--tool` 时仅处理该工具, 否则处理所有已配置工具
 2. 对每个目标工具, 扫描其所有部署 (包括基础目录和 mode-specific 目录)
 3. 在 skills 中查找同名项, 找到则通过 `deployer.removeSkill()` 删除 (内部使用 `rmSync(path, { recursive: true, force: true })`)
-4. 如果同名项也存在于 commands 中, 同样删除 (skill 和 command 共享 `remove` 命令)
-5. 如果任何工具中都没找到, 输出 "'name' not found as a skill or command in any configured tool"
+4. 如果任何工具中都没找到, 输出 "'name' not found in any configured tool"
+
+#### Scenario: remove only checks skills
+- **WHEN** 用户执行 `remove <name>`
+- **THEN** 只在已部署 skills 中查找匹配项, 不检查 commands 目录
+
+#### Scenario: remove name not found
+- **WHEN** name 不匹配任何已部署 skill
+- **THEN** 输出 "'name' not found in any configured tool"
 
 **通过 `init` 命令的增量逻辑**:
 - 取消选择的 skill 会被移除, 使用 `deployer.removeSkill()` 处理
@@ -174,10 +188,14 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 `sync` 命令检查已部署 skill 的状态:
 
 **扫描流程**:
-1. `scanner.scanAllTools()` 遍历所有 11 个工具
+1. `scanner.scanAllTools()` 遍历所有 12 个工具
 2. 对每个工具, 扫描基础 skillsDir 和 mode-specific 目录
-3. 返回包含 skills 和 commands 的 `ScannedToolDeployment[]`
-4. 过滤掉 skills 和 commands 都为空的工具
+3. 返回 `ScannedToolDeployment[]`
+4. 过滤掉 skills 为空的工具
+
+#### Scenario: sync only verifies skills
+- **WHEN** 用户执行 `sync` 命令
+- **THEN** 只扫描和验证 skill 部署状态, 不扫描 commands 目录
 
 **检查逻辑** (对每个已部署的 skill):
 
@@ -219,9 +237,17 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 `update` 命令从远程拉取最新版本 (详细流程参见 source-management spec):
 - 仅更新本地已安装的 skill, 不安装新 skill
-- 跳过名为 `commands` 的目录 (避免将 commands 子目录误识别为 skill)
+- 跳过名为 `commands` 的目录 (避免将残留 commands 子目录误识别为 skill)
 - 比较本地和远程的 SKILL.md 内容 (全文对比, 不截断)
 - 内容不同时, 先 `removeDir()` 删除整个本地 skill 目录, 再通过 GitHub API 重新下载
+
+#### Scenario: update only updates skills
+- **WHEN** 用户执行 `update` 命令
+- **THEN** 只比较和更新本地已安装的 skill, 不处理 commands
+
+#### Scenario: update skips residual commands directory
+- **WHEN** `~/.skills-manager/official/anthropic/` 下存在残留的 `commands/` 目录
+- **THEN** 该目录被跳过, 不报错
 
 ## 冲突处理
 
@@ -272,8 +298,28 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 ## 前置条件
 
 - 所有 skill 操作 (除 `setup`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
-- `init` 和 `add` 额外要求至少有一个可用 skill 或 command, 否则提示 "Run: skillsmgr install anthropic"
+- `init` 和 `add` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropic"
 - `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr init"
+
+#### Scenario: init precondition check
+- **WHEN** 无可用 skill 时执行 `init`
+- **THEN** 输出 "No skills found. Run: skillsmgr install anthropic" 并 exit(1)
+
+#### Scenario: add precondition check
+- **WHEN** name 不匹配任何 skill 时执行 `add`
+- **THEN** 输出 "'name' not found" 并 exit(1)
+
+### Requirement: Skill addition via add
+
+`add` 命令 SHALL 只查找和部署 skill, 不再 fallback 到 command.
+
+#### Scenario: add only searches skills
+- **WHEN** 用户执行 `add <name>`
+- **THEN** 只在 SkillsService 中查找匹配, 不查找 CommandsService
+
+#### Scenario: add name not found
+- **WHEN** name 不匹配任何可用 skill
+- **THEN** 输出 "'name' not found" 并 exit(1)
 
 ## 测试用例
 
@@ -343,7 +389,7 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 - test_conflict_copiedSkillMultipleSources_detectedAsConflict: copy 模式, 同名 skill 存在于多个 source, 扫描结果 conflict 为 true
 - test_conflict_linkedSkill_noConflict: link 模式, 即使多个 source 有同名 skill, 通过 symlink target 精确定位, 不标记冲突
-- test_conflict_addCommand_promptsSelection: `add` 遇到多个匹配时提示选择
+- test_conflict_addSkill_promptsSelection: `add` 遇到多个匹配时提示选择
 
 ### DeploymentScanner
 

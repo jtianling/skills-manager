@@ -5,7 +5,6 @@ import { SUPPORTED_TOOLS, SKILLS_MANAGER_DIR } from '../constants.js';
 import { TOOL_CONFIGS, getTargetDir } from '../tools/configs.js';
 import { fileExists, isSymlink, readSymlinkTarget } from '../utils/fs.js';
 import { SkillsService } from './skills.js';
-import { CommandsService } from './commands.js';
 
 export interface ScannedSkill {
   name: string;
@@ -15,31 +14,21 @@ export interface ScannedSkill {
   conflict?: boolean;
 }
 
-export interface ScannedCommand {
-  name: string;
-  source: string;
-  deployMode: 'link' | 'copy';
-  path: string;
-}
-
 export interface ScannedToolDeployment {
   toolName: ToolName;
   targetDir: string;
   mode?: string;
   skills: ScannedSkill[];
-  commands: ScannedCommand[];
 }
 
 export class DeploymentScanner {
   private skillsService: SkillsService;
-  private commandsService: CommandsService;
 
   constructor(
     private projectDir: string,
     private skillsManagerDir: string = SKILLS_MANAGER_DIR
   ) {
     this.skillsService = new SkillsService(this.skillsManagerDir);
-    this.commandsService = new CommandsService(this.skillsManagerDir);
   }
 
   scanAllTools(): ScannedToolDeployment[] {
@@ -51,7 +40,7 @@ export class DeploymentScanner {
       deployments.push(...toolDeployments);
     }
 
-    return deployments.filter((d) => d.skills.length > 0 || d.commands.length > 0);
+    return deployments.filter((d) => d.skills.length > 0);
   }
 
   scanToolDeployment(toolName: ToolName, config: ToolConfig): ScannedToolDeployment[] {
@@ -61,14 +50,7 @@ export class DeploymentScanner {
     const baseDir = join(this.projectDir, config.skillsDir);
     const baseDeployment = this.scanDirectory(toolName, baseDir, config.skillsDir);
 
-    // Also scan commands directory
-    if (config.commandsDir) {
-      const commandsDir = join(this.projectDir, config.commandsDir);
-      const commands = this.scanCommandsDirectory(commandsDir);
-      baseDeployment.commands = commands;
-    }
-
-    if (baseDeployment.skills.length > 0 || baseDeployment.commands.length > 0) {
+    if (baseDeployment.skills.length > 0) {
       deployments.push(baseDeployment);
     }
 
@@ -93,7 +75,7 @@ export class DeploymentScanner {
     for (const toolName of SUPPORTED_TOOLS) {
       const config = TOOL_CONFIGS[toolName];
       const deployments = this.scanToolDeployment(toolName, config);
-      if (deployments.some((d) => d.skills.length > 0 || d.commands.length > 0)) {
+      if (deployments.some((d) => d.skills.length > 0)) {
         tools.add(toolName);
       }
     }
@@ -106,7 +88,7 @@ export class DeploymentScanner {
     if (!config) return false;
 
     const deployments = this.scanToolDeployment(toolName, config);
-    return deployments.some((d) => d.skills.length > 0 || d.commands.length > 0);
+    return deployments.some((d) => d.skills.length > 0);
   }
 
   getDeployedSkills(toolName: ToolName): ScannedSkill[] {
@@ -115,14 +97,6 @@ export class DeploymentScanner {
 
     const deployments = this.scanToolDeployment(toolName, config);
     return deployments.flatMap((d) => d.skills);
-  }
-
-  getDeployedCommands(toolName: ToolName): ScannedCommand[] {
-    const config = TOOL_CONFIGS[toolName];
-    if (!config || !config.commandsDir) return [];
-
-    const commandsDir = join(this.projectDir, config.commandsDir);
-    return this.scanCommandsDirectory(commandsDir);
   }
 
   private scanDirectory(
@@ -136,7 +110,6 @@ export class DeploymentScanner {
       targetDir: relativePath,
       mode,
       skills: [],
-      commands: [],
     };
 
     if (!fileExists(fullPath)) {
@@ -158,48 +131,6 @@ export class DeploymentScanner {
     }
 
     return deployment;
-  }
-
-  private scanCommandsDirectory(fullPath: string): ScannedCommand[] {
-    const commands: ScannedCommand[] = [];
-
-    if (!fileExists(fullPath)) {
-      return commands;
-    }
-
-    try {
-      const entries = readdirSync(fullPath, { withFileTypes: true });
-
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-
-        const commandPath = join(fullPath, entry.name);
-        const commandName = entry.name.replace(/\.md$/, '');
-
-        if (isSymlink(commandPath)) {
-          const linkTarget = readSymlinkTarget(commandPath);
-          const source = linkTarget ? this.extractSourceFromPath(linkTarget) : null;
-          commands.push({
-            name: commandName,
-            source: source || 'unknown',
-            deployMode: 'link',
-            path: commandPath,
-          });
-        } else {
-          const cmdMatch = this.commandsService.findCommandsByName(commandName);
-          commands.push({
-            name: commandName,
-            source: cmdMatch.length === 1 ? cmdMatch[0].source : 'unknown',
-            deployMode: 'copy',
-            path: commandPath,
-          });
-        }
-      }
-    } catch {
-      // Directory doesn't exist or can't be read
-    }
-
-    return commands;
   }
 
   private scanSkill(skillPath: string, name: string): ScannedSkill | null {
@@ -253,7 +184,7 @@ export class DeploymentScanner {
     if (idx === -1) return null;
 
     const afterManager = normalizedTarget.substring(idx + skillsManagerPattern.length);
-    // Format: {source}/{repo}/[skills/|commands/]{name}
+    // Format: {source}/{repo}/[skills/]{name}
     // or: custom/{name}
 
     const parts = afterManager.split('/');

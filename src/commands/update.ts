@@ -3,7 +3,7 @@ import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
-import { fileExists, removeDir, readFileContent, getDirectoriesInDir, getFilesInDir, ensureDir, removeFile } from '../utils/fs.js';
+import { fileExists, removeDir, readFileContent, getDirectoriesInDir } from '../utils/fs.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
@@ -38,7 +38,6 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
   // Get the default branch
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
 
-  // --- Update skills ---
   const localSkills = getDirectoriesInDir(targetBase);
 
   if (localSkills.length > 0) {
@@ -61,7 +60,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
     // Update only locally installed skills
     for (const localSkill of localSkills) {
       const skillName = localSkill.name;
-      // Skip the commands directory
+      // Skip residual commands directory
       if (skillName === 'commands') continue;
 
       const targetDir = localSkill.path;
@@ -122,59 +121,8 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
     }
   }
 
-  // --- Update commands ---
-  const localCommandsDir = join(targetBase, 'commands');
-  const localCommands = getFilesInDir(localCommandsDir, '.md');
-
-  if (localCommands.length > 0) {
-    // Try common commands directory locations
-    const commandsPaths = ['commands', 'src/commands'];
-    let commandsBasePath = 'commands';
-
-    for (const commandsPath of commandsPaths) {
-      const remoteCommands = await githubService.listCommands(owner, repo, commandsPath);
-      if (remoteCommands.length > 0) {
-        commandsBasePath = commandsPath;
-        break;
-      }
-    }
-
-    for (const localCommand of localCommands) {
-      const commandName = localCommand.name.replace(/\.md$/, '');
-      const remotePath = `${commandsBasePath}/${localCommand.name}`;
-
-      try {
-        const response = await fetch(
-          `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${remotePath}`
-        );
-
-        if (!response.ok) {
-          console.log(`  ⚠ /${commandName}: not found in remote`);
-          result.failed++;
-          continue;
-        }
-
-        const remoteContent = await response.text();
-        const localContent = readFileContent(localCommand.path);
-
-        if (remoteContent === localContent) {
-          console.log(`  ✓ /${commandName}: up to date`);
-          result.upToDate++;
-        } else {
-          removeFile(localCommand.path);
-          await githubService.downloadCommandFile(owner, repo, remotePath, localCommand.path);
-          console.log(`  ↑ /${commandName}: updated`);
-          result.updated++;
-        }
-      } catch {
-        console.log(`  ✗ /${commandName}: failed to update`);
-        result.failed++;
-      }
-    }
-  }
-
-  if (localSkills.length === 0 && localCommands.length === 0) {
-    console.log(`  No skills or commands installed locally`);
+  if (localSkills.length === 0) {
+    console.log(`  No skills installed locally`);
   }
 
   // Update timestamp
@@ -239,7 +187,7 @@ export async function executeUpdate(source?: string): Promise<void> {
 }
 
 export const updateCommand = new Command('update')
-  .description('Update installed skills and commands to latest version')
+  .description('Update installed skills to latest version')
   .argument('[source]', 'Specific source to update (e.g., "anthropic")')
   .action(async (source?: string) => {
     await executeUpdate(source);

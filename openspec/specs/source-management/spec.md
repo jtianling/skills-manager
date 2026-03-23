@@ -1,6 +1,6 @@
 # Source Management
 
-管理 skill 和 command 的远程来源: 下载, 安装, 元数据追踪, 更新.
+管理 skill 的远程来源: 下载, 安装, 元数据追踪, 更新.
 
 ## 来源分类
 
@@ -88,16 +88,22 @@ key 格式为 `{type}/{repoName}`:
 
 1. 调用 `githubService.listSkills('anthropics', 'skills', 'skills')` 获取 skill 列表
 2. 获取 default branch
-3. 如果没有 skill:
-   - 尝试安装 commands, 如果也没有 → `process.exit(1)` 并报错
+3. 如果没有 skill → `process.exit(1)` 并报错 "No skills found in repository"
 4. 有 skill 时:
    - 使用 ProgressBar 逐个获取 SKILL.md 描述 (通过 raw.githubusercontent.com)
    - 获取失败时 description 为空, 不中断流程
    - 提示用户选择 (除非 `--all`)
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 (不 exit)
    - 下载选中的 skill
-   - **自动安装 commands** (调用 `installCommandsFromGitHub()`)
 5. 保存 source 元数据, key 为 `"official/anthropic"`
+
+#### Scenario: Install anthropic skills only
+- **WHEN** 用户执行 `install anthropic`
+- **THEN** 只下载和安装 skill, 不查找或安装 commands
+
+#### Scenario: No skills found in anthropic repo
+- **WHEN** anthropic 仓库中没有 skill
+- **THEN** 输出 "No skills found in repository" 并 exit(1), 不再尝试安装 commands
 
 #### installFromGitHubUrl()
 
@@ -114,28 +120,35 @@ key 格式为 `{type}/{repoName}`:
 **仓库 URL (无 path)**:
 1. 依次在 `['skills', '.', 'src/skills']` 路径下搜索 skill 目录
 2. 对每个路径调用 `listSkills()`, 有结果就停止搜索
-3. 有 skill 时正常流程 (提示选择, 下载, 安装 commands)
+3. 有 skill 时正常流程 (提示选择, 下载)
 4. **没有子目录 skill 时, 检查根目录 SKILL.md**:
    - 通过 `raw.githubusercontent.com/{owner}/{repo}/{branch}/SKILL.md` 获取根目录 SKILL.md
    - 如果存在 (HTTP 200): 解析 frontmatter 获取 name 和 description, name 为空时 fallback 为 repo 名
    - 将整个仓库根目录内容下载到 `{targetBase}/{skillName}/`
    - 直接安装, 不提示用户选择 (单 skill 仓库)
-   - 同时检查并安装 commands
    - 保存 source 元数据
    - 返回 true
-5. 根目录也没有 SKILL.md 时, 尝试 commands, 都没有 → 返回 false
+5. 根目录也没有 SKILL.md 时 → 返回 false
 6. 有 skill 时 (子目录形式):
    - 逐个获取 SKILL.md 描述, **没有 SKILL.md 的目录 SHALL 作为分组目录处理**: 再调用一次 `listSkills()` 获取其子目录, 对每个子目录检查 SKILL.md. 发现的 skill 使用其完整路径 (如 `skills/research-en/research`) 作为 path, 但 name 仅为最后一段目录名.
    - 分组目录探测限制为一层 — 不做无限递归
-   - 过滤后无 skill → 再次尝试 commands, 没有 → 返回 false
+   - 过滤后无 skill → 返回 false
    - 提示选择 (除非 `--all`), 单个 skill 时直接安装不提示
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 true (视为成功, 不回退到 git clone)
-   - 下载选中的 skill + 自动安装 commands
+   - 下载选中的 skill
 7. 确定 source key:
    - anthropics/skills → `"official/anthropic"`
    - `--custom` → `"custom/{repo}"`
    - 默认 → `"community/{repo}"`
 8. 返回 true
+
+#### Scenario: GitHub URL install skills only
+- **WHEN** 用户安装 GitHub 仓库
+- **THEN** 只搜索, 提示选择, 和下载 skill, 不处理 commands
+
+#### Scenario: Repo with no skills
+- **WHEN** 仓库中既无子目录 skill 也无根目录 SKILL.md
+- **THEN** 返回 false (回退到 git clone), 不再因存在 commands 而返回 true
 
 #### Scenario: Root SKILL.md detected after subdirectory search fails
 - **WHEN** 仓库 URL 安装时, `listSkills()` 对所有路径都未找到子目录 skill, 但根目录存在 SKILL.md
@@ -143,11 +156,7 @@ key 格式为 `{type}/{repoName}`:
 
 #### Scenario: Root SKILL.md not found either
 - **WHEN** 仓库既无子目录 skill, 根目录也无 SKILL.md
-- **THEN** 行为不变: 尝试 commands, 都没有则返回 false
-
-#### Scenario: Root SKILL.md with commands in same repo
-- **WHEN** 仓库根目录有 SKILL.md, 同时有 commands/ 目录
-- **THEN** 安装根目录 skill 后, 同时自动安装 commands
+- **THEN** 返回 false
 
 #### Scenario: 扁平仓库结构正常识别
 - **WHEN** 仓库 `skills/` 下的子目录都直接包含 SKILL.md (如 `skills/code-review/SKILL.md`)
@@ -164,15 +173,6 @@ key 格式为 `{type}/{repoName}`:
 #### Scenario: 分组目录无 skill
 - **WHEN** 仓库 `skills/` 下的子目录无 SKILL.md, 且其子目录也无 SKILL.md
 - **THEN** 该子目录被忽略, 不作为 skill 或分组处理
-
-#### installCommandsFromGitHub()
-
-自动安装 commands (不需要用户选择):
-
-1. 依次在 `['commands', 'src/commands']` 路径下搜索 .md 文件
-2. 有结果就停止搜索
-3. 在 `{targetBase}/commands/` 下逐个下载
-4. 返回安装的 command 数量
 
 ### Git Clone 回退
 
@@ -209,12 +209,19 @@ key 格式为 `{type}/{repoName}`:
    - 将根目录下所有非 `.git` 文件和目录移入该子目录
    - 删除 `.git` 目录 (不再需要, 已安装完成)
    - 作为单 skill 安装, 不提示选择
-6. 同时统计 commands 数量
-7. 无 skill 且无 command → `process.exit(1)`
-8. 有 skill 且非 `--all` → 提示选择 (单个 skill 时直接安装不提示)
-9. **未选中的 skill 被物理删除** (`removeDir(skill.path)`)
-10. 用户不选择任何 skill 时, **整个仓库目录被删除** (`removeDir(repoPath)`)
-11. 保存 source 元数据
+6. 无 skill → `process.exit(1)` 并输出 "No skills found in repository"
+7. 有 skill 且非 `--all` → 提示选择 (单个 skill 时直接安装不提示)
+8. **未选中的 skill 被物理删除** (`removeDir(skill.path)`)
+9. 用户不选择任何 skill 时, **整个仓库目录被删除** (`removeDir(repoPath)`)
+10. 保存 source 元数据
+
+#### Scenario: Git clone install skills only
+- **WHEN** 通过 git clone 安装仓库
+- **THEN** 只查找和安装 skill, 不统计或提及 commands
+
+#### Scenario: Git clone repo with no skills
+- **WHEN** 克隆的仓库中没有 skill
+- **THEN** 输出 "No skills found in repository" 并 exit(1)
 
 #### Scenario: Git clone detects root SKILL.md
 - **WHEN** GitHub API 失败后 git clone 仓库, 克隆目录根有 SKILL.md 但无子目录 skill
@@ -244,13 +251,16 @@ key 格式为 `{type}/{repoName}`:
 | anthropics/skills 仓库 URL | `~/.skills-manager/official/anthropic/{skill-name}/` |
 | 普通 GitHub 仓库 | `~/.skills-manager/community/{repo}/{skill-name}/` |
 | `--custom` 选项 | `~/.skills-manager/custom/{repo}/{skill-name}/` |
-| Commands | `{targetBase}/commands/{name}.md` |
+
+#### Scenario: Install success output
+- **WHEN** 安装完成
+- **THEN** 输出 "Installed N skills to path", 不再有 "and M commands" 部分
 
 ### 错误处理
 
 - `~/.skills-manager/` 不存在 → `process.exit(1)` 并提示 setup
 - GitHub API 失败 → 输出 "GitHub API failed, falling back to git clone..." 并尝试 git clone
-- 仓库中无 skill 和 command → `process.exit(1)` 并报错
+- 仓库中无 skill → `process.exit(1)` 并报错 "No skills found in repository"
 - 网络错误 → 捕获 Error, 输出 `error.message` 并 `process.exit(1)`
 
 ## 更新流程
@@ -296,14 +306,15 @@ key 格式为 `{type}/{repoName}`:
    - 内容不同 → `removeDir()` 删除本地, `downloadSkill()` 重新下载, 标记为 "updated"
    - 获取失败 → 标记为 "failed to update"
 
-**更新 Commands**:
-1. 扫描 `{targetBase}/commands/` 下的 .md 文件
-2. 探测远程 commands 目录位置: 尝试 `commands/`, `src/commands/`
-3. 对每个本地 command:
-   - 获取远程文件内容
-   - 逻辑与 skill 相同: 对比 → 相同跳过 / 不同则删除重下
-
 4. 更新 source 的 `updatedAt` 时间戳
+
+#### Scenario: Update only updates skills
+- **WHEN** 执行 `update` 更新某个 source
+- **THEN** 只比较和更新 skill, 不处理 `{targetBase}/commands/` 下的文件
+
+#### Scenario: Update output
+- **WHEN** 更新完成
+- **THEN** 统计只包含 skill 的更新结果, 不计入 command
 
 #### Scenario: Update root-skill repo with changed content
 - **WHEN** 更新已安装的根目录 skill 仓库, 远程 SKILL.md 内容已变更
@@ -330,7 +341,7 @@ key 格式为 `{type}/{repoName}`:
 ### 局限性
 
 - 仅通过 GitHub API 更新, 不支持 git clone 方式的 source 更新 (如果 parseGitHubUrl 返回 null, 该 source 被跳过并显示警告)
-- 仅更新已安装的 skill/command, 不发现和安装新增内容
+- 仅更新已安装的 skill, 不发现和安装新增内容
 - skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
 - 没有版本号或 hash 比较, 依赖文本内容全文对比
 
@@ -372,21 +383,12 @@ key 格式为 `{type}/{repoName}`:
 - 过滤 `type === 'dir'` 的条目
 - API 失败时抛出 Error
 
-`listCommands()`:
-- 同样使用 contents API
-- 过滤 `type === 'file' && name.endsWith('.md')`
-- API 失败时返回空数组 (不抛错, 与 listSkills 不同)
-
 ### 文件下载
 
 `downloadSkill()`:
 - 先 ensureDir 创建目标目录
 - 递归下载: 调用 contents API 获取目录内容, 对 file 类型使用 `download_url` 下载, 对 dir 类型递归处理
 - 文件内容通过 `response.text()` 获取, 使用 `writeFileSync(path, content, 'utf-8')` 写入
-
-`downloadCommandFile()`:
-- 通过 contents API 获取文件的 `download_url`
-- 使用 download_url 下载实际内容
 
 ### Requirement: GitHubService 支持检查根目录文件
 
@@ -440,8 +442,7 @@ Sparse checkout 流程:
 
 ### GitHub API 安装
 
-- test_installFromAnthropic_noSkillsNoCommands_exits: 仓库无内容时 process.exit(1)
-- test_installFromAnthropic_onlyCommands_succeeds: 仓库仅有 commands 时成功安装
+- test_installFromAnthropic_noSkills_exits: 仓库无 skill 时 process.exit(1)
 - test_installFromAnthropic_allOption_skipsPrompt: --all 选项跳过选择提示
 - test_installFromAnthropic_noSelection_returnsNoExit: 用户不选择时输出 "No skills selected" 但不 exit
 - test_installFromAnthropic_fetchSkillMdFails_emptyDescription: 获取 SKILL.md 失败时 description 为空, 不中断
@@ -449,12 +450,6 @@ Sparse checkout 流程:
 - test_installFromGitHubUrl_repoUrl_searchesMultiplePaths: 仓库 URL 时依次搜索 skills/, ., src/skills/
 - test_installFromGitHubUrl_parseFails_returnsFalse: URL 解析失败返回 false
 - test_installFromGitHubUrl_customOption_installsToCustomDir: --custom 选项安装到 custom/ 目录
-
-### Commands 自动安装
-
-- test_installCommands_searchesMultiplePaths: 依次尝试 commands/ 和 src/commands/
-- test_installCommands_noCommandsDir_returnsZero: 没有 commands 目录时返回 0
-- test_installCommands_downloadsAllMdFiles: 所有 .md 文件被下载
 
 ### Git Clone 回退
 
@@ -503,7 +498,5 @@ Sparse checkout 流程:
 - test_update_skillNotFoundRemote_showsWarning: 远程不存在时显示警告
 - test_update_skipsCommandsDirectory: 名为 "commands" 的目录被跳过不作为 skill 更新
 - test_update_skipsNoSkillMd: 无 SKILL.md 的目录被跳过
-- test_update_commandUnchanged_showsUpToDate: command 内容一致时显示 up to date
-- test_update_commandChanged_deletesAndRedownloads: command 内容变更时重新下载
 - test_update_updatesTimestamp: 更新完成后调用 updateTimestamp
 - test_update_nonGithubSource_showsWarning: 无法解析的 URL 显示警告并跳过

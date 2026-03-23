@@ -21,7 +21,7 @@ export async function executeRemove(
   const configuredTools = scanner.getConfiguredTools();
 
   if (configuredTools.length === 0) {
-    console.log('No skills or commands deployed in current project.');
+    console.log('No skills deployed in current project.');
     process.exit(1);
   }
 
@@ -45,7 +45,6 @@ export async function executeRemove(
     const config = TOOL_CONFIGS[toolName];
     const deployments = scanner.scanToolDeployment(toolName, config);
 
-    // Try removing as skill
     for (const deployment of deployments) {
       const skillToRemove = deployment.skills.find((s) => s.name === name);
       if (!skillToRemove) continue;
@@ -56,27 +55,16 @@ export async function executeRemove(
       console.log(`  ✓ Removed skill from ${config.displayName}`);
       removed = true;
     }
-
-    // Try removing as command
-    if (config.commandsDir) {
-      const deployedCommands = scanner.getDeployedCommands(toolName);
-      const commandToRemove = deployedCommands.find((c) => c.name === name);
-      if (commandToRemove) {
-        deployer.removeCommand(name, config);
-        console.log(`  ✓ Removed command from ${config.displayName}`);
-        removed = true;
-      }
-    }
   }
 
   if (!removed) {
-    console.log(`'${name}' not found as a skill or command in any configured tool`);
+    console.log(`'${name}' not found in any configured tool`);
   }
 }
 
 export const removeCommand = new Command('remove')
-  .description('Remove a skill or command from the project')
-  .argument('<name>', 'Skill or command name to remove')
+  .description('Remove a skill from the project')
+  .argument('<name>', 'Skill name to remove')
   .option('--tool <tool>', 'Remove from specific tool only')
   .action(async (name: string, options: RemoveOptions) => {
     await executeRemove(name, options);
