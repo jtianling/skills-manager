@@ -25,31 +25,39 @@ export async function promptTools(configuredTools?: string[]): Promise<string[]>
 
   const nativeNames = nativeTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
   const hasNativeConfigured = configuredTools?.some((t) => TOOL_CONFIGS[t as keyof typeof TOOL_CONFIGS]?.native);
+  const hasSymlinkConfigured = configuredTools?.some((t) => !TOOL_CONFIGS[t as keyof typeof TOOL_CONFIGS]?.native);
 
   const choices = [
     {
       name: `Agents Skills Standard → ${nativeNames}`,
       value: AGENTS_SKILLS_STANDARD_VALUE,
-      checked: hasNativeConfigured ?? false,
+      checked: (hasNativeConfigured || hasSymlinkConfigured) ?? false,
       suffix: hasNativeConfigured ? '[configured]' : undefined,
     },
     ...symlinkTools.map((tool) => {
       const config = TOOL_CONFIGS[tool];
       const isConfigured = configuredTools?.includes(tool);
       return {
-        name: isConfigured
-          ? `${config.displayName} (symlink: ${config.symlinkDir} → .agents/skills) [configured]`
-          : `${config.displayName} (symlink: ${config.symlinkDir} → .agents/skills)`,
+        name: isConfigured ? `${config.displayName} [configured]` : config.displayName,
         value: tool,
         checked: isConfigured ?? false,
         suffix: isConfigured ? '[configured]' : undefined,
+        selectedSuffix: '(Symlink to Agents Skills)',
       };
     }),
   ];
 
+  const agentsIndex = 0;
+
   return interactiveCheckbox({
     message: 'Select target tools:',
     choices,
+    onToggle(selected) {
+      const hasAnySymlink = symlinkTools.some((_, i) => selected.has(i + 1));
+      if (hasAnySymlink && !selected.has(agentsIndex)) {
+        selected.add(agentsIndex);
+      }
+    },
   });
 }
 

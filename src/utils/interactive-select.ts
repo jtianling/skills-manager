@@ -34,6 +34,7 @@ export interface SelectChoice {
   checked?: boolean;
   group?: string;
   suffix?: string;
+  selectedSuffix?: string;
 }
 
 interface SelectOptions {
@@ -41,6 +42,7 @@ interface SelectOptions {
   choices: SelectChoice[];
   pageSize?: number;
   searchThreshold?: number;
+  onToggle?: (selected: Set<number>, choices: SelectChoice[]) => void;
 }
 
 interface DisplayItem {
@@ -83,7 +85,7 @@ function buildDisplayItems(
 export async function interactiveCheckbox(
   options: SelectOptions
 ): Promise<string[]> {
-  const { message, choices, pageSize = 15, searchThreshold = 20 } = options;
+  const { message, choices, pageSize = 15, searchThreshold = 20, onToggle } = options;
   const enableSearch = choices.length > searchThreshold;
 
   const selected = new Set<number>(
@@ -168,7 +170,8 @@ export async function interactiveCheckbox(
             const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
             const highlight = isCursor ? '\x1b[36m' : '';
             const reset = '\x1b[0m';
-            const suffix = choice.suffix ? ` \x1b[33m${choice.suffix}\x1b[0m` : '';
+            const suffixText = isSelected && choice.selectedSuffix ? choice.selectedSuffix : choice.suffix;
+            const suffix = suffixText ? ` \x1b[33m${suffixText}\x1b[0m` : '';
 
             lines.push(
               `${lineNum} ${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
@@ -336,6 +339,7 @@ export async function interactiveCheckbox(
           } else {
             selected.add(choiceIndex);
           }
+          onToggle?.(selected, choices);
           render();
         }
         return;
@@ -353,6 +357,7 @@ export async function interactiveCheckbox(
         } else {
           indicesToToggle.forEach((i) => selected.add(i));
         }
+        onToggle?.(selected, choices);
         render();
         return;
       }
