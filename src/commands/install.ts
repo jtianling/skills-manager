@@ -535,6 +535,7 @@ export async function executeInstall(
 }
 
 export const installCommand = new Command('install')
+  .alias('i')
   .description('Download skills from a repository')
   .argument('<source>', 'Repository URL or "anthropic" for official skills')
   .option('--all', 'Install all skills without prompting')

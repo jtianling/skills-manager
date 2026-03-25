@@ -1,4 +1,5 @@
 import * as readline from 'readline';
+import { Writable } from 'stream';
 
 /**
  * Wrap text to fit within maxWidth, breaking at word boundaries
@@ -31,21 +32,21 @@ export interface SelectChoice {
   description?: string;
   value: string;
   checked?: boolean;
-  group?: string; // Optional group name for separators
-  suffix?: string; // Optional suffix like "[deployed]"
+  group?: string;
+  suffix?: string;
 }
 
 interface SelectOptions {
   message: string;
   choices: SelectChoice[];
   pageSize?: number;
-  searchThreshold?: number; // Enable search when choices exceed this number
+  searchThreshold?: number;
 }
 
 interface DisplayItem {
   type: 'separator' | 'choice';
-  text?: string; // For separators
-  choiceIndex?: number; // Index in choices array for choice items
+  text?: string;
+  choiceIndex?: number;
 }
 
 /**
@@ -60,7 +61,6 @@ function buildDisplayItems(
   let currentGroup: string | undefined;
 
   choices.forEach((choice, index) => {
-    // Filter by search query (case-insensitive, name only)
     if (searchQuery && !choice.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return;
     }
@@ -78,8 +78,7 @@ function buildDisplayItems(
 }
 
 /**
- * Custom interactive checkbox that shows description only for highlighted item
- * With optional search functionality for large lists
+ * Custom interactive checkbox with vi-style navigation
  */
 export async function interactiveCheckbox(
   options: SelectOptions
@@ -94,114 +93,126 @@ export async function interactiveCheckbox(
   );
 
   let searchQuery = '';
+  let isSearchMode = false;
   let { displayItems, filteredIndices } = buildDisplayItems(choices, searchQuery);
 
-  // Find first choice item for initial cursor
   let cursor = displayItems.findIndex((item) => item.type === 'choice');
   if (cursor === -1) cursor = 0;
 
   let scrollOffset = 0;
   let lastRenderedLines = 0;
+  let numberBuffer = '';
+  let lastKeyWasG = false;
 
   return new Promise((resolve) => {
+    const nullOutput = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
     const rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout,
+      output: nullOutput,
     });
 
-    // Enable raw mode for keypress events
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
     }
     readline.emitKeypressEvents(process.stdin, rl);
 
     const render = (isInitial = false) => {
-      // Clear previous output if not initial render
       if (!isInitial && lastRenderedLines > 0) {
         process.stdout.write(`\x1b[${lastRenderedLines}A\x1b[J`);
       }
 
       const lines: string[] = [];
-
-      // Print message
       lines.push(`? ${message}`);
 
-      // Show search input if enabled
       if (enableSearch) {
         const searchDisplay = searchQuery || '';
-        lines.push(`  \x1b[33m🔍 Search:\x1b[0m ${searchDisplay}\x1b[2m│\x1b[0m \x1b[2m(${filteredIndices.length}/${choices.length} skills)\x1b[0m`);
+        if (isSearchMode) {
+          lines.push(`  \x1b[33m🔍 Search:\x1b[0m ${searchDisplay}│ \x1b[2m(${filteredIndices.length}/${choices.length} skills)\x1b[0m`);
+        } else {
+          lines.push(`  \x1b[2m🔍 Search: ${searchDisplay} (${filteredIndices.length}/${choices.length} skills)\x1b[0m`);
+        }
       }
 
-      // Calculate visible range
+      const totalChoices = displayItems.filter(item => item.type === 'choice').length;
+      const lineNumberWidth = totalChoices > 0 ? String(totalChoices).length : 1;
+
       const visibleStart = scrollOffset;
       const visibleEnd = Math.min(scrollOffset + pageSize, displayItems.length);
 
-      // Show scroll indicator if needed
       if (scrollOffset > 0) {
         lines.push('  \x1b[2m↑ more above\x1b[0m');
       }
 
-      // Show message if no results
       if (displayItems.length === 0) {
         lines.push('  \x1b[2mNo matching skills found\x1b[0m');
       }
 
-      // Print items
-      for (let i = visibleStart; i < visibleEnd; i++) {
-        const item = displayItems[i];
+      let choiceCount = 0;
+      for (let i = 0; i < displayItems.length; i++) {
+        if (displayItems[i].type === 'choice') {
+          choiceCount++;
+        }
+        if (i >= visibleStart && i < visibleEnd) {
+          const item = displayItems[i];
 
-        if (item.type === 'separator') {
-          lines.push(`  \x1b[33m${item.text}\x1b[0m`);
-        } else {
-          const choice = choices[item.choiceIndex!];
-          const isSelected = selected.has(item.choiceIndex!);
-          const isCursor = i === cursor;
+          if (item.type === 'separator') {
+            const padding = ' '.repeat(lineNumberWidth);
+            lines.push(`${padding}  \x1b[33m${item.text}\x1b[0m`);
+          } else {
+            const choice = choices[item.choiceIndex!];
+            const isSelected = selected.has(item.choiceIndex!);
+            const isCursor = i === cursor;
 
-          const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
-          const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
-          const highlight = isCursor ? '\x1b[36m' : '';
-          const reset = '\x1b[0m';
-          const suffix = choice.suffix ? ` \x1b[33m${choice.suffix}\x1b[0m` : '';
+            const lineNum = String(choiceCount).padStart(lineNumberWidth, ' ');
+            const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
+            const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
+            const highlight = isCursor ? '\x1b[36m' : '';
+            const reset = '\x1b[0m';
+            const suffix = choice.suffix ? ` \x1b[33m${choice.suffix}\x1b[0m` : '';
 
-          lines.push(
-            `${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
-          );
+            lines.push(
+              `${lineNum} ${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
+            );
 
-          // Show description only for current item (multi-line wrapped)
-          if (isCursor && choice.description) {
-            const maxWidth = process.stdout.columns
-              ? process.stdout.columns - 6
-              : 74;
-            const descLines = wrapText(choice.description, maxWidth);
-            for (const descLine of descLines) {
-              lines.push(`    \x1b[2m${descLine}\x1b[0m`);
+            if (isCursor && choice.description) {
+              const descIndent = lineNumberWidth + 5;
+              const maxWidth = process.stdout.columns
+                ? process.stdout.columns - descIndent - 1
+                : 80 - descIndent - 1;
+              const descPadding = ' '.repeat(descIndent);
+              const descLines = wrapText(choice.description, maxWidth);
+              for (const descLine of descLines) {
+                lines.push(`${descPadding}\x1b[2m${descLine}\x1b[0m`);
+              }
             }
           }
+        } else if (i >= visibleEnd) {
+          break;
         }
       }
 
-      // Show scroll indicator if needed
       if (visibleEnd < displayItems.length) {
         lines.push('  \x1b[2m↓ more below\x1b[0m');
       }
 
-      // Show instructions
-      if (enableSearch) {
+      if (enableSearch && isSearchMode) {
         lines.push(
-          '\x1b[2m(Type to search, ↑↓ move, space select, ctrl+a toggle filtered, enter confirm)\x1b[0m'
+          '\x1b[2m(↑↓ move, esc exit search, space select, ctrl+a toggle filtered, enter confirm)\x1b[0m'
+        );
+      } else if (enableSearch) {
+        lines.push(
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
         );
       } else {
         lines.push(
-          '\x1b[2m(↑↓ move, space select, ctrl+a toggle all, enter confirm)\x1b[0m'
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
         );
       }
 
-      // Output all lines
       console.log(lines.join('\n'));
       lastRenderedLines = lines.length;
     };
 
-    // Initial render
     render(true);
 
     const cleanup = () => {
@@ -216,14 +227,55 @@ export async function interactiveCheckbox(
       for (let i = from - 1; i >= 0; i--) {
         if (displayItems[i].type === 'choice') return i;
       }
-      return from; // Stay at current if no previous choice
+      return from;
     };
 
     const findNextChoice = (from: number): number => {
       for (let i = from + 1; i < displayItems.length; i++) {
         if (displayItems[i].type === 'choice') return i;
       }
-      return from; // Stay at current if no next choice
+      return from;
+    };
+
+    const findFirstChoice = (): number => {
+      const idx = displayItems.findIndex(item => item.type === 'choice');
+      return idx >= 0 ? idx : 0;
+    };
+
+    const findLastChoice = (): number => {
+      for (let i = displayItems.length - 1; i >= 0; i--) {
+        if (displayItems[i].type === 'choice') return i;
+      }
+      return 0;
+    };
+
+    const jumpToLineNumber = (lineNum: number): number => {
+      let count = 0;
+      let firstIdx = -1;
+      let lastIdx = -1;
+      for (let i = 0; i < displayItems.length; i++) {
+        if (displayItems[i].type === 'choice') {
+          count++;
+          if (firstIdx === -1) firstIdx = i;
+          lastIdx = i;
+          if (count === lineNum) return i;
+        }
+      }
+      if (lineNum <= 0) return firstIdx >= 0 ? firstIdx : 0;
+      return lastIdx >= 0 ? lastIdx : 0;
+    };
+
+    const ensureCursorVisible = () => {
+      if (cursor < scrollOffset) {
+        scrollOffset = cursor;
+      } else if (cursor >= scrollOffset + pageSize) {
+        scrollOffset = cursor - pageSize + 1;
+      }
+    };
+
+    const resetViState = () => {
+      numberBuffer = '';
+      lastKeyWasG = false;
     };
 
     const updateSearch = (newQuery: string) => {
@@ -232,7 +284,6 @@ export async function interactiveCheckbox(
       displayItems = result.displayItems;
       filteredIndices = result.filteredIndices;
 
-      // Reset cursor to first choice
       cursor = displayItems.findIndex((item) => item.type === 'choice');
       if (cursor === -1) cursor = 0;
       scrollOffset = 0;
@@ -241,63 +292,16 @@ export async function interactiveCheckbox(
     const handleKeypress = (str: string | undefined, key: readline.Key) => {
       if (!key) return;
 
-      // When search is enabled, prioritize typing over shortcuts
-      // Check for typeable characters first (but not control sequences)
-      // Note: space is excluded here - it's used for selection
-      if (enableSearch && str && str.length === 1 && !key.ctrl && !key.meta && key.name !== 'space') {
-        if (/^[a-zA-Z0-9\-_.]$/.test(str)) {
-          updateSearch(searchQuery + str);
-          render();
-          return;
-        }
+      if (key.name === 'c' && key.ctrl) {
+        cleanup();
+        console.log('\nCancelled.');
+        process.exit(0);
       }
 
-      // Navigation: arrow keys only
-      if (key.name === 'up') {
-        cursor = findPrevChoice(cursor);
-        // Adjust scroll if cursor goes above visible area
-        if (cursor < scrollOffset) {
-          scrollOffset = cursor;
-        }
-        render();
-      } else if (key.name === 'down') {
-        cursor = findNextChoice(cursor);
-        // Adjust scroll if cursor goes below visible area
-        if (cursor >= scrollOffset + pageSize) {
-          scrollOffset = cursor - pageSize + 1;
-        }
-        render();
-      } else if (key.name === 'space') {
-        const item = displayItems[cursor];
-        if (item && item.type === 'choice') {
-          const choiceIndex = item.choiceIndex!;
-          if (selected.has(choiceIndex)) {
-            selected.delete(choiceIndex);
-          } else {
-            selected.add(choiceIndex);
-          }
-          render();
-        }
-      } else if (key.name === 'a' && key.ctrl) {
-        // Ctrl+A: Toggle all (or filtered items if search is active)
-        const indicesToToggle = enableSearch && searchQuery
-          ? filteredIndices
-          : choices.map((_, i) => i);
-
-        const allSelected = indicesToToggle.every((i) => selected.has(i));
-        if (allSelected) {
-          indicesToToggle.forEach((i) => selected.delete(i));
-        } else {
-          indicesToToggle.forEach((i) => selected.add(i));
-        }
-        render();
-      } else if (key.name === 'return') {
+      if (key.name === 'return') {
         cleanup();
-
-        // Clear the UI
         process.stdout.write(`\x1b[${lastRenderedLines}A\x1b[J`);
 
-        // Show result
         const selectedNames = Array.from(selected)
           .sort((a, b) => a - b)
           .map((i) => choices[i].name);
@@ -319,17 +323,156 @@ export async function interactiveCheckbox(
             .sort((a, b) => a - b)
             .map((i) => choices[i].value)
         );
-      } else if (key.name === 'c' && key.ctrl) {
-        cleanup();
-        console.log('\nCancelled.');
-        process.exit(0);
-      } else if (key.name === 'backspace') {
-        // Handle backspace for search
-        if (enableSearch && searchQuery.length > 0) {
-          updateSearch(searchQuery.slice(0, -1));
+        return;
+      }
+
+      if (key.name === 'space') {
+        resetViState();
+        const item = displayItems[cursor];
+        if (item && item.type === 'choice') {
+          const choiceIndex = item.choiceIndex!;
+          if (selected.has(choiceIndex)) {
+            selected.delete(choiceIndex);
+          } else {
+            selected.add(choiceIndex);
+          }
           render();
         }
+        return;
       }
+
+      if (key.name === 'a' && key.ctrl) {
+        resetViState();
+        const indicesToToggle = enableSearch && searchQuery
+          ? filteredIndices
+          : choices.map((_, i) => i);
+
+        const allSelected = indicesToToggle.every((i) => selected.has(i));
+        if (allSelected) {
+          indicesToToggle.forEach((i) => selected.delete(i));
+        } else {
+          indicesToToggle.forEach((i) => selected.add(i));
+        }
+        render();
+        return;
+      }
+
+      if (key.name === 'up') {
+        resetViState();
+        cursor = findPrevChoice(cursor);
+        if (cursor < scrollOffset) {
+          scrollOffset = cursor;
+        }
+        render();
+        return;
+      }
+
+      if (key.name === 'down') {
+        resetViState();
+        cursor = findNextChoice(cursor);
+        if (cursor >= scrollOffset + pageSize) {
+          scrollOffset = cursor - pageSize + 1;
+        }
+        render();
+        return;
+      }
+
+      if (str === '/') {
+        if (enableSearch) {
+          resetViState();
+          isSearchMode = !isSearchMode;
+          render();
+        }
+        return;
+      }
+
+      if (key.name === 'escape') {
+        if (isSearchMode) {
+          isSearchMode = false;
+          render();
+        }
+        return;
+      }
+
+      if (key.name === 'backspace') {
+        if (isSearchMode) {
+          if (searchQuery.length > 0) {
+            updateSearch(searchQuery.slice(0, -1));
+          } else {
+            isSearchMode = false;
+          }
+          render();
+        }
+        return;
+      }
+
+      if (isSearchMode && str && str.length === 1 && !key.ctrl && !key.meta && key.name !== 'space') {
+        if (/^[a-zA-Z0-9\-_.]$/.test(str)) {
+          updateSearch(searchQuery + str);
+          render();
+        }
+        return;
+      }
+
+      if (!isSearchMode) {
+        if (str === 'q') {
+          cleanup();
+          console.log('\nCancelled.');
+          process.exit(0);
+        }
+
+        if (str === 'G') {
+          if (numberBuffer.length > 0) {
+            const targetLine = Number.parseInt(numberBuffer, 10);
+            cursor = jumpToLineNumber(targetLine);
+          } else {
+            cursor = findLastChoice();
+          }
+          resetViState();
+          ensureCursorVisible();
+          render();
+          return;
+        }
+
+        if (str === 'g') {
+          if (lastKeyWasG) {
+            cursor = findFirstChoice();
+            resetViState();
+            ensureCursorVisible();
+            render();
+          } else {
+            lastKeyWasG = true;
+          }
+          return;
+        }
+
+        if (str && /^[0-9]$/.test(str)) {
+          numberBuffer += str;
+          lastKeyWasG = false;
+          return;
+        }
+
+        resetViState();
+
+        if (str === 'j') {
+          cursor = findNextChoice(cursor);
+          if (cursor >= scrollOffset + pageSize) {
+            scrollOffset = cursor - pageSize + 1;
+          }
+          render();
+          return;
+        }
+        if (str === 'k') {
+          cursor = findPrevChoice(cursor);
+          if (cursor < scrollOffset) {
+            scrollOffset = cursor;
+          }
+          render();
+          return;
+        }
+      }
+
+      return;
     };
 
     process.stdin.on('keypress', handleKeypress);
