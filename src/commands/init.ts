@@ -29,6 +29,29 @@ export async function executeInit(options: InitOptions): Promise<void> {
 
   const selectedTools = await promptTools(configuredTools);
 
+  const agentsSelected = selectedTools.includes('agents-skills-standard');
+  const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');
+
+  if (!agentsSelected) {
+    console.log('\nAgents Skills Standard not selected — skipping skills deployment.');
+    console.log('Existing skills in .agents/skills/ are preserved.\n');
+
+    // Only remove symlink bridges for deselected non-native tools
+    for (const toolName of configuredTools) {
+      const config = TOOL_CONFIGS[toolName];
+      if (config.native) continue;
+      if (selectedNonNativeTools.includes(toolName)) continue;
+
+      const removed = deployer.removeSymlinkBridge(config);
+      if (removed) {
+        console.log(`${config.displayName}: symlink removed`);
+      }
+    }
+
+    console.log('Done!');
+    return;
+  }
+
   const deployedSkills = scanner.getDeployedSkills();
   const deployedSkillNames = deployedSkills.map((s) => s.name);
 
@@ -76,8 +99,6 @@ export async function executeInit(options: InitOptions): Promise<void> {
   console.log();
 
   // Handle symlink bridges
-  const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');
-
   for (const toolName of selectedNonNativeTools) {
     const config = TOOL_CONFIGS[toolName as ToolName];
     if (!config || config.native) continue;
