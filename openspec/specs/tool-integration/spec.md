@@ -1,6 +1,6 @@
 # Tool Integration
 
-skillsmgr 支持 12 种 AI 编程工具, 每种工具有各自的目录约定和能力差异.
+skillsmgr 支持 12 种 AI 编程工具, 所有工具统一使用 `.agents/skills/` 目录部署 skills.  非原生工具通过 symlink 桥接访问该目录.
 
 ## 支持的工具
 
@@ -20,44 +20,59 @@ cline, cursor, kilo-code, roo-code, trae, windsurf
 
 此顺序影响 UI 中工具选择的显示顺序和 `scanAllTools()` 的遍历顺序.
 
-| 工具 | 标识符 | Skills 目录 | 模式支持 |
-|------|--------|------------|---------|
-| Claude Code | claude-code | .claude/skills | No |
-| Codex | codex | .agents/skills | No |
-| Gemini CLI | gemini-cli | .agents/skills | No |
-| OpenCode | opencode | .agents/skills | No |
-| OpenClaw | openclaw | .agents/skills | No |
-| Antigravity | antigravity | .agents/skills | No |
-| Cline | cline | .agents/skills | No |
-| Cursor | cursor | .cursor/skills | No |
-| Kilo Code | kilo-code | .kilocode/skills | Yes |
-| Roo Code | roo-code | .roo/skills | Yes |
-| Trae | trae | .trae/skills | No |
-| Windsurf | windsurf | .windsurf/skills | No |
+| 工具 | 标识符 | Native | Skills 目录 | Symlink 源 |
+|------|--------|--------|------------|-----------|
+| Claude Code | claude-code | No | .agents/skills | .claude/skills |
+| Codex | codex | Yes | .agents/skills | - |
+| Gemini CLI | gemini-cli | Yes | .agents/skills | - |
+| OpenCode | opencode | Yes | .agents/skills | - |
+| OpenClaw | openclaw | Yes | .agents/skills | - |
+| Antigravity | antigravity | Yes | .agents/skills | - |
+| Cline | cline | Yes | .agents/skills | - |
+| Cursor | cursor | No | .agents/skills | .cursor/skills |
+| Kilo Code | kilo-code | No | .agents/skills | .kilocode/skills |
+| Roo Code | roo-code | No | .agents/skills | .roo/skills |
+| Trae | trae | No | .agents/skills | .trae/skills |
+| Windsurf | windsurf | No | .agents/skills | .windsurf/skills |
 
-#### Scenario: 工具总表与 skillsDir 映射
-
-- **WHEN** 遍历 SUPPORTED_TOOLS 中的所有工具
-- **THEN** 每个工具的 skillsDir 与上表匹配
-
-#### Scenario: All tool configs only have skill properties
+#### Scenario: All tools have skillsDir as .agents/skills
 
 - **WHEN** 遍历 TOOL_CONFIGS 中所有工具
-- **THEN** 每个配置只包含 name, displayName, skillsDir, supportsLink, supportsModeSpecific 以及可选的 modePattern, availableModes
+- **THEN** 每个工具的 skillsDir 均为 `.agents/skills`
+
+#### Scenario: Native tools have native=true
+
+- **WHEN** 查询 codex, gemini-cli, opencode, openclaw, antigravity, cline 的 ToolConfig
+- **THEN** native 为 true 且 symlinkDir 为 undefined
+
+#### Scenario: Non-native tools have native=false with symlinkDir
+
+- **WHEN** 查询 claude-code, cursor, kilo-code, roo-code, trae, windsurf 的 ToolConfig
+- **THEN** native 为 false 且 symlinkDir 为对应的工具 skills 路径
+
+#### Scenario: No mode-specific fields exist
+
+- **WHEN** 查询任意工具的 ToolConfig
+- **THEN** 不存在 supportsModeSpecific, modePattern, availableModes 属性
 
 ## 数据模型
 
 ### ToolConfig
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| name | ToolName | - | 工具标识符, 与 SUPPORTED_TOOLS 中的值对应 |
-| displayName | string | - | 用户可见的显示名称 (如 "Claude Code", "Roo Code") |
-| skillsDir | string | - | skills 部署目录, 相对于项目根目录 |
-| supportsLink | boolean | true | 是否支持 symlink, 当前所有工具均为 true |
-| supportsModeSpecific | boolean | false | 是否支持模式特定部署 |
-| modePattern | string? | undefined | 模式目录模式, 仅 mode-specific 工具有值 |
-| availableModes | string[]? | undefined | 可用模式列表, 仅 mode-specific 工具有值 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | ToolName | 工具标识符 |
+| displayName | string | 显示名称 |
+| skillsDir | string | 统一为 `.agents/skills` |
+| supportsLink | boolean | 是否支持 symlink 部署 skill |
+| native | boolean | 是否原生支持 `.agents/skills` |
+| symlinkDir | string? | 非原生工具的 symlink 源路径, 如 `.claude/skills` |
+
+所有工具的 `skillsDir` SHALL 为 `.agents/skills`.
+
+Native 工具 (codex, gemini-cli, opencode, openclaw, antigravity, cline) 的 `native` SHALL 为 true, `symlinkDir` SHALL 为 undefined.
+
+Non-native 工具 (claude-code, cursor, kilo-code, roo-code, trae, windsurf) 的 `native` SHALL 为 false, `symlinkDir` SHALL 为对应的工具目录路径.
 
 #### Scenario: ToolConfig no longer has commandsDir
 
@@ -70,80 +85,58 @@ cline, cursor, kilo-code, roo-code, trae, windsurf
 
 ## 能力维度详解
 
-### 1. Skills 目录
+### 1. Skills 部署统一目录
 
-所有 12 个工具均支持 skills 部署.  部署时在项目中创建对应的目录结构:
+All skills SHALL be deployed to `.agents/skills/` regardless of which tools are selected.  The deployer SHALL NOT deploy skills to individual tool directories.
 
 ```
 project/
-├── .agents/skills/        # Codex, Gemini CLI, OpenCode, OpenClaw, Antigravity, Cline
-├── .claude/skills/        # Claude Code
-├── .cursor/skills/        # Cursor
-├── .kilocode/skills/      # Kilo Code
-├── .roo/skills/           # Roo Code
-├── .trae/skills/          # Trae
-└── .windsurf/skills/      # Windsurf
+├── .agents/skills/        # 所有 skills 统一部署目录
+├── .claude/skills → .agents/skills   # symlink bridge (non-native)
+├── .cursor/skills → .agents/skills   # symlink bridge (non-native)
+├── .kilocode/skills → .agents/skills # symlink bridge (non-native)
+├── .roo/skills → .agents/skills      # symlink bridge (non-native)
+├── .trae/skills → .agents/skills     # symlink bridge (non-native)
+└── .windsurf/skills → .agents/skills # symlink bridge (non-native)
 ```
 
-6 个工具 (Codex, Gemini CLI, OpenCode, OpenClaw, Antigravity, Cline) 共享 `.agents/skills` 目录.  其余 6 个工具保持各自专属目录.  同一个 skill 可以同时部署到多个工具.  当多个工具共享同一物理目录时, skill 只需部署一次, 文件系统幂等性保证不会重复.
+Native 工具直接读取 `.agents/skills/`, non-native 工具通过 symlink 桥接访问.
 
-#### Scenario: Universal 工具的 skillsDir 为 .agents/skills
+#### Scenario: Deploy skill writes to .agents/skills only
 
-- **WHEN** 查询 codex, gemini-cli, opencode, openclaw, antigravity, cline 的 ToolConfig
-- **THEN** 它们的 skillsDir 均为 `.agents/skills`
+- **WHEN** user deploys skill "code-review" for claude-code and cursor
+- **THEN** skill is deployed to `.agents/skills/code-review/` only (not to `.claude/skills/` or `.cursor/skills/`)
 
-#### Scenario: 非 universal 工具保持专属目录
+#### Scenario: Remove skill from .agents/skills
 
-- **WHEN** 查询 claude-code, cursor, kilo-code, roo-code, trae, windsurf 的 ToolConfig
-- **THEN** 它们的 skillsDir 保持各自原有值不变
+- **WHEN** user removes skill "code-review"
+- **THEN** `.agents/skills/code-review/` is removed
+- **AND** symlink bridges remain unaffected
 
-#### Scenario: 多个 universal 工具部署同一 skill
+### 2. Tool selection UI grouping
 
-- **WHEN** 用户选择为 codex 和 cline 同时部署 skill "test-skill"
-- **THEN** 两者共享 `.agents/skills` 目录, skill 只在 `.agents/skills/test-skill/` 存在一份
+工具选择 UI SHALL 分组显示:
 
-#### Scenario: 扫描共享目录
+1. "Agents Skills Standard" -- 聚合显示所有 native 工具名称, 选中时表示部署 `.agents/skills/`
+2. 每个 non-native 工具单独显示, 标注 symlink 关系
 
-- **WHEN** `.agents/skills/` 目录下有已部署的 skills
-- **THEN** 所有 6 个 universal 工具的 scanToolDeployment 都能扫描到这些 skills
+"Agents Skills Standard" 是一个虚拟选项, 不对应 SUPPORTED_TOOLS 中的单个工具.  选中时不创建 symlink, 仅确保 `.agents/skills/` 目录存在.
 
-### 2. 模式特定部署 (Mode-Specific)
+#### Scenario: UI displays grouped tools
 
-仅 Roo Code 和 Kilo Code 支持.  两者配置完全对称:
+- **WHEN** 用户执行 init 命令
+- **THEN** 工具选择列表显示 "Agents Skills Standard" 选项, 后跟 native 工具名称列表
+- **AND** 每个 non-native 工具单独显示, 标注 "(symlink: .xxx/skills -> .agents/skills)"
 
-```typescript
-{
-  supportsModeSpecific: true,
-  modePattern: 'skills-{mode}',
-  availableModes: ['code', 'architect'],
-}
-```
+#### Scenario: Selecting Agents Skills Standard only
 
-**可选模式**:
-- `all`: 使用基础 skillsDir, 不应用 modePattern
-- `code`: 替换为 mode-specific 目录
-- `architect`: 替换为 mode-specific 目录
+- **WHEN** 用户仅选择 "Agents Skills Standard"
+- **THEN** skills 部署到 `.agents/skills/`, 不创建任何 symlink
 
-**路径计算** (`getTargetDir` 函数):
+#### Scenario: Selecting non-native tool implies agents skills
 
-```
-条件: supportsModeSpecific === true && mode 存在 && mode !== "all" && modePattern 存在
-  → baseDir = skillsDir 去掉最后一段 (用 split('/').slice(0, -1).join('/'))
-  → 返回 baseDir + "/" + modePattern.replace('{mode}', mode)
-否则:
-  → 返回 skillsDir (原样)
-```
-
-**具体路径映射**:
-
-| 工具 | mode | 结果 |
-|------|------|------|
-| Roo Code | all | .roo/skills |
-| Roo Code | code | .roo/skills-code |
-| Roo Code | architect | .roo/skills-architect |
-| Kilo Code | all | .kilocode/skills |
-| Kilo Code | code | .kilocode/skills-code |
-| Kilo Code | architect | .kilocode/skills-architect |
+- **WHEN** 用户选择 Claude Code (non-native tool)
+- **THEN** skills 部署到 `.agents/skills/` 且 `.claude/skills -> .agents/skills` symlink 被创建
 
 ### 3. Symlink 支持
 
@@ -155,20 +148,33 @@ project/
 
 ## 部署扫描
 
-`DeploymentScanner` 扫描项目目录以检测已部署的 skill.
+扫描 SHALL 只扫描 `.agents/skills/` 目录获取已部署的 skills.  `getConfiguredTools()` SHALL 通过检查 symlink 存在性判断非原生工具是否已配置.
 
 ### 扫描流程
 
 `scanAllTools()`:
-1. 按 `SUPPORTED_TOOLS` 顺序遍历所有 12 个工具
-2. 对每个工具调用 `scanToolDeployment()`
-3. 过滤掉 skills 为空的工具
-4. 返回 `ScannedToolDeployment[]`
+1. 扫描 `.agents/skills/` 目录获取已部署的 skills
+2. 返回 `ScannedToolDeployment[]`
 
-`scanToolDeployment(toolName, config)`:
-1. 扫描基础 skills 目录 (`config.skillsDir`)
-2. 如果工具支持 mode-specific, 额外扫描每个 mode 的目录
-3. 返回 `ScannedToolDeployment[]` (可能多个, 对应不同 mode)
+#### Scenario: Scan finds skills in .agents/skills
+
+- **WHEN** `.agents/skills/` 下有 skill "code-review"
+- **THEN** 扫描返回该 skill
+
+#### Scenario: Native tool configured when skills exist
+
+- **WHEN** `.agents/skills/` 下有已部署的 skills
+- **THEN** 所有 native 工具均报告为已配置
+
+#### Scenario: Non-native tool configured when symlink exists
+
+- **WHEN** `.claude/skills` 是指向 `.agents/skills` 的 symlink
+- **THEN** claude-code 报告为已配置
+
+#### Scenario: Non-native tool not configured without symlink
+
+- **WHEN** `.claude/skills` symlink 不存在
+- **THEN** claude-code 不报告为已配置 (即使 `.agents/skills/` 有内容)
 
 ### Skill 扫描细节
 
@@ -194,15 +200,24 @@ project/
 ### 已配置工具
 
 `getConfiguredTools()`:
-1. 遍历所有 12 个工具
-2. 对每个工具调用 `scanToolDeployment()`
-3. 如果任一 deployment 中有 skills → 视为已配置
+1. 检查 `.agents/skills/` 是否有已部署的 skills
+2. 如果有 → 所有 native 工具视为已配置
+3. 对每个 non-native 工具, 检查对应 symlink 是否存在且指向 `.agents/skills`
 4. 返回 `ToolName[]`
 
 **使用场景**:
 - `add` 命令不指定 `--tool` 时, 部署到所有已配置工具
 - `remove` 命令不指定 `--tool` 时, 从所有已配置工具移除
 - `init` 命令在工具选择界面标记 "[configured]" 并默认选中
+
+### getTargetDir 简化
+
+`getTargetDir` SHALL 不再接受 mode 参数, 直接返回 `.agents/skills`.
+
+#### Scenario: getTargetDir returns .agents/skills
+
+- **WHEN** 调用 getTargetDir()
+- **THEN** 返回 `.agents/skills`
 
 ## 初始化流程 (setup)
 
@@ -226,18 +241,14 @@ project/
 
 - test_toolConfigs_allToolsHaveConfig: SUPPORTED_TOOLS 中的每个工具都有对应的 ToolConfig
 - test_toolConfigs_allSupportsLink_true: 当前所有工具的 supportsLink 为 true
-- test_toolConfigs_onlyRooAndKilo_supportModeSpecific: 仅 roo-code 和 kilo-code 的 supportsModeSpecific 为 true
-- test_toolConfigs_modeSpecificTools_haveModePattern: 支持 mode 的工具都有 modePattern "skills-{mode}"
-- test_toolConfigs_modeSpecificTools_haveAvailableModes: 支持 mode 的工具都有 availableModes ["code", "architect"]
+- test_toolConfigs_allSkillsDir_agentsSkills: 所有工具的 skillsDir 均为 `.agents/skills`
+- test_toolConfigs_nativeTools_haveNativeTrue: native 工具的 native 为 true 且 symlinkDir 为 undefined
+- test_toolConfigs_nonNativeTools_haveNativeFalse: non-native 工具的 native 为 false 且 symlinkDir 有值
+- test_toolConfigs_noModeSpecificFields: 不存在 supportsModeSpecific, modePattern, availableModes 属性
 
 ### getTargetDir
 
-- test_getTargetDir_noMode_returnsSkillsDir: 不传 mode 参数时返回原始 skillsDir
-- test_getTargetDir_modeAll_returnsSkillsDir: mode="all" 时返回原始 skillsDir
-- test_getTargetDir_modeCode_rooCode_returnsCorrectPath: roo-code, mode="code" → ".roo/skills-code"
-- test_getTargetDir_modeArchitect_kiloCode_returnsCorrectPath: kilo-code, mode="architect" → ".kilocode/skills-architect"
-- test_getTargetDir_modeOnNonModeSpecificTool_returnsSkillsDir: 对不支持 mode 的工具传入 mode 参数时, 仍返回 skillsDir
-- test_getTargetDir_modeUndefined_returnsSkillsDir: mode 为 undefined 时返回 skillsDir
+- test_getTargetDir_returnsAgentsSkills: 调用 getTargetDir() 返回 `.agents/skills`
 
 ### getToolConfig
 
@@ -246,13 +257,12 @@ project/
 
 ### 部署扫描
 
-- test_scanAllTools_emptyProject_returnsEmpty: 新项目没有任何工具目录时返回空数组
-- test_scanAllTools_oneToolWithSkills_returnsThatTool: 只有 .claude/skills/ 有内容时, 只返回 claude-code
-- test_scanAllTools_multipleTools_returnsAll: 多个工具有部署时全部返回
-- test_scanToolDeployment_baseAndMode_returnsMultiple: Roo Code 的 skills/ 和 skills-code/ 都有内容时, 返回两个 deployment
-- test_scanToolDeployment_modeDir_hasCorrectMode: mode-specific 目录的 deployment 的 mode 字段正确设置
+- test_scanAllTools_emptyProject_returnsEmpty: `.agents/skills/` 不存在时返回空数组
+- test_scanAllTools_withSkills_returnsDeployments: `.agents/skills/` 有内容时返回 deployment
 - test_getConfiguredTools_noDeployments_returnsEmpty: 无部署时返回空数组
-- test_getConfiguredTools_withDeployments_returnsToolNames: 有部署时返回工具名列表
+- test_getConfiguredTools_withSkills_nativeToolsConfigured: `.agents/skills/` 有内容时所有 native 工具已配置
+- test_getConfiguredTools_symlinkExists_nonNativeToolConfigured: symlink 存在时对应 non-native 工具已配置
+- test_getConfiguredTools_noSymlink_nonNativeToolNotConfigured: symlink 不存在时 non-native 工具未配置
 
 ### Source 推断
 

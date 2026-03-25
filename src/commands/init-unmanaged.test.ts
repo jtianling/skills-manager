@@ -16,7 +16,7 @@ describe('preserve-unmanaged-skills', () => {
       '---\nname: managed-skill\ndescription: A managed skill\n---\n# Managed'
     );
 
-    mkdirSync(join(projectDir, '.claude', 'skills'), { recursive: true });
+    mkdirSync(join(projectDir, '.agents', 'skills'), { recursive: true });
   });
 
   afterEach(() => {
@@ -25,12 +25,12 @@ describe('preserve-unmanaged-skills', () => {
 
   describe('scanner identifies unmanaged skills', () => {
     it('returns source "unknown" for a copied skill not in registry', () => {
-      const unmanagedPath = join(projectDir, '.claude', 'skills', 'user-created-skill');
+      const unmanagedPath = join(projectDir, '.agents', 'skills', 'user-created-skill');
       mkdirSync(unmanagedPath, { recursive: true });
       writeFileSync(join(unmanagedPath, 'SKILL.md'), '---\nname: user-created-skill\n---\n# User skill');
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const skills = scanner.getDeployedSkills('claude-code');
+      const skills = scanner.getDeployedSkills();
 
       const unmanaged = skills.find((s) => s.name === 'user-created-skill');
       expect(unmanaged).toBeDefined();
@@ -39,11 +39,11 @@ describe('preserve-unmanaged-skills', () => {
 
     it('returns known source for a symlinked managed skill', () => {
       const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'managed-skill');
-      const targetPath = join(projectDir, '.claude', 'skills', 'managed-skill');
+      const targetPath = join(projectDir, '.agents', 'skills', 'managed-skill');
       symlinkSync(sourcePath, targetPath);
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const skills = scanner.getDeployedSkills('claude-code');
+      const skills = scanner.getDeployedSkills();
 
       const managed = skills.find((s) => s.name === 'managed-skill');
       expect(managed).toBeDefined();
@@ -54,16 +54,16 @@ describe('preserve-unmanaged-skills', () => {
 
   describe('init toRemove filter logic', () => {
     it('excludes unmanaged skills from toRemove', () => {
-      const unmanagedPath = join(projectDir, '.claude', 'skills', 'user-created-skill');
+      const unmanagedPath = join(projectDir, '.agents', 'skills', 'user-created-skill');
       mkdirSync(unmanagedPath, { recursive: true });
       writeFileSync(join(unmanagedPath, 'SKILL.md'), '---\nname: user-created-skill\n---\n# User skill');
 
       const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'managed-skill');
-      const targetPath = join(projectDir, '.claude', 'skills', 'managed-skill');
+      const targetPath = join(projectDir, '.agents', 'skills', 'managed-skill');
       symlinkSync(sourcePath, targetPath);
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const previouslyDeployed = scanner.getDeployedSkills('claude-code');
+      const previouslyDeployed = scanner.getDeployedSkills();
       const selectedSkillNames: string[] = [];
 
       const toRemove = previouslyDeployed.filter(
@@ -80,11 +80,11 @@ describe('preserve-unmanaged-skills', () => {
 
     it('keeps managed selected skills out of toRemove', () => {
       const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'managed-skill');
-      const targetPath = join(projectDir, '.claude', 'skills', 'managed-skill');
+      const targetPath = join(projectDir, '.agents', 'skills', 'managed-skill');
       symlinkSync(sourcePath, targetPath);
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const previouslyDeployed = scanner.getDeployedSkills('claude-code');
+      const previouslyDeployed = scanner.getDeployedSkills();
       const selectedSkillNames = ['managed-skill'];
 
       const toRemove = previouslyDeployed.filter(
@@ -97,16 +97,16 @@ describe('preserve-unmanaged-skills', () => {
 
   describe('unmanaged items survive init deployment', () => {
     it('unmanaged skill directory still exists after managed skill removal', () => {
-      const unmanagedPath = join(projectDir, '.claude', 'skills', 'user-created-skill');
+      const unmanagedPath = join(projectDir, '.agents', 'skills', 'user-created-skill');
       mkdirSync(unmanagedPath, { recursive: true });
       writeFileSync(join(unmanagedPath, 'SKILL.md'), '---\nname: user-created-skill\n---\n# User skill');
 
       const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'managed-skill');
-      const managedPath = join(projectDir, '.claude', 'skills', 'managed-skill');
+      const managedPath = join(projectDir, '.agents', 'skills', 'managed-skill');
       symlinkSync(sourcePath, managedPath);
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
-      const previouslyDeployed = scanner.getDeployedSkills('claude-code');
+      const previouslyDeployed = scanner.getDeployedSkills();
       const selectedSkillNames: string[] = [];
 
       const toRemove = previouslyDeployed.filter(
@@ -114,7 +114,7 @@ describe('preserve-unmanaged-skills', () => {
       );
 
       for (const skill of toRemove) {
-        rmSync(join(projectDir, '.claude', 'skills', skill.name), { recursive: true, force: true });
+        rmSync(join(projectDir, '.agents', 'skills', skill.name), { recursive: true, force: true });
       }
 
       expect(existsSync(unmanagedPath)).toBe(true);

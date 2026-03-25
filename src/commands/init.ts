@@ -6,7 +6,7 @@ import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { InitOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
-import { promptTools, promptMode, promptSkills } from '../utils/prompts.js';
+import { promptTools, promptSkills } from '../utils/prompts.js';
 
 export async function executeInit(options: InitOptions): Promise<void> {
   if (!fileExists(SKILLS_MANAGER_DIR)) {
@@ -25,36 +25,14 @@ export async function executeInit(options: InitOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Get configured tools for marking in prompt
   const configuredTools = scanner.getConfiguredTools();
 
-  // Prompt for tools
   const selectedTools = await promptTools(configuredTools);
 
-  // For each tool, handle mode-specific if needed
-  const toolModes: Record<string, string> = {};
-  for (const toolName of selectedTools) {
-    const config = TOOL_CONFIGS[toolName as ToolName];
-    if (config.supportsModeSpecific && config.availableModes) {
-      const mode = await promptMode(toolName, config.availableModes);
-      toolModes[toolName] = mode;
-    } else {
-      toolModes[toolName] = 'all';
-    }
-  }
+  const deployedSkills = scanner.getDeployedSkills();
+  const deployedSkillNames = deployedSkills.map((s) => s.name);
 
-  // Get currently deployed skills for each tool
-  const deployedSkillNames = new Set<string>();
-  for (const toolName of selectedTools) {
-    const deployed = scanner.getDeployedSkills(toolName as ToolName);
-    deployed.forEach((s) => deployedSkillNames.add(s.name));
-  }
-
-  // Prompt for skills
-  const selectedSkillNames = await promptSkills(
-    allSkills,
-    Array.from(deployedSkillNames)
-  );
+  const selectedSkillNames = await promptSkills(allSkills, deployedSkillNames);
 
   if (selectedSkillNames.length === 0) {
     console.log('No skills selected');
@@ -66,48 +44,66 @@ export async function executeInit(options: InitOptions): Promise<void> {
 
   console.log('\nDeploying...\n');
 
-  // Deploy to each tool
-  for (const toolName of selectedTools) {
+  // Deploy skills to .agents/skills/
+  const previousNames = new Set(deployedSkills.map((s) => s.name));
+  const toAdd = selectedSkills.filter((s) => !previousNames.has(s.name));
+  const toKeep = selectedSkills.filter((s) => previousNames.has(s.name));
+  const toRemove = deployedSkills.filter(
+    (s) => !selectedSkillNames.includes(s.name) && s.source !== 'unknown'
+  );
+  const unmanagedSkills = deployedSkills.filter((s) => s.source === 'unknown');
+
+  console.log('Skills (.agents/skills/):');
+
+  for (const skill of toRemove) {
+    deployer.removeSkill(skill.name);
+    console.log(`  ✗ ${skill.name} (removed)`);
+  }
+
+  for (const skill of toKeep) {
+    console.log(`  · ${skill.name} (unchanged)`);
+  }
+
+  for (const skill of toAdd) {
+    deployer.deploySkill(skill, deployMode);
+    console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+  }
+
+  for (const skill of unmanagedSkills) {
+    console.log(`  ~ ${skill.name} (unmanaged)`);
+  }
+
+  console.log();
+
+  // Handle symlink bridges
+  const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');
+
+  for (const toolName of selectedNonNativeTools) {
     const config = TOOL_CONFIGS[toolName as ToolName];
-    const mode = toolModes[toolName];
+    if (!config || config.native) continue;
 
-    console.log(`${config.displayName}:`);
-
-    const previouslyDeployed = scanner.getDeployedSkills(toolName as ToolName);
-    const previousNames = new Set(previouslyDeployed.map((s) => s.name));
-
-    const toAdd = selectedSkills.filter((s) => !previousNames.has(s.name));
-    const toKeep = selectedSkills.filter((s) => previousNames.has(s.name));
-    const toRemove = previouslyDeployed.filter(
-      (s) => !selectedSkillNames.includes(s.name) && s.source !== 'unknown'
-    );
-    const unmanagedSkills = previouslyDeployed.filter(
-      (s) => s.source === 'unknown'
-    );
-
-    for (const skill of toRemove) {
-      deployer.removeSkill(skill.name, config, mode);
-      console.log(`  ✗ ${skill.name} (removed)`);
+    const created = deployer.createSymlinkBridge(config);
+    if (created) {
+      console.log(`${config.displayName}: symlink ${config.symlinkDir} → .agents/skills`);
+    } else if (deployer.isSymlinkBridgeActive(config)) {
+      console.log(`${config.displayName}: symlink already active`);
     }
+  }
 
-    for (const skill of toKeep) {
-      console.log(`  · ${skill.name} (unchanged)`);
+  // Remove symlink bridges for deselected non-native tools
+  for (const toolName of configuredTools) {
+    const config = TOOL_CONFIGS[toolName];
+    if (config.native) continue;
+    if (selectedNonNativeTools.includes(toolName)) continue;
+
+    const removed = deployer.removeSymlinkBridge(config);
+    if (removed) {
+      console.log(`${config.displayName}: symlink removed`);
     }
-
-    for (const skill of toAdd) {
-      deployer.deploySkill(skill, config, deployMode, mode);
-      console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
-    }
-
-    for (const skill of unmanagedSkills) {
-      console.log(`  ~ ${skill.name} (unmanaged)`);
-    }
-
-    console.log();
   }
 
   console.log(
-    `Done! Deployed ${selectedSkillNames.length} skills to ${selectedTools.length} tool${selectedTools.length > 1 ? 's' : ''}.`
+    `\nDone! Deployed ${selectedSkillNames.length} skills.`
   );
 }
 

@@ -1,6 +1,6 @@
 import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { ToolName, SkillInfo } from '../types.js';
+import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS } from '../constants.js';
 import { interactiveCheckbox } from './interactive-select.js';
 
@@ -8,7 +8,6 @@ import { interactiveCheckbox } from './interactive-select.js';
  * Handle Ctrl+C gracefully during prompts
  */
 function handlePromptError(error: unknown): never {
-  // Check if it's an ExitPromptError (user pressed Ctrl+C)
   if (error && typeof error === 'object' && 'name' in error) {
     if (error.name === 'ExitPromptError') {
       console.log('\nCancelled.');
@@ -18,17 +17,35 @@ function handlePromptError(error: unknown): never {
   throw error;
 }
 
+const AGENTS_SKILLS_STANDARD_VALUE = 'agents-skills-standard';
+
 export async function promptTools(configuredTools?: string[]): Promise<string[]> {
-  const choices = SUPPORTED_TOOLS.map((tool) => {
-    const config = TOOL_CONFIGS[tool];
-    const isConfigured = configuredTools?.includes(tool);
-    return {
-      name: isConfigured ? `${config.displayName} [configured]` : config.displayName,
-      value: tool,
-      checked: isConfigured ?? false,
-      suffix: isConfigured ? '[configured]' : undefined,
-    };
-  });
+  const nativeTools = SUPPORTED_TOOLS.filter((t) => TOOL_CONFIGS[t].native);
+  const symlinkTools = SUPPORTED_TOOLS.filter((t) => !TOOL_CONFIGS[t].native);
+
+  const nativeNames = nativeTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
+  const hasNativeConfigured = configuredTools?.some((t) => TOOL_CONFIGS[t as keyof typeof TOOL_CONFIGS]?.native);
+
+  const choices = [
+    {
+      name: `Agents Skills Standard → ${nativeNames}`,
+      value: AGENTS_SKILLS_STANDARD_VALUE,
+      checked: hasNativeConfigured ?? false,
+      suffix: hasNativeConfigured ? '[configured]' : undefined,
+    },
+    ...symlinkTools.map((tool) => {
+      const config = TOOL_CONFIGS[tool];
+      const isConfigured = configuredTools?.includes(tool);
+      return {
+        name: isConfigured
+          ? `${config.displayName} (symlink: ${config.symlinkDir} → .agents/skills) [configured]`
+          : `${config.displayName} (symlink: ${config.symlinkDir} → .agents/skills)`,
+        value: tool,
+        checked: isConfigured ?? false,
+        suffix: isConfigured ? '[configured]' : undefined,
+      };
+    }),
+  ];
 
   return interactiveCheckbox({
     message: 'Select target tools:',
@@ -36,37 +53,10 @@ export async function promptTools(configuredTools?: string[]): Promise<string[]>
   });
 }
 
-export async function promptMode(toolName: string, modes: string[]): Promise<string> {
-  const config = TOOL_CONFIGS[toolName as ToolName];
-  const choices = [
-    { name: `All modes (${config.skillsDir}/)`, value: 'all' },
-    ...modes.map((mode) => ({
-      name: `${mode.charAt(0).toUpperCase() + mode.slice(1)} mode only (${config.skillsDir.replace('skills', `skills-${mode}`)}/)`,
-      value: mode,
-    })),
-  ];
-
-  try {
-    const { mode } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'mode',
-        message: `Select target mode for ${config.displayName}:`,
-        choices,
-      },
-    ]);
-
-    return mode;
-  } catch (error) {
-    handlePromptError(error);
-  }
-}
-
 export async function promptSkills(
   skills: SkillInfo[],
   deployedSkillNames: string[] = []
 ): Promise<string[]> {
-  // Group skills by source and build choices
   const grouped: Record<string, SkillInfo[]> = {};
   for (const skill of skills) {
     if (!grouped[skill.source]) {

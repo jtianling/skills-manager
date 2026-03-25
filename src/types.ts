@@ -15,26 +15,14 @@ export interface DeployedSkill {
   deployMode: 'link' | 'copy';
 }
 
-export interface ToolDeployment {
-  targetDir: string;
-  mode: string; // "all" or specific mode like "code", "architect"
-  deployedAt: string;
-  skills: DeployedSkill[];
-}
-
-export interface ProjectMetadata {
-  version: string;
-  tools: Record<string, ToolDeployment>;
-}
 
 export interface ToolConfig {
   name: ToolName;
   displayName: string;
   skillsDir: string;
   supportsLink: boolean;
-  supportsModeSpecific: boolean;
-  modePattern?: string;
-  availableModes?: string[];
+  native: boolean;
+  symlinkDir?: string;
 }
 
 export interface InstallOptions {
@@ -47,12 +35,7 @@ export interface InitOptions {
 }
 
 export interface AddOptions {
-  tool?: string;
   copy?: boolean;
-}
-
-export interface RemoveOptions {
-  tool?: string;
 }
 
 export interface ListOptions {

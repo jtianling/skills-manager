@@ -1,93 +1,97 @@
 import { ToolConfig, ToolName } from '../types.js';
 
+export const AGENTS_SKILLS_DIR = '.agents/skills';
+
 export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
   'claude-code': {
     name: 'claude-code',
     displayName: 'Claude Code',
-    skillsDir: '.claude/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: false,
+    symlinkDir: '.claude/skills',
   },
   'codex': {
     name: 'codex',
     displayName: 'Codex',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'gemini-cli': {
     name: 'gemini-cli',
     displayName: 'Gemini CLI',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'opencode': {
     name: 'opencode',
     displayName: 'OpenCode',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'openclaw': {
     name: 'openclaw',
     displayName: 'OpenClaw',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'antigravity': {
     name: 'antigravity',
     displayName: 'Antigravity',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'cline': {
     name: 'cline',
     displayName: 'Cline',
-    skillsDir: '.agents/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: true,
   },
   'cursor': {
     name: 'cursor',
     displayName: 'Cursor',
-    skillsDir: '.cursor/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: false,
+    symlinkDir: '.cursor/skills',
   },
   'kilo-code': {
     name: 'kilo-code',
     displayName: 'Kilo Code',
-    skillsDir: '.kilocode/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: true,
-    modePattern: 'skills-{mode}',
-    availableModes: ['code', 'architect'],
+    native: false,
+    symlinkDir: '.kilocode/skills',
   },
   'roo-code': {
     name: 'roo-code',
     displayName: 'Roo Code',
-    skillsDir: '.roo/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: true,
-    modePattern: 'skills-{mode}',
-    availableModes: ['code', 'architect'],
+    native: false,
+    symlinkDir: '.roo/skills',
   },
   'trae': {
     name: 'trae',
     displayName: 'Trae',
-    skillsDir: '.trae/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: false,
+    symlinkDir: '.trae/skills',
   },
   'windsurf': {
     name: 'windsurf',
     displayName: 'Windsurf',
-    skillsDir: '.windsurf/skills',
+    skillsDir: AGENTS_SKILLS_DIR,
     supportsLink: true,
-    supportsModeSpecific: false,
+    native: false,
+    symlinkDir: '.windsurf/skills',
   },
 };
 
@@ -95,10 +99,6 @@ export function getToolConfig(name: string): ToolConfig | undefined {
   return TOOL_CONFIGS[name as ToolName];
 }
 
-export function getTargetDir(config: ToolConfig, mode?: string): string {
-  if (config.supportsModeSpecific && mode && mode !== 'all' && config.modePattern) {
-    const baseDir = config.skillsDir.split('/').slice(0, -1).join('/');
-    return `${baseDir}/${config.modePattern.replace('{mode}', mode)}`;
-  }
-  return config.skillsDir;
+export function getTargetDir(): string {
+  return AGENTS_SKILLS_DIR;
 }

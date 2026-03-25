@@ -31,7 +31,6 @@ async function listAvailable(): Promise<void> {
 
   console.log('Available in ~/.skills-manager/:\n');
 
-  // Group skills by source
   const grouped: Record<string, typeof skills> = {};
   for (const skill of skills) {
     if (!grouped[skill.source]) {
@@ -51,33 +50,45 @@ async function listAvailable(): Promise<void> {
 
 async function listDeployed(): Promise<void> {
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
-  const deployments = scanner.scanAllTools();
+  const skills = scanner.getDeployedSkills();
 
-  if (deployments.length === 0) {
+  if (skills.length === 0) {
     console.log('No skills deployed in current project.');
     console.log('\nRun: skillsmgr init');
     return;
   }
 
-  console.log('Deployed in current project:\n');
+  console.log('Deployed in current project (.agents/skills/):\n');
 
-  for (const deployment of deployments) {
-    const config = TOOL_CONFIGS[deployment.toolName];
-    const displayName = config?.displayName || deployment.toolName;
-    const dirSuffix = deployment.mode && deployment.mode !== 'all' ? ` [${deployment.mode}]` : '';
-
-    console.log(`${displayName} skills (${deployment.targetDir}/)${dirSuffix}:`);
-
-    for (const skill of deployment.skills) {
-      const modeStr = skill.deployMode === 'link' ? 'link' : 'copy';
-      if (skill.conflict) {
-        console.log(`  ⚠ ${skill.name.padEnd(16)} (${modeStr}) ← conflict`);
-      } else {
-        console.log(`  ◉ ${skill.name.padEnd(16)} (${modeStr}) ← ${skill.source}`);
-      }
+  for (const skill of skills) {
+    const modeStr = skill.deployMode === 'link' ? 'link' : 'copy';
+    if (skill.conflict) {
+      console.log(`  ⚠ ${skill.name.padEnd(16)} (${modeStr}) ← conflict`);
+    } else {
+      console.log(`  ◉ ${skill.name.padEnd(16)} (${modeStr}) ← ${skill.source}`);
     }
-    console.log();
   }
+
+  console.log();
+
+  // Show configured tools
+  const configuredTools = scanner.getConfiguredTools();
+  const nativeTools = configuredTools.filter((t) => TOOL_CONFIGS[t].native);
+  const symlinkTools = configuredTools.filter((t) => !TOOL_CONFIGS[t].native);
+
+  console.log('Configured tools:');
+
+  if (nativeTools.length > 0) {
+    const names = nativeTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
+    console.log(`  Agents Skills Standard → ${names}`);
+  }
+
+  for (const toolName of symlinkTools) {
+    const config = TOOL_CONFIGS[toolName];
+    console.log(`  ${config.displayName} (symlink: ${config.symlinkDir} → .agents/skills)`);
+  }
+
+  console.log();
 }
 
 export const listCommand = new Command('list')

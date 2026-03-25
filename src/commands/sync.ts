@@ -4,7 +4,6 @@ import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { SkillsService } from '../services/skills.js';
-import { TOOL_CONFIGS } from '../tools/configs.js';
 import { fileExists, isSymlink, readFileContent } from '../utils/fs.js';
 import { promptSyncAction, promptOrphanAction } from '../utils/prompts.js';
 
@@ -18,117 +17,100 @@ export async function executeSync(): Promise<void> {
   const deployer = new Deployer(process.cwd());
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
 
-  const deployments = scanner.scanAllTools();
+  const deployedSkills = scanner.getDeployedSkills();
 
-  if (deployments.length === 0) {
+  if (deployedSkills.length === 0) {
     console.log('No skills deployed in current project.');
     process.exit(1);
   }
 
-  console.log('Checking deployed skills...\n');
+  console.log('Checking deployed skills (.agents/skills/)...\n');
 
   let updatedCount = 0;
   let removedCount = 0;
 
-  for (const deployment of deployments) {
-    const config = TOOL_CONFIGS[deployment.toolName];
-    const mode = deployment.mode || 'all';
+  for (const skill of deployedSkills) {
+    if (skill.source === 'unknown' && !skill.conflict) {
+      console.log(`  ~ ${skill.name} (unmanaged)`);
+      continue;
+    }
 
-    console.log(`${config.displayName} (${deployment.targetDir}/):`);
+    if (skill.conflict) {
+      console.log(`  ⚠ ${skill.name}: conflict (skipped)`);
+      continue;
+    }
 
-    for (const skill of deployment.skills) {
-      if (skill.source === 'unknown' && !skill.conflict) {
-        console.log(`  ~ ${skill.name} (unmanaged)`);
-        continue;
+    const deployedPath = skill.path;
+
+    let sourcePath: string | null = null;
+    if (skill.source !== 'unknown') {
+      const sourceSkill = skillsService.getSkillByName(skill.name);
+      if (sourceSkill) {
+        sourcePath = sourceSkill.path;
       }
+    }
 
-      if (skill.conflict) {
-        console.log(`  ⚠ ${skill.name}: conflict (skipped)`);
-        continue;
+    if (!sourcePath || !fileExists(sourcePath)) {
+      console.log(`  ✗ ${skill.name}: orphaned (source not found)`);
+      const action = await promptOrphanAction(skill.name);
+      if (action === 'remove') {
+        deployer.removeSkill(skill.name);
+        console.log(`  ✓ Removed ${skill.name}`);
+        removedCount++;
       }
+      continue;
+    }
 
-      const deployedPath = skill.path;
+    if (isSymlink(deployedPath)) {
+      console.log(`  ✓ ${skill.name}: up to date (link)`);
+      continue;
+    }
 
-      // Try to find source path
-      let sourcePath: string | null = null;
-      if (skill.source !== 'unknown') {
-        const sourceSkill = skillsService.getSkillByName(skill.name);
-        if (sourceSkill) {
-          sourcePath = sourceSkill.path;
-        }
-      }
+    if (skill.deployMode === 'copy') {
+      const sourceSkillMd = join(sourcePath, 'SKILL.md');
+      const deployedSkillMd = join(deployedPath, 'SKILL.md');
 
-      // Check if source still exists
-      if (!sourcePath || !fileExists(sourcePath)) {
-        console.log(`  ✗ ${skill.name}: orphaned (source not found)`);
-        const action = await promptOrphanAction(skill.name);
-        if (action === 'remove') {
-          deployer.removeSkill(skill.name, config, mode);
-          console.log(`  ✓ Removed ${skill.name}`);
-          removedCount++;
-        }
-        continue;
-      }
+      if (fileExists(sourceSkillMd) && fileExists(deployedSkillMd)) {
+        const sourceContent = readFileContent(sourceSkillMd);
+        const deployedContent = readFileContent(deployedSkillMd);
 
-      // Check symlink status
-      if (isSymlink(deployedPath)) {
-        console.log(`  ✓ ${skill.name}: up to date (link)`);
-        continue;
-      }
+        if (sourceContent !== deployedContent) {
+          console.log(`  ⚠ ${skill.name}: source changed (copy)`);
+          const action = await promptSyncAction(skill.name);
 
-      // For copied files, check if content changed
-      if (skill.deployMode === 'copy') {
-        const sourceSkillMd = join(sourcePath, 'SKILL.md');
-        const deployedSkillMd = join(deployedPath, 'SKILL.md');
+          if (action === 'diff') {
+            console.log('\n--- local');
+            console.log(deployedContent.slice(0, 500));
+            console.log('\n+++ source');
+            console.log(sourceContent.slice(0, 500));
+            console.log();
 
-        if (fileExists(sourceSkillMd) && fileExists(deployedSkillMd)) {
-          const sourceContent = readFileContent(sourceSkillMd);
-          const deployedContent = readFileContent(deployedSkillMd);
-
-          if (sourceContent !== deployedContent) {
-            console.log(`  ⚠ ${skill.name}: source changed (copy)`);
-            const action = await promptSyncAction(skill.name);
-
-            if (action === 'diff') {
-              console.log('\n--- local');
-              console.log(deployedContent.slice(0, 500));
-              console.log('\n+++ source');
-              console.log(sourceContent.slice(0, 500));
-              console.log();
-
-              const finalAction = await promptSyncAction(skill.name);
-              if (finalAction === 'overwrite') {
-                deployer.deploySkill(
-                  { name: skill.name, description: '', path: sourcePath, source: skill.source },
-                  config,
-                  'copy',
-                  mode
-                );
-                console.log(`  ✓ Updated ${skill.name}`);
-                updatedCount++;
-              }
-            } else if (action === 'overwrite') {
+            const finalAction = await promptSyncAction(skill.name);
+            if (finalAction === 'overwrite') {
               deployer.deploySkill(
                 { name: skill.name, description: '', path: sourcePath, source: skill.source },
-                config,
-                'copy',
-                mode
+                'copy'
               );
               console.log(`  ✓ Updated ${skill.name}`);
               updatedCount++;
             }
-          } else {
-            console.log(`  ✓ ${skill.name}: up to date (copy)`);
+          } else if (action === 'overwrite') {
+            deployer.deploySkill(
+              { name: skill.name, description: '', path: sourcePath, source: skill.source },
+              'copy'
+            );
+            console.log(`  ✓ Updated ${skill.name}`);
+            updatedCount++;
           }
+        } else {
+          console.log(`  ✓ ${skill.name}: up to date (copy)`);
         }
       }
     }
-
-    console.log();
   }
 
   console.log(
-    `Sync complete: ${updatedCount} updated, ${removedCount} removed`
+    `\nSync complete: ${updatedCount} updated, ${removedCount} removed`
   );
 }
 
