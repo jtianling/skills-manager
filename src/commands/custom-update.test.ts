@@ -86,6 +86,57 @@ describe('custom-update command', () => {
     expect(fileExists(fakeSkillsManagerDir)).toBe(false);
   });
 
+  it('derives skill name from relative path via basename', async () => {
+    // Arrange: source at a nested relative-like path, installed as just the name
+    createSourceSkill('path-skill', '---\nname: path-skill\n---\n# Via Path');
+    createInstalledSkill('path-skill', '---\nname: path-skill\n---\n# Old');
+
+    const { copyDir, removeDir, fileExists } = await import('../utils/fs.js');
+    const { basename, resolve } = await import('path');
+
+    // Simulate: user passes "./path-skill" — resolve + basename extracts "path-skill"
+    const userArg = './path-skill';
+    const skillDir = resolve(fakeProjectDir, userArg);
+    const skillName = basename(skillDir);
+    const targetDir = join(fakeSkillsManagerDir, 'custom', skillName);
+
+    expect(skillName).toBe('path-skill');
+    expect(fileExists(join(skillDir, 'SKILL.md'))).toBe(true);
+    expect(fileExists(targetDir)).toBe(true);
+
+    removeDir(targetDir);
+    copyDir(skillDir, targetDir);
+
+    const content = readFileSync(join(targetDir, 'SKILL.md'), 'utf-8');
+    expect(content).toContain('# Via Path');
+  });
+
+  it('derives skill name from absolute path via basename', async () => {
+    // Arrange: source at an absolute path
+    const absSourceDir = join(testDir, 'elsewhere', 'abs-skill');
+    mkdirSync(absSourceDir, { recursive: true });
+    writeFileSync(join(absSourceDir, 'SKILL.md'), '---\nname: abs-skill\n---\n# Absolute');
+    createInstalledSkill('abs-skill', '---\nname: abs-skill\n---\n# Old');
+
+    const { copyDir, removeDir, fileExists } = await import('../utils/fs.js');
+    const { basename, resolve } = await import('path');
+
+    // Simulate: user passes absolute path
+    const userArg = absSourceDir;
+    const skillDir = resolve(fakeProjectDir, userArg);
+    const skillName = basename(skillDir);
+    const targetDir = join(fakeSkillsManagerDir, 'custom', skillName);
+
+    expect(skillName).toBe('abs-skill');
+    expect(fileExists(join(skillDir, 'SKILL.md'))).toBe(true);
+
+    removeDir(targetDir);
+    copyDir(skillDir, targetDir);
+
+    const content = readFileSync(join(targetDir, 'SKILL.md'), 'utf-8');
+    expect(content).toContain('# Absolute');
+  });
+
   it('does not prompt for confirmation during update', async () => {
     // Arrange
     createSourceSkill('no-prompt-skill', '---\nname: no-prompt-skill\n---\n# V2');
