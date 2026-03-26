@@ -1,6 +1,22 @@
 import * as readline from 'readline';
 import { Writable } from 'stream';
 
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
+
+function stripAnsi(str: string): string {
+  return str.replace(ANSI_REGEX, '');
+}
+
+function countPhysicalLines(lines: string[], columns: number): number {
+  let total = 0;
+  for (const line of lines) {
+    const visible = stripAnsi(line).length;
+    total += visible === 0 ? 1 : Math.ceil(visible / columns);
+  }
+  return total;
+}
+
 /**
  * Wrap text to fit within maxWidth, breaking at word boundaries
  */
@@ -271,7 +287,8 @@ export async function interactiveCheckbox(
       }
 
       console.log(lines.join('\n'));
-      lastRenderedLines = lines.length;
+      const termColumns = process.stdout.columns || 80;
+      lastRenderedLines = countPhysicalLines(lines, termColumns);
     };
 
     render(true);
