@@ -9,6 +9,7 @@ import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { syncCommand } from './commands/sync.js';
 import { customInstallCommand } from './commands/custom-install.js';
+import { customUpdateCommand } from './commands/custom-update.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -29,5 +30,6 @@ program.addCommand(addCommand);
 program.addCommand(removeCommand);
 program.addCommand(syncCommand);
 program.addCommand(customInstallCommand);
+program.addCommand(customUpdateCommand);
 
 program.parse();

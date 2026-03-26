@@ -6,3 +6,4 @@ dist/
 .agents/
 AGENTS.md
 CLAUDE.md
+.e2e-test/
