@@ -1,0 +1,10 @@
+schema: spec-driven
+
+context: |
+  Tech stack: TypeScript, Node.js, Commander.js, Inquirer.js
+  Build: tsup
+  Test: vitest
+  Package: skillsmgr (npm)
+  Type: CLI tool - unified skills manager for AI coding tools
+  Supports 12 tools with unified .agents/skills/ deployment + symlink bridges
+  Specs are written in Chinese

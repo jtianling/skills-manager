@@ -6,7 +6,7 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 程序名: `skillsmgr`
 框架: Commander.js
-版本: package.json 中定义 (当前 0.7.0), `index.ts` 中同步设置
+版本: package.json 中定义 (当前 0.8.0), `index.ts` 中同步设置
 
 | 命令 | 别名 | 参数 | 选项 | 说明 |
 |------|------|------|------|------|
@@ -16,8 +16,8 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | update | - | [source] (可选) | - | Update installed skills to latest version |
 | list | - | - | --deployed | List available or deployed skills |
 | init | - | - | --copy | Deploy skills to current project |
-| add | - | \<name\> (必填) | --tool \<tool\>, --copy | Add a skill to the project |
-| remove | - | \<name\> (必填) | --tool \<tool\> | Remove a skill from the project |
+| add | - | \<name\> (必填) | --copy | Add a skill to the project |
+| remove | - | \<name\> (必填) | - | Remove a skill from the project |
 | sync | - | - | Sync and verify deployed skills |
 
 #### Scenario: CLI help shows skills-only descriptions
@@ -81,24 +81,6 @@ The `install` command SHALL have alias `i`.
 - 已配置的工具标记 "[configured]" 并默认选中 (`checked: true`)
 - 导航不循环: 在第一个选项时按上键不动, 在最后一个选项时按下键不动
 - 选中结果: 返回 `string[]` (工具标识符)
-
-### 模式选择 (promptMode)
-
-类型: inquirer list
-触发: `init` 命令, 仅对支持 mode 的工具 (Roo Code, Kilo Code)
-
-显示:
-```
-? Select target mode for Roo Code:
-❯ All modes (.roo/skills/)
-  Code mode only (.roo/skills-code/)
-  Architect mode only (.roo/skills-architect/)
-```
-
-行为:
-- 第一项固定为 "All modes" (value: "all"), 显示基础 skillsDir 路径
-- 后续项为各 mode, 显示名称首字母大写, 路径中 skills 替换为 skills-{mode}
-- 路径显示通过字符串替换: `config.skillsDir.replace('skills', 'skills-{mode}')`
 
 ### Skill 选择 (interactiveCheckbox)
 
@@ -502,29 +484,33 @@ Fetching skill info ████████░░░░░░░░░░░░
 ```
 Deploying...
 
-Claude Code:
+Skills (.agents/skills/):
   ✗ old-skill (removed)
   · existing-skill (unchanged)
   ✓ new-skill (linked)
+  ~ unmanaged-skill (unmanaged)
 
-Done! Deployed 3 skills to 2 tools.
+Claude Code: symlink .claude/skills → .agents/skills
+
+Done! Deployed 3 skills.
 ```
 
 #### Scenario: init completion message
 - **WHEN** init 部署完成
-- **THEN** 输出 "Done! Deployed N skills to M tools.", 不再有 "and K commands" 部分
+- **THEN** 输出 "Done! Deployed N skills."
 
 `add` 命令:
 ```
-Adding skill code-review to configured tools...
-  ✓ Claude Code (linked)
-  · Cursor (already deployed)
+  ✓ code-review (linked)
+```
+或已部署时:
+```
+  · code-review (already deployed)
 ```
 
 `remove` 命令:
 ```
-Removing code-review...
-  ✓ Removed skill from Claude Code
+  ✓ Removed code-review
 ```
 
 ### 列表输出格式
@@ -551,20 +537,23 @@ Available in ~/.skills-manager/:
 
 **已部署列表** (`list --deployed`):
 ```
-Deployed in current project:
+Deployed in current project (.agents/skills/):
 
-Claude Code skills (.claude/skills/):
   ◉ code-review      (link) ← official/anthropic
   ⚠ my-skill         (copy) ← conflict
+
+Configured tools:
+  Agents Skills Standard → Codex, Gemini CLI, OpenCode
+  Claude Code (symlink: .claude/skills → .agents/skills)
 ```
 
 - skill 名称 padEnd(16) 对齐
-- mode-specific 部署显示 `[mode]` 后缀
 - conflict 状态用 ⚠ 前缀, source 显示 "conflict"
+- Configured tools 分两组: native 工具聚合显示, non-native 工具单独显示 symlink 信息
 
-#### Scenario: list deployed shows only skills
+#### Scenario: list deployed shows skills and configured tools
 - **WHEN** 执行 `list --deployed`
-- **THEN** 只显示各工具的 skill 部署状态, 不显示 commands 部分
+- **THEN** 先显示 `.agents/skills/` 中的 skill 列表, 再显示 configured tools 信息
 
 #### Scenario: list deployed empty state
 - **WHEN** 没有已部署 skill
@@ -631,9 +620,7 @@ Downloading 3 skills...
 | init | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
 | add | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | add | name 匹配到 skill | process.exit(1), 提示 "'name' not found" |
-| add (无 --tool) | 有已配置工具 | process.exit(1), 提示 "Run: skillsmgr init" |
-| add (有 --tool) | tool 名称有效 | process.exit(1), 提示 "Unknown tool: name" |
-| remove (有 --tool) | tool 名称有效 | process.exit(1), 提示 "Unknown tool: name" |
+| add | 有已配置工具 | process.exit(1), 提示 "No tools configured. Run: skillsmgr init" |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
 | sync | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
@@ -763,16 +750,9 @@ Downloading 3 skills...
 - test_promptTools_orderMatchesSupportedTools: 工具显示顺序与 SUPPORTED_TOOLS 一致
 - test_promptTools_emptySelection_showsValidationError: 不选择任何工具时显示验证错误
 
-### promptMode
-
-- test_promptMode_showsAllAsFirstOption: "All modes" 作为第一个选项
-- test_promptMode_showsModesWithUppercase: mode 名称首字母大写
-- test_promptMode_showsCorrectPaths: 每个选项显示对应的目录路径
-
 ### 前置条件
 
 - test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1)
 - test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (init 命令)
 - test_precondition_noConfiguredTools_exits: 无已配置工具时 exit(1) (add 命令)
-- test_precondition_unknownTool_exits: --tool 指定不存在的工具时 exit(1)
 - test_precondition_skillNotFound_exits: add 命令找不到 skill 时 exit(1)
