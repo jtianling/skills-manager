@@ -129,14 +129,14 @@ export async function promptSkillsToInstall(
   });
 }
 
-export async function promptConfirm(message: string): Promise<boolean> {
+export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {
   try {
     const { confirmed } = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirmed',
         message,
-        default: true,
+        default: defaultValue,
       },
     ]);
 

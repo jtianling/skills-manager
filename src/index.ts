@@ -10,6 +10,7 @@ import { removeCommand } from './commands/remove.js';
 import { syncCommand } from './commands/sync.js';
 import { customInstallCommand } from './commands/custom-install.js';
 import { customUpdateCommand } from './commands/custom-update.js';
+import { uninstallCommand } from './commands/uninstall.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -31,5 +32,6 @@ program.addCommand(removeCommand);
 program.addCommand(syncCommand);
 program.addCommand(customInstallCommand);
 program.addCommand(customUpdateCommand);
+program.addCommand(uninstallCommand);
 
 program.parse();
