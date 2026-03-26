@@ -70,18 +70,21 @@ export class SkillsService {
         }
       }
     } else if (sourcePrefix === 'official') {
-      // official/{providerKey}/{skill-name}/
+      // official/{providerKey}/{repoName}/{skill-name}/
       const providerDirs = getDirectoriesInDir(sourceDir);
       for (const providerDir of providerDirs) {
-        const skillsSubdir = join(providerDir.path, 'skills');
-        const searchDir = fileExists(skillsSubdir) ? skillsSubdir : providerDir.path;
+        const repoDirs = getDirectoriesInDir(providerDir.path);
+        for (const repoDir of repoDirs) {
+          const skillsSubdir = join(repoDir.path, 'skills');
+          const searchDir = fileExists(skillsSubdir) ? skillsSubdir : repoDir.path;
 
-        const skillDirs = getDirectoriesInDir(searchDir);
-        for (const skillDir of skillDirs) {
-          const source = `${sourcePrefix}/${providerDir.name}`;
-          const skill = this.loadSkill(skillDir.path, source);
-          if (skill) {
-            skills.push(skill);
+          const skillDirs = getDirectoriesInDir(searchDir);
+          for (const skillDir of skillDirs) {
+            const source = `${sourcePrefix}/${providerDir.name}/${repoDir.name}`;
+            const skill = this.loadSkill(skillDir.path, source);
+            if (skill) {
+              skills.push(skill);
+            }
           }
         }
       }

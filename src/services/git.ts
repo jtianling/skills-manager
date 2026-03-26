@@ -14,11 +14,11 @@ export class GitService {
   clone(url: string, isCustom: boolean = false): string {
     const repoName = this.extractRepoName(url);
     const ownerName = this.extractOwnerName(url);
-    const officialKey = ownerName ? findOfficialProvider(ownerName, repoName) : null;
+    const officialMatch = ownerName ? findOfficialProvider(ownerName, repoName) : null;
 
     let targetDir: string;
-    if (officialKey) {
-      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialKey);
+    if (officialMatch) {
+      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repoName);
     } else if (isCustom) {
       targetDir = join(SKILLS_MANAGER_DIR, 'custom', repoName);
     } else {
@@ -61,11 +61,11 @@ export class GitService {
     const skillName = basename(skillPath);
     const repoUrl = `https://github.com/${owner}/${repo}`;
 
-    const officialKey = findOfficialProvider(owner, repo);
+    const officialMatch = findOfficialProvider(owner, repo);
 
     let targetDir: string;
-    if (officialKey) {
-      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialKey);
+    if (officialMatch) {
+      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repo);
     } else if (isCustom) {
       targetDir = join(SKILLS_MANAGER_DIR, 'custom', repo);
     } else {

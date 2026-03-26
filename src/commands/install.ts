@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { SKILLS_MANAGER_DIR, OFFICIAL_PROVIDERS, findOfficialProvider } from '../constants.js';
+import { SKILLS_MANAGER_DIR, OFFICIAL_PROVIDERS, findOfficialProvider, resolveProviderAlias } from '../constants.js';
+import type { OfficialProviderRepo } from '../constants.js';
 import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService } from '../services/sources.js';
@@ -9,6 +10,7 @@ import { mkdirSync, readdirSync, renameSync } from 'fs';
 import { fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
+import { interactiveCheckbox } from '../utils/interactive-select.js';
 
 const sourcesService = new SourcesService();
 
@@ -34,25 +36,23 @@ function parseMdDescription(content: string): string {
   return parseMdFrontmatter(content).description ?? '';
 }
 
-/**
- * Install skills from an official provider using GitHub API
- */
-async function installFromOfficial(providerKey: string, options: InstallOptions): Promise<void> {
-  const provider = OFFICIAL_PROVIDERS[providerKey];
-  const githubService = new GitHubService();
-  const { owner, repo } = provider;
-
-  console.log(`Fetching available skills from ${owner}/${repo}...`);
+async function fetchSkillsFromRepo(
+  githubService: GitHubService,
+  owner: string,
+  repoConfig: OfficialProviderRepo,
+): Promise<Array<{ name: string; description: string; path: string; repoName: string }>> {
+  const { repo, skillsPath } = repoConfig;
+  const skills: Array<{ name: string; description: string; path: string; repoName: string }> = [];
 
   let skillsList: Array<{ name: string; path: string }> = [];
 
-  if (provider.skillsPath) {
-    skillsList = await githubService.listSkills(owner, repo, provider.skillsPath);
+  if (skillsPath) {
+    skillsList = await githubService.listSkills(owner, repo, skillsPath);
   } else {
     const skillsPaths = ['skills', '.', 'src/skills'];
-    for (const skillsPath of skillsPaths) {
+    for (const sp of skillsPaths) {
       try {
-        skillsList = await githubService.listSkills(owner, repo, skillsPath);
+        skillsList = await githubService.listSkills(owner, repo, sp);
         if (skillsList.length > 0) break;
       } catch {
         continue;
@@ -60,17 +60,9 @@ async function installFromOfficial(providerKey: string, options: InstallOptions)
     }
   }
 
+  if (skillsList.length === 0) return skills;
+
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
-  const targetBase = join(SKILLS_MANAGER_DIR, 'official', providerKey);
-
-  if (skillsList.length === 0) {
-    console.error('Error: No skills found in repository');
-    process.exit(1);
-  }
-
-  const skills: Array<{ name: string; description: string; path: string }> = [];
-  const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
-  progress.start();
 
   for (const skill of skillsList) {
     try {
@@ -80,7 +72,7 @@ async function installFromOfficial(providerKey: string, options: InstallOptions)
       if (response.ok) {
         const content = await response.text();
         const description = parseMdDescription(content);
-        skills.push({ name: skill.name, description, path: skill.path });
+        skills.push({ name: skill.name, description, path: skill.path, repoName: repo });
       } else {
         const subDirs = await githubService.listSkills(owner, repo, skill.path);
         for (const sub of subDirs) {
@@ -91,7 +83,7 @@ async function installFromOfficial(providerKey: string, options: InstallOptions)
             if (subResponse.ok) {
               const content = await subResponse.text();
               const description = parseMdDescription(content);
-              skills.push({ name: sub.name, description, path: sub.path });
+              skills.push({ name: sub.name, description, path: sub.path, repoName: repo });
             }
           } catch {
             // Skip nested dirs without SKILL.md
@@ -99,53 +91,101 @@ async function installFromOfficial(providerKey: string, options: InstallOptions)
         }
       }
     } catch {
-      skills.push({ name: skill.name, description: '', path: skill.path });
+      skills.push({ name: skill.name, description: '', path: skill.path, repoName: repo });
     }
-    progress.tick();
   }
 
-  progress.complete();
+  return skills;
+}
 
-  if (skills.length === 0) {
+/**
+ * Install skills from an official provider using GitHub API
+ */
+async function installFromOfficial(
+  providerKey: string,
+  options: InstallOptions,
+  targetRepo?: string,
+): Promise<void> {
+  const provider = OFFICIAL_PROVIDERS[providerKey];
+  const githubService = new GitHubService();
+  const { owner } = provider;
+
+  const reposToFetch = targetRepo
+    ? provider.repos.filter((r) => r.repo === targetRepo)
+    : provider.repos;
+
+  const allSkills: Array<{ name: string; description: string; path: string; repoName: string }> = [];
+
+  for (const repoConfig of reposToFetch) {
+    console.log(`Fetching available skills from ${owner}/${repoConfig.repo}...`);
+    try {
+      const repoSkills = await fetchSkillsFromRepo(githubService, owner, repoConfig);
+      allSkills.push(...repoSkills);
+    } catch (error) {
+      console.log(`  Warning: Failed to fetch from ${owner}/${repoConfig.repo}, skipping`);
+      if (reposToFetch.length === 1) {
+        console.error('Error: No skills found in repository');
+        process.exit(1);
+      }
+    }
+  }
+
+  if (allSkills.length === 0) {
     console.error('Error: No skills found in repository');
     process.exit(1);
   }
 
-  console.log(`Found ${skills.length} skills.\n`);
+  console.log(`Found ${allSkills.length} skills.\n`);
 
-  let selectedSkills = skills;
+  let selectedSkills = allSkills;
 
   if (!options.all) {
-    const selectedNames = await promptSkillsToInstall(skills);
+    const choices = allSkills.map((s) => ({
+      name: s.name,
+      description: s.description,
+      value: s.name,
+      subGroup: s.repoName,
+    }));
+
+    const selectedNames = await interactiveCheckbox({
+      message: 'Select skills to install:',
+      choices,
+      pageSize: 15,
+    });
+
     if (selectedNames.length === 0) {
       console.log('No skills selected');
       return;
     }
-    selectedSkills = skills.filter((s) => selectedNames.includes(s.name));
+    selectedSkills = allSkills.filter((s) => selectedNames.includes(s.name));
   }
 
   console.log(`\nDownloading ${selectedSkills.length} skills...`);
 
+  const installedRepos = new Set<string>();
+  const allScriptFiles: string[] = [];
+
   for (const skill of selectedSkills) {
+    const targetBase = join(SKILLS_MANAGER_DIR, 'official', providerKey, skill.repoName);
     const targetDir = join(targetBase, skill.name);
     process.stdout.write(`  ${skill.name}...`);
-    await githubService.downloadSkill(owner, repo, skill.path, targetDir);
+    await githubService.downloadSkill(owner, skill.repoName, skill.path, targetDir);
     console.log(' ✓');
+    allScriptFiles.push(...findScriptFiles(targetDir));
+    installedRepos.add(skill.repoName);
   }
 
-  const allScriptFiles: string[] = [];
-  for (const skill of selectedSkills) {
-    allScriptFiles.push(...findScriptFiles(join(targetBase, skill.name)));
-  }
   warnScriptFiles(allScriptFiles);
 
-  console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
+  console.log(`\n✓ Installed ${selectedSkills.length} skills to ${join(SKILLS_MANAGER_DIR, 'official', providerKey)}`);
 
-  sourcesService.addSource(`official/${providerKey}`, {
-    url: `https://github.com/${owner}/${repo}`,
-    type: 'official',
-    repoName: providerKey,
-  });
+  for (const repoName of installedRepos) {
+    sourcesService.addSource(`official/${providerKey}/${repoName}`, {
+      url: `https://github.com/${owner}/${repoName}`,
+      type: 'official',
+      repoName,
+    });
+  }
 }
 
 /**
@@ -163,7 +203,7 @@ async function installFromGitHubUrl(
   }
 
   const { owner, repo, path } = parsed;
-  const officialKey = findOfficialProvider(owner, repo);
+  const officialMatch = findOfficialProvider(owner, repo);
 
   // If it's a specific skill path (e.g., /tree/main/skills/code-review)
   if (path) {
@@ -197,8 +237,8 @@ async function installFromGitHubUrl(
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
 
   let targetBase: string;
-  if (officialKey) {
-    targetBase = join(SKILLS_MANAGER_DIR, 'official', officialKey);
+  if (officialMatch) {
+    targetBase = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repo);
   } else if (options.custom) {
     targetBase = join(SKILLS_MANAGER_DIR, 'custom', repo);
   } else {
@@ -224,15 +264,15 @@ async function installFromGitHubUrl(
 
       console.log(`\n✓ Installed 1 skill to ${targetBase}`);
 
-      const sourceKey = officialKey
-        ? `official/${officialKey}`
+      const sourceKey = officialMatch
+        ? `official/${officialMatch.providerKey}/${repo}`
         : options.custom
           ? `custom/${repo}`
           : `community/${owner}/${repo}`;
       sourcesService.addSource(sourceKey, {
         url: `https://github.com/${owner}/${repo}`,
-        type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
-        repoName: officialKey || repo,
+        type: officialMatch ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: repo,
       });
       return true;
     }
@@ -299,15 +339,15 @@ async function installFromGitHubUrl(
 
       console.log(`\n✓ Installed 1 skill to ${targetBase}`);
 
-      const sourceKey = officialKey
-        ? `official/${officialKey}`
+      const sourceKey = officialMatch
+        ? `official/${officialMatch.providerKey}/${repo}`
         : options.custom
           ? `custom/${repo}`
           : `community/${owner}/${repo}`;
       sourcesService.addSource(sourceKey, {
         url: `https://github.com/${owner}/${repo}`,
-        type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
-        repoName: officialKey || repo,
+        type: officialMatch ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: repo,
       });
       return true;
     }
@@ -343,15 +383,15 @@ async function installFromGitHubUrl(
   console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
 
   // Save source info
-  const sourceKey = officialKey
-    ? `official/${officialKey}`
+  const sourceKey = officialMatch
+    ? `official/${officialMatch.providerKey}/${repo}`
     : options.custom
       ? `custom/${repo}`
       : `community/${owner}/${repo}`;
   sourcesService.addSource(sourceKey, {
     url: `https://github.com/${owner}/${repo}`,
-    type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
-    repoName: officialKey || repo,
+    type: officialMatch ? 'official' : options.custom ? 'custom' : 'community',
+    repoName: repo,
   });
 
   return true;
@@ -516,13 +556,15 @@ function saveGitCloneSource(
   let type: 'official' | 'community' | 'custom';
   let sourceKey: string;
 
-  const officialKey = resolvedOwner && resolvedRepo
+  const officialMatch = resolvedOwner && resolvedRepo
     ? findOfficialProvider(resolvedOwner, resolvedRepo)
     : null;
 
-  if (officialKey || repoPath.includes('/official/')) {
+  if (officialMatch || repoPath.includes('/official/')) {
     type = 'official';
-    sourceKey = `official/${officialKey || repoName}`;
+    const providerKey = officialMatch?.providerKey || repoName;
+    const repo = resolvedRepo || repoName;
+    sourceKey = `official/${providerKey}/${repo}`;
   } else if (options.custom || repoPath.includes('/custom/')) {
     type = 'custom';
     sourceKey = `custom/${repoName}`;
@@ -545,7 +587,7 @@ function saveGitCloneSource(
   sourcesService.addSource(sourceKey, {
     url,
     type,
-    repoName: officialKey || repoName,
+    repoName: resolvedRepo || repoName,
   });
 }
 
@@ -565,12 +607,19 @@ export async function executeInstall(
       return;
     }
 
+    // Check aliases (e.g., "vercel" → "vercel-labs")
+    const aliasKey = resolveProviderAlias(source);
+    if (aliasKey) {
+      await installFromOfficial(aliasKey, options);
+      return;
+    }
+
     // Support owner/repo shorthand (e.g., "Fission-AI/OpenSpec") → GitHub URL
     if (!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)) {
       const [shortOwner, shortRepo] = source.replace(/\/$/, '').split('/');
-      const officialKey = findOfficialProvider(shortOwner, shortRepo);
-      if (officialKey) {
-        await installFromOfficial(officialKey, options);
+      const officialMatch = findOfficialProvider(shortOwner, shortRepo);
+      if (officialMatch?.exactRepoMatch) {
+        await installFromOfficial(officialMatch.providerKey, options, shortRepo);
         return;
       }
       source = `https://github.com/${source.replace(/\/$/, '')}`;

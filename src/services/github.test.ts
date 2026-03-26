@@ -9,24 +9,29 @@ describe('GitHubService', () => {
   const service = new GitHubService();
 
   describe('getTargetDir', () => {
-    it('returns official path for anthropics/skills', () => {
+    it('returns official path with repo layer for anthropics/skills', () => {
       const dir = service.getTargetDir('anthropics', 'skills', 'code-review');
-      expect(dir).toBe(join(SKILLS_DIR, 'official', 'anthropic', 'code-review'));
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'anthropic', 'skills', 'code-review'));
     });
 
-    it('returns official path for openai/skills', () => {
+    it('returns official path with repo layer for openai/skills', () => {
       const dir = service.getTargetDir('openai', 'skills', 'figma');
-      expect(dir).toBe(join(SKILLS_DIR, 'official', 'openai', 'figma'));
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'openai', 'skills', 'figma'));
     });
 
-    it('returns official path for microsoft/skills', () => {
+    it('returns official path with repo layer for microsoft/skills', () => {
       const dir = service.getTargetDir('microsoft', 'skills', 'mcp-builder');
-      expect(dir).toBe(join(SKILLS_DIR, 'official', 'microsoft', 'mcp-builder'));
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'microsoft', 'skills', 'mcp-builder'));
     });
 
-    it('returns official path for vercel-labs/agent-skills', () => {
+    it('returns official path with repo layer for vercel-labs/agent-skills', () => {
       const dir = service.getTargetDir('vercel-labs', 'agent-skills', 'deploy');
-      expect(dir).toBe(join(SKILLS_DIR, 'official', 'vercel-labs', 'deploy'));
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'vercel-labs', 'agent-skills', 'deploy'));
+    });
+
+    it('returns official path for owner match with unknown repo', () => {
+      const dir = service.getTargetDir('vercel-labs', 'unknown-repo', 'some-skill');
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'vercel-labs', 'unknown-repo', 'some-skill'));
     });
 
     it('returns community path with owner/repo for non-official', () => {
@@ -41,7 +46,7 @@ describe('GitHubService', () => {
 
     it('prefers official over community even without isCustom', () => {
       const dir = service.getTargetDir('anthropics', 'skills', 'code-review', false);
-      expect(dir).toBe(join(SKILLS_DIR, 'official', 'anthropic', 'code-review'));
+      expect(dir).toBe(join(SKILLS_DIR, 'official', 'anthropic', 'skills', 'code-review'));
     });
   });
 });

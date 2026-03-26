@@ -10,16 +10,16 @@ describe('list command two-level grouping', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `skillsmgr-list-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
-    mkdirSync(join(testDir, 'official', 'anthropic', 'code-review'), { recursive: true });
-    mkdirSync(join(testDir, 'official', 'anthropic', 'commit-msg'), { recursive: true });
+    mkdirSync(join(testDir, 'official', 'anthropic', 'skills', 'code-review'), { recursive: true });
+    mkdirSync(join(testDir, 'official', 'anthropic', 'skills', 'commit-msg'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'obra', 'superpowers', 'skill-a'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'obra', 'superpowers', 'skill-b'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'solo-skill'), { recursive: true });
 
     const skills = [
-      ['official/anthropic/code-review', 'code-review', 'Reviews code'],
-      ['official/anthropic/commit-msg', 'commit-msg', 'Commit messages'],
+      ['official/anthropic/skills/code-review', 'code-review', 'Reviews code'],
+      ['official/anthropic/skills/commit-msg', 'commit-msg', 'Commit messages'],
       ['community/obra/superpowers/skill-a', 'skill-a', 'Skill A'],
       ['community/obra/superpowers/skill-b', 'skill-b', 'Skill B'],
       ['custom/my-tools/tool-a', 'tool-a', 'Tool A'],
@@ -61,7 +61,7 @@ describe('list command two-level grouping', () => {
     }
 
     expect(byCategory['official']).toBeDefined();
-    expect(byCategory['official']['anthropic']).toEqual(
+    expect(byCategory['official']['anthropic/skills']).toEqual(
       expect.arrayContaining(['code-review', 'commit-msg'])
     );
 
@@ -106,5 +106,37 @@ describe('list command two-level grouping', () => {
     expect(ungrouped).toHaveLength(1);
     expect(ungrouped[0].name).toBe('solo-skill');
     expect(ungrouped[0].source).toBe('custom');
+  });
+
+  it('shows multi-repo provider with separate groupIds', () => {
+    mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-skills', 'deploy'), { recursive: true });
+    mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-browser', 'browser'), { recursive: true });
+
+    writeFileSync(
+      join(testDir, 'official', 'vercel-labs', 'agent-skills', 'deploy', 'SKILL.md'),
+      '---\nname: deploy\ndescription: Deploy\n---\n'
+    );
+    writeFileSync(
+      join(testDir, 'official', 'vercel-labs', 'agent-browser', 'browser', 'SKILL.md'),
+      '---\nname: browser\ndescription: Browser\n---\n'
+    );
+
+    const service = new SkillsService(testDir);
+    const skills = service.getAllSkills();
+
+    const byCategory: Record<string, Record<string, string[]>> = {};
+    for (const skill of skills) {
+      const parts = skill.source.split('/');
+      const category = parts[0];
+      const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
+      if (groupId) {
+        if (!byCategory[category]) byCategory[category] = {};
+        if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
+        byCategory[category][groupId].push(skill.name);
+      }
+    }
+
+    expect(byCategory['official']['vercel-labs/agent-skills']).toEqual(['deploy']);
+    expect(byCategory['official']['vercel-labs/agent-browser']).toEqual(['browser']);
   });
 });

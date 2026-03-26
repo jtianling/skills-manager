@@ -10,12 +10,12 @@ describe('SkillsService', () => {
 
   beforeEach(() => {
     testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(join(testDir, 'official', 'anthropic', 'code-review'), { recursive: true });
+    mkdirSync(join(testDir, 'official', 'anthropic', 'skills', 'code-review'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'some-user', 'awesome', 'react-patterns'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'my-skill'), { recursive: true });
 
     writeFileSync(
-      join(testDir, 'official', 'anthropic', 'code-review', 'SKILL.md'),
+      join(testDir, 'official', 'anthropic', 'skills', 'code-review', 'SKILL.md'),
       '---\nname: code-review\ndescription: Reviews code\n---\n# Code Review'
     );
     writeFileSync(
@@ -42,13 +42,47 @@ describe('SkillsService', () => {
       expect(skills.length).toBe(3);
     });
 
-    it('includes correct source paths', () => {
+    it('includes correct source paths with three-level official', () => {
       const skills = service.getAllSkills();
       const sources = skills.map((s) => s.source).sort();
       expect(sources).toEqual([
         'community/some-user/awesome',
         'custom',
-        'official/anthropic',
+        'official/anthropic/skills',
+      ]);
+    });
+  });
+
+  describe('official three-level traversal', () => {
+    it('traverses official/{providerKey}/{repoName}/{skillName}', () => {
+      const skill = service.getSkillByName('code-review');
+      expect(skill).toBeDefined();
+      expect(skill?.source).toBe('official/anthropic/skills');
+    });
+
+    it('handles multiple repos under same provider', () => {
+      mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-skills', 'deploy'), { recursive: true });
+      mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-browser', 'browser'), { recursive: true });
+
+      writeFileSync(
+        join(testDir, 'official', 'vercel-labs', 'agent-skills', 'deploy', 'SKILL.md'),
+        '---\nname: deploy\ndescription: Deploy skill\n---\n'
+      );
+      writeFileSync(
+        join(testDir, 'official', 'vercel-labs', 'agent-browser', 'browser', 'SKILL.md'),
+        '---\nname: browser\ndescription: Browser skill\n---\n'
+      );
+
+      const freshService = new SkillsService(testDir);
+      const skills = freshService.getAllSkills();
+      const officialSkills = skills.filter((s) => s.source.startsWith('official'));
+
+      expect(officialSkills).toHaveLength(3);
+      const sources = officialSkills.map((s) => s.source).sort();
+      expect(sources).toEqual([
+        'official/anthropic/skills',
+        'official/vercel-labs/agent-browser',
+        'official/vercel-labs/agent-skills',
       ]);
     });
   });
