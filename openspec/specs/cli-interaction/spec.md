@@ -95,6 +95,10 @@ The `install` command SHALL have alias `i`.
 - choices 按 `group` 字段分组
 - 组标题格式: `── {group} ──` (黄色)
 - 组标题只在 group 值变化时插入
+- choices 可选携带 `subGroup` 字段, 同一 subGroup 的 choices 在分组标题下额外聚合
+- `subGroup` 值变化时插入 group-header 行, 格式: `{subGroup} ({childCount})`
+- group-header 可聚焦、可选择, 但不出现在返回值中
+- 无 `subGroup` 字段时行为与变更前一致
 
 **搜索功能**:
 - 当 choices 数量 > searchThreshold (20) 时, 搜索功能可用
@@ -107,6 +111,7 @@ The `install` command SHALL have alias `i`.
 - **非搜索模式下**: 字母输入不触发搜索, 仅在搜索模式下输入字符才过滤列表
 - **搜索模式退出**: Escape 退出搜索模式但保留当前搜索文本和过滤结果; Backspace 在搜索文本为空时退出搜索模式
 - **enableSearch 为 false 时**: "/" 键无效果
+- **搜索过滤与 group-header**: 无匹配子项的 group-header 隐藏, 有匹配子项的 group-header 正常显示
 
 **搜索栏视觉状态**:
 - 搜索模式激活: 搜索栏正常亮度显示
@@ -115,7 +120,7 @@ The `install` command SHALL have alias `i`.
 
 **行号显示**:
 - 每个 choice 项前显示行号, 从 1 开始连续编号
-- separator 不分配行号, 对应位置空格填充
+- separator 和 group-header 不分配行号, 对应位置空格填充
 - 行号右对齐, 宽度 = 总 choice 数的位数
 - 搜索过滤后行号重新从 1 编号
 - 格式: `{lineNumber} {prefix} {checkbox} {name}{suffix}`
@@ -123,14 +128,14 @@ The `install` command SHALL have alias `i`.
 **键盘操作**:
 | 键 | 非搜索模式 | 搜索模式 |
 |----|-----------|---------|
-| ↑ / ↓ | 移动光标, 跳过组标题 (separator) | 移动光标, 跳过组标题 |
+| ↑ / ↓ | 移动光标, 跳过 separator (不跳过 group-header) | 移动光标, 跳过 separator (不跳过 group-header) |
 | j / k | 向下/向上移动光标 (与 ↓/↑ 行为一致) | 作为搜索字符输入 |
 | G (Shift+G) | 跳转到末尾 (无数字缓冲) 或跳转到指定行 (有数字缓冲) | 作为搜索字符输入 |
 | gg | 跳转到列表开头 | 作为搜索字符输入 |
 | 数字 0-9 | 追加到数字缓冲 (用于数字+G 跳转) | 作为搜索字符输入 |
 | q | 退出程序 (与 Ctrl+C 一致) | 作为搜索字符输入 |
 | / | 进入搜索模式 (仅 enableSearch 时) | 退出搜索模式 |
-| Space | 切换当前项的选中状态 | 切换当前项的选中状态 |
+| Space | 切换当前项的选中状态; 若光标在 group-header 上, 批量切换所有子项 | 切换当前项的选中状态; 若光标在 group-header 上, 批量切换所有子项 |
 | Ctrl+A | 全选/全取消 | 全选/全取消 (仅操作过滤结果) |
 | Enter | 确认选择 | 确认选择 |
 | Ctrl+C | 取消并退出 | 取消并退出 |
@@ -146,11 +151,12 @@ The `install` command SHALL have alias `i`.
 **选中状态显示**:
 - 选中: `◉` (绿色)
 - 未选中: `◯`
+- 部分选中 (仅 group-header): `◐` (黄色)
 - 光标所在: `❯` (青色) 前缀, 名称高亮 (青色)
 - 后缀: `[deployed]` (黄色, 如果有 suffix)
 
 **描述显示**:
-- 仅在光标所在项显示 description
+- 仅在光标所在项显示 description (group-header 无 description)
 - 自动换行, 宽度为终端宽度 - 6 (fallback 74)
 - 描述文字灰色, 缩进 4 空格
 
@@ -168,12 +174,28 @@ The `install` command SHALL have alias `i`.
 
 **init 命令中 Skill 选择**:
 - 已部署的 skill 默认选中 (`checked: true`) 且标记 `[deployed]`
-- 按 source 分组
+- 按 source 分组, 并按 subGroup 显示 group-header
 
 **install 命令中的选择**:
 - 无分组 (没有 group 字段)
 - 无 `[deployed]` 标记
 - 无默认选中
+
+#### Scenario: group-header 在 separator 下显示
+- **WHEN** choices 包含 subGroup 字段, 且同一 group 下有多个不同 subGroup
+- **THEN** 每个 subGroup 的第一个 choice 前插入 group-header 行, group-header 显示在 separator 之后
+
+#### Scenario: Space 键在 group-header 上批量切换
+- **WHEN** 光标在 group-header 上, 用户按 Space
+- **THEN** 该 group-header 下所有子项的选中状态批量切换 (partial/none → all, all → none)
+
+#### Scenario: 光标可停在 group-header 上
+- **WHEN** 用户按 ↑ 或 ↓ 键, 且下一项为 group-header
+- **THEN** 光标停在 group-header 上 (不跳过)
+
+#### Scenario: 无 subGroup 时无 group-header
+- **WHEN** 所有 choices 均无 subGroup 字段
+- **THEN** 不显示任何 group-header, 行为与变更前一致
 
 #### Scenario: j 键向下移动光标
 - **WHEN** 用户在非搜索模式下按 j 键
@@ -292,7 +314,7 @@ The `install` command SHALL have alias `i`.
 - **THEN** 无任何效果, 列表状态不变, 不触发渲染
 
 ### Requirement: 列表行号显示
-interactiveCheckbox 组件 SHALL 在每个 choice 项前显示行号.  行号从 1 开始, 基于当前可见的 choice 列表顺序编号.  separator (组标题) 不分配行号, 对应位置显示空格填充.  行号右对齐, 宽度等于总 choice 数的位数.
+interactiveCheckbox 组件 SHALL 在每个 choice 项前显示行号.  行号从 1 开始, 基于当前可见的 choice 列表顺序编号.  separator (组标题) 和 group-header 不分配行号, 对应位置显示空格填充.  行号右对齐, 宽度等于总 choice 数的位数.
 
 显示格式: `{lineNumber} {prefix} {checkbox} {name}{suffix}`
 

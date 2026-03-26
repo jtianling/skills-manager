@@ -3,7 +3,7 @@ import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
-import { fileExists, removeDir, readFileContent, getDirectoriesInDir } from '../utils/fs.js';
+import { fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
@@ -25,15 +25,8 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
 
   const { owner, repo } = parsed;
 
-  // Determine target directory
-  let targetBase: string;
-  if (info.type === 'official') {
-    targetBase = join(SKILLS_MANAGER_DIR, 'official', info.repoName);
-  } else if (info.type === 'custom') {
-    targetBase = join(SKILLS_MANAGER_DIR, 'custom', info.repoName);
-  } else {
-    targetBase = join(SKILLS_MANAGER_DIR, 'community', info.repoName);
-  }
+  // Derive target directory from the source key (e.g., "official/anthropic" or "community/obra/superpowers")
+  const targetBase = join(SKILLS_MANAGER_DIR, key);
 
   // Get the default branch
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
@@ -90,6 +83,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
             } else {
               removeDir(targetDir);
               await githubService.downloadRepoRoot(owner, repo, targetDir);
+              warnScriptFiles(findScriptFiles(targetDir));
               console.log(`  ↑ ${skillName}: updated`);
               result.updated++;
             }
@@ -111,6 +105,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
           // Content changed, update
           removeDir(targetDir);
           await githubService.downloadSkill(owner, repo, remotePath, targetDir);
+          warnScriptFiles(findScriptFiles(targetDir));
           console.log(`  ↑ ${skillName}: updated`);
           result.updated++;
         }

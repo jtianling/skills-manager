@@ -50,27 +50,57 @@ export class SkillsService {
     // For official and community, we have an extra level (e.g., official/anthropic/skill-name)
     // For custom, skills are directly under custom/skill-name
     if (sourcePrefix === 'custom') {
-      const skillDirs = getDirectoriesInDir(sourceDir);
-      for (const skillDir of skillDirs) {
-        const skill = this.loadSkill(skillDir.path, sourcePrefix);
-        if (skill) {
-          skills.push(skill);
+      const topDirs = getDirectoriesInDir(sourceDir);
+      for (const topDir of topDirs) {
+        const skillMdPath = join(topDir.path, 'SKILL.md');
+        if (fileExists(skillMdPath)) {
+          const skill = this.loadSkill(topDir.path, sourcePrefix);
+          if (skill) {
+            skills.push(skill);
+          }
+        } else {
+          const skillDirs = getDirectoriesInDir(topDir.path);
+          for (const skillDir of skillDirs) {
+            const source = `${sourcePrefix}/${topDir.name}`;
+            const skill = this.loadSkill(skillDir.path, source);
+            if (skill) {
+              skills.push(skill);
+            }
+          }
         }
       }
-    } else {
-      // official or community - has repo subdirectories
-      const repoDirs = getDirectoriesInDir(sourceDir);
-      for (const repoDir of repoDirs) {
-        // Check if skills are in a 'skills/' subdirectory (e.g., anthropic/skills repo structure)
-        const skillsSubdir = join(repoDir.path, 'skills');
-        const searchDir = fileExists(skillsSubdir) ? skillsSubdir : repoDir.path;
+    } else if (sourcePrefix === 'official') {
+      // official/{providerKey}/{skill-name}/
+      const providerDirs = getDirectoriesInDir(sourceDir);
+      for (const providerDir of providerDirs) {
+        const skillsSubdir = join(providerDir.path, 'skills');
+        const searchDir = fileExists(skillsSubdir) ? skillsSubdir : providerDir.path;
 
         const skillDirs = getDirectoriesInDir(searchDir);
         for (const skillDir of skillDirs) {
-          const source = `${sourcePrefix}/${repoDir.name}`;
+          const source = `${sourcePrefix}/${providerDir.name}`;
           const skill = this.loadSkill(skillDir.path, source);
           if (skill) {
             skills.push(skill);
+          }
+        }
+      }
+    } else {
+      // community/{owner}/{repo}/{skill-name}/
+      const ownerDirs = getDirectoriesInDir(sourceDir);
+      for (const ownerDir of ownerDirs) {
+        const repoDirs = getDirectoriesInDir(ownerDir.path);
+        for (const repoDir of repoDirs) {
+          const skillsSubdir = join(repoDir.path, 'skills');
+          const searchDir = fileExists(skillsSubdir) ? skillsSubdir : repoDir.path;
+
+          const skillDirs = getDirectoriesInDir(searchDir);
+          for (const skillDir of skillDirs) {
+            const source = `${sourcePrefix}/${ownerDir.name}/${repoDir.name}`;
+            const skill = this.loadSkill(skillDir.path, source);
+            if (skill) {
+              skills.push(skill);
+            }
           }
         }
       }

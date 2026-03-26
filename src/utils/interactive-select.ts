@@ -33,6 +33,7 @@ export interface SelectChoice {
   value: string;
   checked?: boolean;
   group?: string;
+  subGroup?: string;
   suffix?: string;
   selectedSuffix?: string;
 }
@@ -45,22 +46,39 @@ interface SelectOptions {
   onToggle?: (selected: Set<number>, choices: SelectChoice[]) => void;
 }
 
-interface DisplayItem {
-  type: 'separator' | 'choice';
+export interface DisplayItem {
+  type: 'separator' | 'choice' | 'group-header';
   text?: string;
   choiceIndex?: number;
+  childIndices?: number[];
+  subGroupName?: string;
+}
+
+export type GroupState = 'all' | 'partial' | 'none';
+
+export function getGroupState(childIndices: number[], selected: Set<number>): GroupState {
+  if (childIndices.length === 0) return 'none';
+  let selectedCount = 0;
+  for (const idx of childIndices) {
+    if (selected.has(idx)) selectedCount++;
+  }
+  if (selectedCount === 0) return 'none';
+  if (selectedCount === childIndices.length) return 'all';
+  return 'partial';
 }
 
 /**
  * Build display items from choices, optionally filtered by search query
  */
-function buildDisplayItems(
+export function buildDisplayItems(
   choices: SelectChoice[],
   searchQuery: string
 ): { displayItems: DisplayItem[]; filteredIndices: number[] } {
   const displayItems: DisplayItem[] = [];
   const filteredIndices: number[] = [];
   let currentGroup: string | undefined;
+  let currentSubGroup: string | undefined;
+  let currentGroupHeader: DisplayItem | undefined;
 
   choices.forEach((choice, index) => {
     if (searchQuery && !choice.name.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -71,12 +89,36 @@ function buildDisplayItems(
 
     if (choice.group && choice.group !== currentGroup) {
       currentGroup = choice.group;
+      currentSubGroup = undefined;
+      currentGroupHeader = undefined;
       displayItems.push({ type: 'separator', text: `── ${choice.group} ──` });
     }
+
+    if (choice.subGroup !== undefined && choice.subGroup !== currentSubGroup) {
+      currentSubGroup = choice.subGroup;
+      currentGroupHeader = {
+        type: 'group-header',
+        subGroupName: choice.subGroup,
+        childIndices: [],
+      };
+      displayItems.push(currentGroupHeader);
+    } else if (choice.subGroup === undefined && currentSubGroup !== undefined) {
+      currentSubGroup = undefined;
+      currentGroupHeader = undefined;
+    }
+
+    if (currentGroupHeader && choice.subGroup !== undefined) {
+      currentGroupHeader.childIndices!.push(index);
+    }
+
     displayItems.push({ type: 'choice', choiceIndex: index });
   });
 
   return { displayItems, filteredIndices };
+}
+
+function isFocusable(item: DisplayItem): boolean {
+  return item.type === 'choice' || item.type === 'group-header';
 }
 
 /**
@@ -98,7 +140,7 @@ export async function interactiveCheckbox(
   let isSearchMode = false;
   let { displayItems, filteredIndices } = buildDisplayItems(choices, searchQuery);
 
-  let cursor = displayItems.findIndex((item) => item.type === 'choice');
+  let cursor = displayItems.findIndex((item) => isFocusable(item));
   if (cursor === -1) cursor = 0;
 
   let scrollOffset = 0;
@@ -160,10 +202,25 @@ export async function interactiveCheckbox(
           if (item.type === 'separator') {
             const padding = ' '.repeat(lineNumberWidth);
             lines.push(`${padding}  \x1b[33m${item.text}\x1b[0m`);
+          } else if (item.type === 'group-header') {
+            const childCount = item.childIndices!.length;
+            const state = getGroupState(item.childIndices!, selected);
+            const triIcon = state === 'all' ? '\x1b[32m◉\x1b[0m'
+              : state === 'partial' ? '\x1b[33m◐\x1b[0m'
+              : '◯';
+            const isCursor = i === cursor;
+            const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
+            const highlight = isCursor ? '\x1b[36m' : '';
+            const reset = '\x1b[0m';
+            const padding = ' '.repeat(lineNumberWidth);
+            lines.push(
+              `${padding} ${prefix} ${triIcon} ${highlight}${item.subGroupName} (${childCount})${reset}`
+            );
           } else {
             const choice = choices[item.choiceIndex!];
             const isSelected = selected.has(item.choiceIndex!);
             const isCursor = i === cursor;
+            const isGroupChild = choice.subGroup !== undefined;
 
             const lineNum = String(choiceCount).padStart(lineNumberWidth, ' ');
             const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
@@ -172,13 +229,14 @@ export async function interactiveCheckbox(
             const reset = '\x1b[0m';
             const suffixText = isSelected && choice.selectedSuffix ? choice.selectedSuffix : choice.suffix;
             const suffix = suffixText ? ` \x1b[33m${suffixText}\x1b[0m` : '';
+            const indent = isGroupChild ? '  ' : '';
 
             lines.push(
-              `${lineNum} ${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
+              `${lineNum} ${indent}${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
             );
 
             if (isCursor && choice.description) {
-              const descIndent = lineNumberWidth + 5;
+              const descIndent = lineNumberWidth + 5 + (isGroupChild ? 2 : 0);
               const maxWidth = process.stdout.columns
                 ? process.stdout.columns - descIndent - 1
                 : 80 - descIndent - 1;
@@ -226,28 +284,28 @@ export async function interactiveCheckbox(
       rl.close();
     };
 
-    const findPrevChoice = (from: number): number => {
+    const findPrevFocusable = (from: number): number => {
       for (let i = from - 1; i >= 0; i--) {
-        if (displayItems[i].type === 'choice') return i;
+        if (isFocusable(displayItems[i])) return i;
       }
       return from;
     };
 
-    const findNextChoice = (from: number): number => {
+    const findNextFocusable = (from: number): number => {
       for (let i = from + 1; i < displayItems.length; i++) {
-        if (displayItems[i].type === 'choice') return i;
+        if (isFocusable(displayItems[i])) return i;
       }
       return from;
     };
 
-    const findFirstChoice = (): number => {
-      const idx = displayItems.findIndex(item => item.type === 'choice');
+    const findFirstFocusable = (): number => {
+      const idx = displayItems.findIndex(item => isFocusable(item));
       return idx >= 0 ? idx : 0;
     };
 
-    const findLastChoice = (): number => {
+    const findLastFocusable = (): number => {
       for (let i = displayItems.length - 1; i >= 0; i--) {
-        if (displayItems[i].type === 'choice') return i;
+        if (isFocusable(displayItems[i])) return i;
       }
       return 0;
     };
@@ -287,7 +345,7 @@ export async function interactiveCheckbox(
       displayItems = result.displayItems;
       filteredIndices = result.filteredIndices;
 
-      cursor = displayItems.findIndex((item) => item.type === 'choice');
+      cursor = displayItems.findIndex((item) => isFocusable(item));
       if (cursor === -1) cursor = 0;
       scrollOffset = 0;
     };
@@ -332,7 +390,16 @@ export async function interactiveCheckbox(
       if (key.name === 'space') {
         resetViState();
         const item = displayItems[cursor];
-        if (item && item.type === 'choice') {
+        if (item && item.type === 'group-header') {
+          const state = getGroupState(item.childIndices!, selected);
+          if (state === 'all') {
+            item.childIndices!.forEach((idx) => selected.delete(idx));
+          } else {
+            item.childIndices!.forEach((idx) => selected.add(idx));
+          }
+          onToggle?.(selected, choices);
+          render();
+        } else if (item && item.type === 'choice') {
           const choiceIndex = item.choiceIndex!;
           if (selected.has(choiceIndex)) {
             selected.delete(choiceIndex);
@@ -364,7 +431,7 @@ export async function interactiveCheckbox(
 
       if (key.name === 'up') {
         resetViState();
-        cursor = findPrevChoice(cursor);
+        cursor = findPrevFocusable(cursor);
         if (cursor < scrollOffset) {
           scrollOffset = cursor;
         }
@@ -374,7 +441,7 @@ export async function interactiveCheckbox(
 
       if (key.name === 'down') {
         resetViState();
-        cursor = findNextChoice(cursor);
+        cursor = findNextFocusable(cursor);
         if (cursor >= scrollOffset + pageSize) {
           scrollOffset = cursor - pageSize + 1;
         }
@@ -431,7 +498,7 @@ export async function interactiveCheckbox(
             const targetLine = Number.parseInt(numberBuffer, 10);
             cursor = jumpToLineNumber(targetLine);
           } else {
-            cursor = findLastChoice();
+            cursor = findLastFocusable();
           }
           resetViState();
           ensureCursorVisible();
@@ -441,7 +508,7 @@ export async function interactiveCheckbox(
 
         if (str === 'g') {
           if (lastKeyWasG) {
-            cursor = findFirstChoice();
+            cursor = findFirstFocusable();
             resetViState();
             ensureCursorVisible();
             render();
@@ -460,7 +527,7 @@ export async function interactiveCheckbox(
         resetViState();
 
         if (str === 'j') {
-          cursor = findNextChoice(cursor);
+          cursor = findNextFocusable(cursor);
           if (cursor >= scrollOffset + pageSize) {
             scrollOffset = cursor - pageSize + 1;
           }
@@ -468,7 +535,7 @@ export async function interactiveCheckbox(
           return;
         }
         if (str === 'k') {
-          cursor = findPrevChoice(cursor);
+          cursor = findPrevFocusable(cursor);
           if (cursor < scrollOffset) {
             scrollOffset = cursor;
           }

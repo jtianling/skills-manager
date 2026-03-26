@@ -1,12 +1,12 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { SKILLS_MANAGER_DIR, OFFICIAL_PROVIDERS, findOfficialProvider } from '../constants.js';
 import { GitService } from '../services/git.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService } from '../services/sources.js';
 import { InstallOptions } from '../types.js';
 import { mkdirSync, readdirSync, renameSync } from 'fs';
-import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
+import { fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
 import { promptSkillsToInstall } from '../utils/prompts.js';
 import { ProgressBar } from '../utils/progress.js';
 
@@ -35,34 +35,44 @@ function parseMdDescription(content: string): string {
 }
 
 /**
- * Install skills from Anthropic using GitHub API (efficient, no git clone)
+ * Install skills from an official provider using GitHub API
  */
-async function installFromAnthropic(options: InstallOptions): Promise<void> {
+async function installFromOfficial(providerKey: string, options: InstallOptions): Promise<void> {
+  const provider = OFFICIAL_PROVIDERS[providerKey];
   const githubService = new GitHubService();
-  const owner = 'anthropics';
-  const repo = 'skills';
+  const { owner, repo } = provider;
 
-  console.log('Fetching available skills from anthropic/skills...');
+  console.log(`Fetching available skills from ${owner}/${repo}...`);
 
-  // List skills via API
-  const skillsList = await githubService.listSkills(owner, repo, 'skills');
+  let skillsList: Array<{ name: string; path: string }> = [];
 
-  // Get the default branch
+  if (provider.skillsPath) {
+    skillsList = await githubService.listSkills(owner, repo, provider.skillsPath);
+  } else {
+    const skillsPaths = ['skills', '.', 'src/skills'];
+    for (const skillsPath of skillsPaths) {
+      try {
+        skillsList = await githubService.listSkills(owner, repo, skillsPath);
+        if (skillsList.length > 0) break;
+      } catch {
+        continue;
+      }
+    }
+  }
+
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
-  const targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+  const targetBase = join(SKILLS_MANAGER_DIR, 'official', providerKey);
 
   if (skillsList.length === 0) {
     console.error('Error: No skills found in repository');
     process.exit(1);
   }
 
-  // Get skill descriptions by fetching SKILL.md for each
   const skills: Array<{ name: string; description: string; path: string }> = [];
   const progress = new ProgressBar(skillsList.length, 'Fetching skill info');
   progress.start();
 
   for (const skill of skillsList) {
-    // Fetch SKILL.md content via API
     try {
       const response = await fetch(
         `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${skill.path}/SKILL.md`
@@ -70,13 +80,23 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
       if (response.ok) {
         const content = await response.text();
         const description = parseMdDescription(content);
-        skills.push({
-          name: skill.name,
-          description,
-          path: skill.path,
-        });
+        skills.push({ name: skill.name, description, path: skill.path });
       } else {
-        skills.push({ name: skill.name, description: '', path: skill.path });
+        const subDirs = await githubService.listSkills(owner, repo, skill.path);
+        for (const sub of subDirs) {
+          try {
+            const subResponse = await fetch(
+              `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${sub.path}/SKILL.md`
+            );
+            if (subResponse.ok) {
+              const content = await subResponse.text();
+              const description = parseMdDescription(content);
+              skills.push({ name: sub.name, description, path: sub.path });
+            }
+          } catch {
+            // Skip nested dirs without SKILL.md
+          }
+        }
       }
     } catch {
       skills.push({ name: skill.name, description: '', path: skill.path });
@@ -85,11 +105,16 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
   }
 
   progress.complete();
+
+  if (skills.length === 0) {
+    console.error('Error: No skills found in repository');
+    process.exit(1);
+  }
+
   console.log(`Found ${skills.length} skills.\n`);
 
   let selectedSkills = skills;
 
-  // If not --all, prompt for selection
   if (!options.all) {
     const selectedNames = await promptSkillsToInstall(skills);
     if (selectedNames.length === 0) {
@@ -99,7 +124,6 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     selectedSkills = skills.filter((s) => selectedNames.includes(s.name));
   }
 
-  // Download selected skills
   console.log(`\nDownloading ${selectedSkills.length} skills...`);
 
   for (const skill of selectedSkills) {
@@ -109,13 +133,18 @@ async function installFromAnthropic(options: InstallOptions): Promise<void> {
     console.log(' ✓');
   }
 
+  const allScriptFiles: string[] = [];
+  for (const skill of selectedSkills) {
+    allScriptFiles.push(...findScriptFiles(join(targetBase, skill.name)));
+  }
+  warnScriptFiles(allScriptFiles);
+
   console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
 
-  // Save source info
-  sourcesService.addSource('official/anthropic', {
-    url: 'https://github.com/anthropics/skills',
+  sourcesService.addSource(`official/${providerKey}`, {
+    url: `https://github.com/${owner}/${repo}`,
     type: 'official',
-    repoName: 'anthropic',
+    repoName: providerKey,
   });
 }
 
@@ -134,7 +163,7 @@ async function installFromGitHubUrl(
   }
 
   const { owner, repo, path } = parsed;
-  const isAnthropic = owner === 'anthropics' && repo === 'skills';
+  const officialKey = findOfficialProvider(owner, repo);
 
   // If it's a specific skill path (e.g., /tree/main/skills/code-review)
   if (path) {
@@ -143,6 +172,7 @@ async function installFromGitHubUrl(
 
     console.log(`Downloading ${skillName}...`);
     await githubService.downloadSkill(owner, repo, path, targetDir);
+    warnScriptFiles(findScriptFiles(targetDir));
     console.log(`✓ Installed ${skillName} to ${targetDir}`);
     return true;
   }
@@ -167,12 +197,12 @@ async function installFromGitHubUrl(
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
 
   let targetBase: string;
-  if (isAnthropic) {
-    targetBase = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+  if (officialKey) {
+    targetBase = join(SKILLS_MANAGER_DIR, 'official', officialKey);
   } else if (options.custom) {
     targetBase = join(SKILLS_MANAGER_DIR, 'custom', repo);
   } else {
-    targetBase = join(SKILLS_MANAGER_DIR, 'community', repo);
+    targetBase = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
   }
 
   // If no skills found, check root SKILL.md
@@ -190,18 +220,19 @@ async function installFromGitHubUrl(
       process.stdout.write(`  Downloading ${skillName}...`);
       await githubService.downloadRepoRoot(owner, repo, skillTargetDir);
       console.log(' ✓');
+      warnScriptFiles(findScriptFiles(skillTargetDir));
 
       console.log(`\n✓ Installed 1 skill to ${targetBase}`);
 
-      const sourceKey = isAnthropic
-        ? 'official/anthropic'
+      const sourceKey = officialKey
+        ? `official/${officialKey}`
         : options.custom
           ? `custom/${repo}`
-          : `community/${repo}`;
+          : `community/${owner}/${repo}`;
       sourcesService.addSource(sourceKey, {
         url: `https://github.com/${owner}/${repo}`,
-        type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
-        repoName: repo,
+        type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: officialKey || repo,
       });
       return true;
     }
@@ -264,18 +295,19 @@ async function installFromGitHubUrl(
       process.stdout.write(`  Downloading ${skillName}...`);
       await githubService.downloadRepoRoot(owner, repo, skillTargetDir);
       console.log(' ✓');
+      warnScriptFiles(findScriptFiles(skillTargetDir));
 
       console.log(`\n✓ Installed 1 skill to ${targetBase}`);
 
-      const sourceKey = isAnthropic
-        ? 'official/anthropic'
+      const sourceKey = officialKey
+        ? `official/${officialKey}`
         : options.custom
           ? `custom/${repo}`
-          : `community/${repo}`;
+          : `community/${owner}/${repo}`;
       sourcesService.addSource(sourceKey, {
         url: `https://github.com/${owner}/${repo}`,
-        type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
-        repoName: repo,
+        type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
+        repoName: officialKey || repo,
       });
       return true;
     }
@@ -298,25 +330,28 @@ async function installFromGitHubUrl(
   // Download selected skills
   console.log(`\nDownloading ${selectedSkills.length} skills...`);
 
+  const allScriptFiles2: string[] = [];
   for (const skill of selectedSkills) {
     const targetDir = join(targetBase, skill.name);
     process.stdout.write(`  ${skill.name}...`);
     await githubService.downloadSkill(owner, repo, skill.path, targetDir);
     console.log(' ✓');
+    allScriptFiles2.push(...findScriptFiles(targetDir));
   }
+  warnScriptFiles(allScriptFiles2);
 
   console.log(`\n✓ Installed ${selectedSkills.length} skills to ${targetBase}`);
 
   // Save source info
-  const sourceKey = isAnthropic
-    ? 'official/anthropic'
+  const sourceKey = officialKey
+    ? `official/${officialKey}`
     : options.custom
       ? `custom/${repo}`
-      : `community/${repo}`;
+      : `community/${owner}/${repo}`;
   sourcesService.addSource(sourceKey, {
     url: `https://github.com/${owner}/${repo}`,
-    type: isAnthropic ? 'official' : options.custom ? 'custom' : 'community',
-    repoName: repo,
+    type: officialKey ? 'official' : options.custom ? 'custom' : 'community',
+    repoName: officialKey || repo,
   });
 
   return true;
@@ -330,6 +365,11 @@ async function installViaGitClone(
   options: InstallOptions
 ): Promise<void> {
   const gitService = new GitService();
+
+  // Extract owner/repo from GitHub URL for source tracking
+  const ghMatch = source.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/);
+  const resolvedOwner = ghMatch?.[1];
+  const resolvedRepo = ghMatch?.[2];
 
   // Check if this is a specific skill URL
   if (gitService.isSpecificSkillUrl(source)) {
@@ -421,8 +461,9 @@ async function installViaGitClone(
 
       removeDir(join(repoPath, '.git'));
 
+      warnScriptFiles(findScriptFiles(repoPath));
       console.log(`✓ Installed 1 skill to ${repoPath}`);
-      saveGitCloneSource(source, repoPath, options);
+      saveGitCloneSource(source, repoPath, options, resolvedOwner, resolvedRepo);
       return;
     }
   }
@@ -435,6 +476,7 @@ async function installViaGitClone(
   console.log(`Found ${skills.length} skills.\n`);
 
   if (options.all) {
+    warnScriptFiles(findScriptFiles(repoPath));
     console.log(`✓ Installed ${skills.length} skills to ${repoPath}`);
     saveGitCloneSource(source, repoPath, options);
     return;
@@ -454,6 +496,7 @@ async function installViaGitClone(
     removeDir(skill.path);
   }
 
+  warnScriptFiles(findScriptFiles(repoPath));
   console.log(`\n✓ Installed ${selectedNames.length} skills to ${repoPath}`);
   saveGitCloneSource(source, repoPath, options);
 }
@@ -461,37 +504,48 @@ async function installViaGitClone(
 /**
  * Save source info for git clone installs
  */
-function saveGitCloneSource(source: string, repoPath: string, options: InstallOptions): void {
-  // Extract repo name from path
+function saveGitCloneSource(
+  source: string,
+  repoPath: string,
+  options: InstallOptions,
+  resolvedOwner?: string,
+  resolvedRepo?: string
+): void {
   const repoName = repoPath.split('/').pop() || source;
 
-  // Determine type and key
   let type: 'official' | 'community' | 'custom';
   let sourceKey: string;
 
-  if (source === 'anthropic' || repoPath.includes('/official/')) {
+  const officialKey = resolvedOwner && resolvedRepo
+    ? findOfficialProvider(resolvedOwner, resolvedRepo)
+    : null;
+
+  if (officialKey || repoPath.includes('/official/')) {
     type = 'official';
-    sourceKey = 'official/anthropic';
+    sourceKey = `official/${officialKey || repoName}`;
   } else if (options.custom || repoPath.includes('/custom/')) {
     type = 'custom';
     sourceKey = `custom/${repoName}`;
   } else {
     type = 'community';
-    sourceKey = `community/${repoName}`;
+    const owner = resolvedOwner || repoName;
+    const repo = resolvedRepo || repoName;
+    sourceKey = `community/${owner}/${repo}`;
   }
 
-  // Normalize URL
   let url = source;
-  if (source === 'anthropic') {
-    url = 'https://github.com/anthropics/skills';
-  } else if (!source.startsWith('http')) {
-    url = `https://github.com/${source}`;
+  if (!source.startsWith('http')) {
+    if (resolvedOwner && resolvedRepo) {
+      url = `https://github.com/${resolvedOwner}/${resolvedRepo}`;
+    } else {
+      url = `https://github.com/${source}`;
+    }
   }
 
   sourcesService.addSource(sourceKey, {
     url,
     type,
-    repoName,
+    repoName: officialKey || repoName,
   });
 }
 
@@ -505,14 +559,20 @@ export async function executeInstall(
   }
 
   try {
-    // Special handling for 'anthropic' - use efficient API download
-    if (source === 'anthropic') {
-      await installFromAnthropic(options);
+    // Check if input is an official provider shorthand
+    if (OFFICIAL_PROVIDERS[source]) {
+      await installFromOfficial(source, options);
       return;
     }
 
     // Support owner/repo shorthand (e.g., "Fission-AI/OpenSpec") → GitHub URL
     if (!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)) {
+      const [shortOwner, shortRepo] = source.replace(/\/$/, '').split('/');
+      const officialKey = findOfficialProvider(shortOwner, shortRepo);
+      if (officialKey) {
+        await installFromOfficial(officialKey, options);
+        return;
+      }
       source = `https://github.com/${source.replace(/\/$/, '')}`;
       console.log(`Resolved to ${source}`);
     }
@@ -537,7 +597,7 @@ export async function executeInstall(
 export const installCommand = new Command('install')
   .alias('i')
   .description('Download skills from a repository')
-  .argument('<source>', 'Repository URL or "anthropic" for official skills')
+  .argument('<source>', 'Provider name (anthropic/openai/microsoft/vercel-labs), owner/repo, or URL')
   .option('--all', 'Install all skills without prompting')
   .option('--custom', 'Install to custom/ instead of community/')
   .action(async (source: string, options: InstallOptions) => {

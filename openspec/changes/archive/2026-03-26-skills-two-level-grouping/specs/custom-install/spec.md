@@ -1,8 +1,4 @@
-# Custom Install
-
-从当前工作目录安装本地 skill 到 `~/.skills-manager/custom/` 目录.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Install local skill to custom directory
 The system SHALL provide a `custom-install` command that copies a skill directory from the current working directory into `~/.skills-manager/custom/<name>/`, or into `~/.skills-manager/custom/<group>/<name>/` when `--group` is specified.

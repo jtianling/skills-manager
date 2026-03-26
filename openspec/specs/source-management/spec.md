@@ -6,11 +6,32 @@
 
 | 类型 | 存储路径 | 说明 |
 |------|---------|------|
-| official | `~/.skills-manager/official/{repo}/` | 官方 skill, 目前仅 anthropic |
-| community | `~/.skills-manager/community/{repo}/` | 社区仓库 |
-| custom | `~/.skills-manager/custom/{name}/` | 本地自定义, 也可通过 `--custom` 从远程安装 |
+| official | `~/.skills-manager/official/{providerKey}/` | 官方 skill, 由 OFFICIAL_PROVIDERS registry 定义 |
+| community | `~/.skills-manager/community/{owner}/{repo}/` | 社区仓库 |
+| custom | `~/.skills-manager/custom/{name}/` | 本地自定义无分组 skill |
+| custom (grouped) | `~/.skills-manager/custom/{groupName}/{name}/` | 本地自定义分组 skill |
 
-"anthropic" 关键字为特殊简写, 映射到 `https://github.com/anthropics/skills`.
+official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供者.
+
+#### Scenario: Official 安装路径
+- **WHEN** 安装 official 提供者 (如 openai) 的 skills
+- **THEN** 安装到 `~/.skills-manager/official/openai/{skill-name}/`
+
+#### Scenario: Community 安装路径
+- **WHEN** 安装 community 仓库 `obra/superpowers` 的 skills
+- **THEN** 安装到 `~/.skills-manager/community/obra/superpowers/{skill-name}/`
+
+#### Scenario: Custom 无分组安装路径
+- **WHEN** 使用 `custom-install` 安装且不指定 `--group`
+- **THEN** 安装到 `~/.skills-manager/custom/{name}/`
+
+#### Scenario: Custom 分组安装路径
+- **WHEN** 使用 `custom-install --group my-tools` 安装
+- **THEN** 安装到 `~/.skills-manager/custom/my-tools/{name}/`
+
+#### Scenario: Custom 分组目录检测
+- **WHEN** `~/.skills-manager/custom/` 下的子目录不含 SKILL.md
+- **THEN** 该子目录视为分组目录, 扫描其下级目录寻找 skill
 
 ## 来源元数据
 
@@ -28,10 +49,21 @@
       "repoName": "anthropic",
       "installedAt": "2025-01-15T10:00:00.000Z",
       "updatedAt": "2025-02-01T15:30:00.000Z"
+    },
+    "community/obra/superpowers": {
+      "url": "https://github.com/obra/superpowers",
+      "type": "community",
+      "repoName": "superpowers",
+      "installedAt": "2025-03-01T10:00:00.000Z",
+      "updatedAt": "2025-03-01T10:00:00.000Z"
     }
   }
 }
 ```
+
+#### Scenario: Community source 记录完整 owner/repo
+- **WHEN** 安装 community 仓库 `obra/superpowers`
+- **THEN** source key SHALL 为 `"community/obra/superpowers"`, url 为 `"https://github.com/obra/superpowers"`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -53,10 +85,18 @@
 
 ### Source Key 命名规则
 
-key 格式为 `{type}/{repoName}`:
-- official: `"official/anthropic"`
-- community: `"community/{repo}"`
-- custom: `"custom/{repo}"`
+key 格式:
+- official: `"official/{providerKey}"` (如 `"official/openai"`)
+- community: `"community/{owner}/{repo}"` (如 `"community/obra/superpowers"`)
+- custom: `"custom/{repo}"` (不变)
+
+#### Scenario: Official source key
+- **WHEN** 安装 official provider 'microsoft' 的 skills
+- **THEN** source key SHALL 为 `"official/microsoft"`
+
+#### Scenario: Community source key
+- **WHEN** 安装 `obra/superpowers` 的 skills
+- **THEN** source key SHALL 为 `"community/obra/superpowers"`
 
 ## 安装流程
 
@@ -64,14 +104,30 @@ key 格式为 `{type}/{repoName}`:
 
 `install` 命令接受 `<source>` 参数, 按以下优先级解析:
 
-1. **`anthropic` 关键字**: 特殊处理, 调用 `installFromAnthropic()`, 不经过通用流程
+1. **official 快捷名**: 查询 `OFFICIAL_PROVIDERS[source]`, 匹配则调用 `installFromOfficial(source)`
 2. **`owner/repo` 简写** (如 `Fission-AI/OpenSpec`):
    - 匹配规则: `!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)`
-   - 即: 不含协议前缀, 且格式为 "非斜杠字符/非斜杠字符" (允许末尾可选斜杠)
-   - 转换为 `https://github.com/{owner}/{repo}` (末尾斜杠被去掉)
-   - 输出 "Resolved to {url}"
-3. **GitHub URL** (含 `github.com`): 尝试 GitHub API, 失败则回退 git clone
+   - 转换为 `https://github.com/{owner}/{repo}`
+   - 解析 owner/repo 后, 反查 `OFFICIAL_PROVIDERS` — 匹配则调用 `installFromOfficial(matchedKey)`
+   - 不匹配则继续 GitHub URL 处理
+3. **GitHub URL** (含 `github.com`): 解析 owner/repo, 反查 registry, 匹配则 official, 否则 community
 4. **其他 URL**: 直接使用 git clone
+
+#### Scenario: anthropic 关键字安装
+- **WHEN** 用户执行 `skillsmgr install anthropic`
+- **THEN** 匹配 `OFFICIAL_PROVIDERS['anthropic']`, 从 `anthropics/skills` 安装到 `official/anthropic/`
+
+#### Scenario: owner/repo 简写识别为 official
+- **WHEN** 用户执行 `skillsmgr install openai/skills`
+- **THEN** 解析 owner=openai, repo=skills, 反查 registry 匹配 openai 条目, 安装到 `official/openai/`
+
+#### Scenario: owner/repo 简写识别为 community
+- **WHEN** 用户执行 `skillsmgr install obra/superpowers`
+- **THEN** 解析 owner=obra, repo=superpowers, 反查 registry 无匹配, 安装到 `community/obra/superpowers/`
+
+#### Scenario: GitHub URL 识别为 official
+- **WHEN** 用户执行 `skillsmgr install https://github.com/vercel-labs/agent-skills`
+- **THEN** 解析 owner=vercel-labs, repo=agent-skills, 反查 registry 匹配, 安装到 `official/vercel-labs/`
 
 ### 选项
 
@@ -82,27 +138,28 @@ key 格式为 `{type}/{repoName}`:
 
 ### GitHub API 下载流程 (优先路径)
 
-#### installFromAnthropic()
+#### installFromOfficial(providerKey)
 
-专用于 `anthropic` 关键字的优化路径:
+通用 official 安装路径, 适用于所有 `OFFICIAL_PROVIDERS` 中的提供者:
 
-1. 调用 `githubService.listSkills('anthropics', 'skills', 'skills')` 获取 skill 列表
-2. 获取 default branch
-3. 如果没有 skill → `process.exit(1)` 并报错 "No skills found in repository"
-4. 有 skill 时:
+1. 从 `OFFICIAL_PROVIDERS[providerKey]` 获取 `owner`, `repo`, `skillsPath`
+2. 如有 `skillsPath`, 直接调用 `listSkills(owner, repo, skillsPath)`; 否则依次在 `['skills', '.', 'src/skills']` 搜索
+3. 获取 default branch
+4. 如果没有 skill → `process.exit(1)` 并报错 "No skills found in repository"
+5. 有 skill 时:
    - 使用 ProgressBar 逐个获取 SKILL.md 描述 (通过 raw.githubusercontent.com)
    - 获取失败时 description 为空, 不中断流程
    - 提示用户选择 (除非 `--all`)
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 (不 exit)
    - 下载选中的 skill
-5. 保存 source 元数据, key 为 `"official/anthropic"`
+6. 保存 source 元数据, key 为 `"official/{providerKey}"`, URL 为 `"https://github.com/{owner}/{repo}"`
 
-#### Scenario: Install anthropic skills only
-- **WHEN** 用户执行 `install anthropic`
+#### Scenario: Install official skills only
+- **WHEN** 用户执行 `install anthropic` 或 `install openai`
 - **THEN** 只下载和安装 skill, 不查找或安装 commands
 
-#### Scenario: No skills found in anthropic repo
-- **WHEN** anthropic 仓库中没有 skill
+#### Scenario: No skills found in official repo
+- **WHEN** official 仓库中没有 skill
 - **THEN** 输出 "No skills found in repository" 并 exit(1), 不再尝试安装 commands
 
 #### installFromGitHubUrl()
@@ -137,9 +194,9 @@ key 格式为 `{type}/{repoName}`:
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 true (视为成功, 不回退到 git clone)
    - 下载选中的 skill
 7. 确定 source key:
-   - anthropics/skills → `"official/anthropic"`
+   - 反查 `OFFICIAL_PROVIDERS` 匹配 → `"official/{providerKey}"`
    - `--custom` → `"custom/{repo}"`
-   - 默认 → `"community/{repo}"`
+   - 默认 → `"community/{owner}/{repo}"`
 8. 返回 true
 
 #### Scenario: GitHub URL install skills only
@@ -196,6 +253,11 @@ key 格式为 `{type}/{repoName}`:
 
 当 GitHub API 不可用或返回 false 时使用 git clone:
 
+git clone 回退路径中的目标目录和 source key SHALL 使用与 GitHub API 路径相同的规则:
+- official (反查 registry 匹配): `official/{providerKey}/`
+- community: `community/{owner}/{repo}/`
+- custom: `custom/{repo}/`
+
 1. 克隆仓库到目标目录
 2. **检查 `skills/` 子目录**: 对所有仓库 (不限于 anthropic), 如果 `{repoPath}/skills/` 存在, 则将 skillsRoot 设为该目录
 3. 递归扫描子目录查找包含 SKILL.md 的目录, 最大深度为 2 层:
@@ -236,21 +298,37 @@ key 格式为 `{type}/{repoName}`:
 - **THEN** 行为不变, 正常识别和安装
 
 #### Scenario: Git clone 识别 skills/ 子目录
-- **WHEN** git clone 非 anthropic 仓库, 仓库根目录有 `skills/` 子目录
+- **WHEN** git clone 仓库, 仓库根目录有 `skills/` 子目录
 - **THEN** 系统 SHALL 在 `skills/` 下搜索 skill, 而非仅在仓库根目录
 
 #### Scenario: Git clone 识别嵌套 skill 并扁平化
 - **WHEN** git clone 仓库, `skills/research-en/research/SKILL.md` 存在
 - **THEN** 系统 SHALL 识别 `research` 为 skill, 安装后存储为 `{repoPath}/research/` (扁平化)
 
+#### Scenario: Git clone community 目录
+- **WHEN** GitHub API 失败, 回退 git clone 安装 `obra/superpowers`
+- **THEN** 克隆到 `~/.skills-manager/community/obra/superpowers/`
+
+#### Scenario: Git clone official 目录
+- **WHEN** GitHub API 失败, 回退 git clone 安装 `openai/skills`
+- **THEN** 反查 registry 匹配 openai, 克隆到 `~/.skills-manager/official/openai/`
+
 ### 安装目标路径
 
 | 场景 | 路径 |
 |------|------|
-| anthropic 关键字 | `~/.skills-manager/official/anthropic/{skill-name}/` |
-| anthropics/skills 仓库 URL | `~/.skills-manager/official/anthropic/{skill-name}/` |
-| 普通 GitHub 仓库 | `~/.skills-manager/community/{repo}/{skill-name}/` |
+| official 快捷名 | `~/.skills-manager/official/{providerKey}/{skill-name}/` |
+| official owner/repo 或 URL | `~/.skills-manager/official/{providerKey}/{skill-name}/` |
+| community GitHub 仓库 | `~/.skills-manager/community/{owner}/{repo}/{skill-name}/` |
 | `--custom` 选项 | `~/.skills-manager/custom/{repo}/{skill-name}/` |
+
+#### Scenario: getTargetDir for official
+- **WHEN** 调用 `getTargetDir` 且 owner/repo 匹配 official registry
+- **THEN** 返回 `~/.skills-manager/official/{providerKey}/{skillName}`
+
+#### Scenario: getTargetDir for community
+- **WHEN** 调用 `getTargetDir` 且 owner/repo 不匹配 official registry
+- **THEN** 返回 `~/.skills-manager/community/{owner}/{repo}/{skillName}`
 
 #### Scenario: Install success output
 - **WHEN** 安装完成
@@ -274,11 +352,21 @@ key 格式为 `{type}/{repoName}`:
 不指定时: 更新所有 sources
 
 指定时, 按以下条件查找匹配的 key:
-1. 精确匹配 key (如 `official/anthropic`)
-2. key 以 `/{source}` 结尾 (如输入 `anthropic` 匹配 `official/anthropic`)
+1. 精确匹配 key (如 `official/openai`, `community/obra/superpowers`)
+2. key 以 `/{source}` 结尾 (如输入 `anthropic` 匹配 `official/anthropic`, 输入 `superpowers` 匹配 `community/obra/superpowers`)
 3. `sourceInfo.repoName === source`
 
+更新时确定本地目标目录 SHALL 使用与安装相同的路径规则.
+
 找不到匹配时, 输出已安装 source 列表供参考.
+
+#### Scenario: Update community source 匹配
+- **WHEN** 用户执行 `skillsmgr update superpowers`
+- **THEN** 系统 SHALL 匹配 key `community/obra/superpowers` (以 `/superpowers` 结尾)
+
+#### Scenario: Update official source 匹配
+- **WHEN** 用户执行 `skillsmgr update openai`
+- **THEN** 系统 SHALL 匹配 key `official/openai` (以 `/openai` 结尾)
 
 ### 更新流程
 
@@ -406,7 +494,7 @@ key 格式为 `{type}/{repoName}`:
 
 ### clone()
 
-- `anthropic` 关键字 → URL 替换为 `ANTHROPIC_SKILLS_REPO`
+- official 快捷名 → 从 `OFFICIAL_PROVIDERS` 获取 URL
 - 目标目录已存在 → `git pull` (在已有目录中执行, 使用 `stdio: 'inherit'`)
 - 不存在 → `git clone --depth 1` (浅克隆, 使用 `stdio: 'inherit'`)
 - 仓库名提取: 从 URL 末尾匹配 `/([^/]+?)(\.git)?$/`, 匹配失败返回 "unknown"
@@ -432,7 +520,7 @@ Sparse checkout 流程:
 
 ### 输入解析
 
-- test_install_anthropicKeyword_usesOfficialPath: "anthropic" 关键字安装到 official/anthropic/
+- test_install_officialShorthand_usesOfficialPath: official 快捷名安装到 official/{providerKey}/
 - test_install_ownerRepoShorthand_resolvesToGitHubUrl: "user/repo" 格式正确解析为 GitHub URL
 - test_install_ownerRepoWithTrailingSlash_trimmed: "user/repo/" 末尾斜杠被去掉
 - test_install_ownerRepoWithProtocol_notResolvedAsShorthand: "https://user/repo" 不被视为简写 (包含 ://)
@@ -442,10 +530,12 @@ Sparse checkout 流程:
 
 ### GitHub API 安装
 
-- test_installFromAnthropic_noSkills_exits: 仓库无 skill 时 process.exit(1)
-- test_installFromAnthropic_allOption_skipsPrompt: --all 选项跳过选择提示
-- test_installFromAnthropic_noSelection_returnsNoExit: 用户不选择时输出 "No skills selected" 但不 exit
-- test_installFromAnthropic_fetchSkillMdFails_emptyDescription: 获取 SKILL.md 失败时 description 为空, 不中断
+- test_installFromOfficial_noSkills_exits: 仓库无 skill 时 process.exit(1)
+- test_installFromOfficial_allOption_skipsPrompt: --all 选项跳过选择提示
+- test_installFromOfficial_noSelection_returnsNoExit: 用户不选择时输出 "No skills selected" 但不 exit
+- test_installFromOfficial_fetchSkillMdFails_emptyDescription: 获取 SKILL.md 失败时 description 为空, 不中断
+- test_installFromOfficial_customSkillsPath_usesDirectPath: 有 skillsPath 时直接使用该路径
+- test_installFromOfficial_noSkillsPath_scansDefaults: 无 skillsPath 时依次扫描默认路径
 - test_installFromGitHubUrl_specificSkill_directDownload: tree URL 直接下载指定 skill, 无提示
 - test_installFromGitHubUrl_repoUrl_searchesMultiplePaths: 仓库 URL 时依次搜索 skills/, ., src/skills/
 - test_installFromGitHubUrl_parseFails_returnsFalse: URL 解析失败返回 false

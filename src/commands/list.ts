@@ -31,19 +31,44 @@ async function listAvailable(): Promise<void> {
 
   console.log('Available in ~/.skills-manager/:\n');
 
-  const grouped: Record<string, typeof skills> = {};
+  const byCategory: Record<string, Record<string, string[]>> = {};
+  const ungroupedByCategory: Record<string, string[]> = {};
+
   for (const skill of skills) {
-    if (!grouped[skill.source]) {
-      grouped[skill.source] = [];
+    const parts = skill.source.split('/');
+    const category = parts[0];
+    const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
+
+    if (groupId) {
+      if (!byCategory[category]) byCategory[category] = {};
+      if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
+      byCategory[category][groupId].push(skill.name);
+    } else {
+      if (!ungroupedByCategory[category]) ungroupedByCategory[category] = [];
+      ungroupedByCategory[category].push(skill.name);
     }
-    grouped[skill.source].push(skill);
   }
 
-  for (const [source, sourceSkills] of Object.entries(grouped)) {
-    console.log(`── ${source} (${sourceSkills.length} skill${sourceSkills.length > 1 ? 's' : ''}) ──`);
-    for (const skill of sourceSkills) {
-      console.log(`  ${skill.name}`);
+  const allCategories = new Set([...Object.keys(byCategory), ...Object.keys(ungroupedByCategory)]);
+
+  for (const category of allCategories) {
+    const groups = byCategory[category] || {};
+    const ungrouped = ungroupedByCategory[category] || [];
+    const totalCount = Object.values(groups).reduce((sum, g) => sum + g.length, 0) + ungrouped.length;
+
+    console.log(`── ${category} (${totalCount} skill${totalCount > 1 ? 's' : ''}) ──`);
+
+    for (const [groupId, skillNames] of Object.entries(groups)) {
+      console.log(`  ${groupId} (${skillNames.length})`);
+      for (const name of skillNames) {
+        console.log(`    ${name}`);
+      }
     }
+
+    for (const name of ungrouped) {
+      console.log(`  ${name}`);
+    }
+
     console.log();
   }
 }

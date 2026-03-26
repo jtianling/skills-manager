@@ -10,6 +10,7 @@ import {
   writeFileSync,
   rmSync,
   readlinkSync,
+  chmodSync,
 } from 'fs';
 import { dirname, join } from 'path';
 
@@ -133,4 +134,35 @@ export function linkDir(src: string, dest: string): void {
     unlinkSync(dest);
   }
   symlinkSync(src, dest);
+}
+
+const SCRIPT_EXTENSIONS = ['.sh', '.bash', '.zsh', '.fish', '.csh'];
+
+export function isScriptFile(filePath: string): boolean {
+  return SCRIPT_EXTENSIONS.some((ext) => filePath.endsWith(ext));
+}
+
+export function makeExecutable(filePath: string): void {
+  chmodSync(filePath, 0o755);
+}
+
+export function findScriptFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const result: string[] = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      result.push(...findScriptFiles(join(dir, entry.name)));
+    } else if (isScriptFile(entry.name)) {
+      result.push(entry.name);
+    }
+  }
+  return result;
+}
+
+export function warnScriptFiles(scriptFiles: string[]): void {
+  if (scriptFiles.length === 0) return;
+  const unique = [...new Set(scriptFiles)];
+  console.warn(`\n⚠️  Warning: Skill contains script files: ${unique.join(', ')}`);
+  console.warn('   Please review these scripts for security before use.');
 }

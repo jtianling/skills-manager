@@ -61,6 +61,13 @@ export async function promptTools(configuredTools?: string[]): Promise<string[]>
   });
 }
 
+function parseSource(source: string): { category: string; groupId?: string } {
+  const parts = source.split('/');
+  const category = parts[0];
+  if (parts.length === 1) return { category };
+  return { category, groupId: parts.slice(1).join('/') };
+}
+
 export async function promptSkills(
   skills: SkillInfo[],
   deployedSkillNames: string[] = []
@@ -79,10 +86,12 @@ export async function promptSkills(
     value: string;
     checked?: boolean;
     group?: string;
+    subGroup?: string;
     suffix?: string;
   }> = [];
 
   for (const [source, sourceSkills] of Object.entries(grouped)) {
+    const { category, groupId } = parseSource(source);
     for (const skill of sourceSkills) {
       const isDeployed = deployedSkillNames.includes(skill.name);
       choices.push({
@@ -90,7 +99,8 @@ export async function promptSkills(
         description: skill.description,
         value: skill.name,
         checked: isDeployed,
-        group: source,
+        group: category,
+        subGroup: groupId,
         suffix: isDeployed ? '[deployed]' : undefined,
       });
     }

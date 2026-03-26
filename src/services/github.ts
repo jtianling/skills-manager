@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { writeFileSync, mkdirSync } from 'fs';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
-import { ensureDir } from '../utils/fs.js';
+import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
+import { ensureDir, isScriptFile, makeExecutable } from '../utils/fs.js';
 
 interface GitHubContent {
   name: string;
@@ -118,6 +118,9 @@ export class GitHubService {
 
     const content = await response.text();
     writeFileSync(localPath, content, 'utf-8');
+    if (isScriptFile(localPath)) {
+      makeExecutable(localPath);
+    }
   }
 
   /**
@@ -129,15 +132,15 @@ export class GitHubService {
     skillName: string,
     isCustom: boolean = false
   ): string {
-    const isAnthropic = owner === 'anthropics' && repo === 'skills';
+    const officialKey = findOfficialProvider(owner, repo);
 
     let baseDir: string;
-    if (isAnthropic) {
-      baseDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+    if (officialKey) {
+      baseDir = join(SKILLS_MANAGER_DIR, 'official', officialKey);
     } else if (isCustom) {
       baseDir = join(SKILLS_MANAGER_DIR, 'custom', repo);
     } else {
-      baseDir = join(SKILLS_MANAGER_DIR, 'community', repo);
+      baseDir = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
     }
 
     return join(baseDir, skillName);

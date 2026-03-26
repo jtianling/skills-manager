@@ -1,28 +1,28 @@
 import { execSync } from 'child_process';
 import { join, basename } from 'path';
 import { existsSync } from 'fs';
-import { ANTHROPIC_SKILLS_REPO, SKILLS_MANAGER_DIR } from '../constants.js';
+import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { ensureDir } from '../utils/fs.js';
 
 export class GitService {
   /**
    * Clone a git repository to the skills manager directory
-   * @param url Git URL or 'anthropic' shorthand
+   * @param url Git URL
    * @param isCustom Whether to install to custom/ instead of community/
    * @returns Path where repo was cloned
    */
   clone(url: string, isCustom: boolean = false): string {
-    const actualUrl = url === 'anthropic' ? ANTHROPIC_SKILLS_REPO : url;
-    const repoName = this.extractRepoName(actualUrl);
+    const repoName = this.extractRepoName(url);
+    const ownerName = this.extractOwnerName(url);
+    const officialKey = ownerName ? findOfficialProvider(ownerName, repoName) : null;
 
-    // Determine target directory
     let targetDir: string;
-    if (url === 'anthropic') {
-      targetDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+    if (officialKey) {
+      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialKey);
     } else if (isCustom) {
       targetDir = join(SKILLS_MANAGER_DIR, 'custom', repoName);
     } else {
-      targetDir = join(SKILLS_MANAGER_DIR, 'community', repoName);
+      targetDir = join(SKILLS_MANAGER_DIR, 'community', ownerName || repoName, repoName);
     }
 
     // If already exists, do a pull instead
@@ -35,7 +35,7 @@ export class GitService {
     // Clone the repo
     ensureDir(join(targetDir, '..'));
     console.log(`Cloning ${repoName}...`);
-    execSync(`git clone --depth 1 "${actualUrl}" "${targetDir}"`, {
+    execSync(`git clone --depth 1 "${url}" "${targetDir}"`, {
       stdio: 'inherit',
     });
 
@@ -61,16 +61,15 @@ export class GitService {
     const skillName = basename(skillPath);
     const repoUrl = `https://github.com/${owner}/${repo}`;
 
-    // Determine if this is the official anthropic repo
-    const isAnthropic = owner === 'anthropics' && repo === 'skills';
+    const officialKey = findOfficialProvider(owner, repo);
 
     let targetDir: string;
-    if (isAnthropic) {
-      targetDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic');
+    if (officialKey) {
+      targetDir = join(SKILLS_MANAGER_DIR, 'official', officialKey);
     } else if (isCustom) {
       targetDir = join(SKILLS_MANAGER_DIR, 'custom', repo);
     } else {
-      targetDir = join(SKILLS_MANAGER_DIR, 'community', repo);
+      targetDir = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
     }
 
     const skillTargetDir = join(targetDir, skillName);
@@ -103,9 +102,13 @@ export class GitService {
   }
 
   private extractRepoName(url: string): string {
-    // Handle various URL formats
     const match = url.match(/\/([^/]+?)(\.git)?$/);
     return match ? match[1] : 'unknown';
+  }
+
+  private extractOwnerName(url: string): string | null {
+    const match = url.match(/github\.com\/([^/]+)\//);
+    return match ? match[1] : null;
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { basename, join, resolve } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
-import { copyDir, fileExists, removeDir } from '../utils/fs.js';
+import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, removeDir, warnScriptFiles } from '../utils/fs.js';
 
 export const customUpdateCommand = new Command('custom-update')
   .alias('cu')
@@ -22,15 +22,31 @@ export const customUpdateCommand = new Command('custom-update')
       process.exit(1);
     }
 
-    const targetDir = join(SKILLS_MANAGER_DIR, 'custom', skillName);
+    let targetDir = join(SKILLS_MANAGER_DIR, 'custom', skillName);
 
     if (!fileExists(targetDir)) {
-      console.error(`Error: Skill '${skillName}' is not installed. Run: skillsmgr custom-install ${skillName}`);
-      process.exit(1);
+      const customDir = join(SKILLS_MANAGER_DIR, 'custom');
+      let found = false;
+      if (fileExists(customDir)) {
+        for (const groupDir of getDirectoriesInDir(customDir)) {
+          if (fileExists(join(groupDir.path, 'SKILL.md'))) continue;
+          const groupedTarget = join(groupDir.path, skillName);
+          if (fileExists(groupedTarget)) {
+            targetDir = groupedTarget;
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) {
+        console.error(`Error: Skill '${skillName}' is not installed. Run: skillsmgr custom-install ${skillName}`);
+        process.exit(1);
+      }
     }
 
     removeDir(targetDir);
     copyDir(skillDir, targetDir);
+    warnScriptFiles(findScriptFiles(targetDir));
 
     console.log(`✓ Updated skill '${skillName}' in ${targetDir}`);
   });

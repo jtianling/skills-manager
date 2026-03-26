@@ -11,7 +11,7 @@ describe('SkillsService', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `skillsmgr-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(join(testDir, 'official', 'anthropic', 'code-review'), { recursive: true });
-    mkdirSync(join(testDir, 'community', 'awesome', 'react-patterns'), { recursive: true });
+    mkdirSync(join(testDir, 'community', 'some-user', 'awesome', 'react-patterns'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'my-skill'), { recursive: true });
 
     writeFileSync(
@@ -19,7 +19,7 @@ describe('SkillsService', () => {
       '---\nname: code-review\ndescription: Reviews code\n---\n# Code Review'
     );
     writeFileSync(
-      join(testDir, 'community', 'awesome', 'react-patterns', 'SKILL.md'),
+      join(testDir, 'community', 'some-user', 'awesome', 'react-patterns', 'SKILL.md'),
       '---\nname: react-patterns\ndescription: React patterns\n---\n# React'
     );
     writeFileSync(
@@ -46,7 +46,7 @@ describe('SkillsService', () => {
       const skills = service.getAllSkills();
       const sources = skills.map((s) => s.source).sort();
       expect(sources).toEqual([
-        'community/awesome',
+        'community/some-user/awesome',
         'custom',
         'official/anthropic',
       ]);
@@ -71,6 +71,53 @@ describe('SkillsService', () => {
       const skill = service.getSkillByName('code-review');
       expect(skill?.name).toBe('code-review');
       expect(skill?.description).toBe('Reviews code');
+    });
+  });
+
+  describe('custom group scanning', () => {
+    it('detects ungrouped custom skill (has SKILL.md)', () => {
+      const skill = service.getSkillByName('my-skill');
+      expect(skill).toBeDefined();
+      expect(skill?.source).toBe('custom');
+    });
+
+    it('detects grouped custom skill (group dir without SKILL.md)', () => {
+      mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
+      writeFileSync(
+        join(testDir, 'custom', 'my-tools', 'tool-a', 'SKILL.md'),
+        '---\nname: tool-a\ndescription: A tool\n---\n'
+      );
+
+      const freshService = new SkillsService(testDir);
+      const skill = freshService.getSkillByName('tool-a');
+      expect(skill).toBeDefined();
+      expect(skill?.source).toBe('custom/my-tools');
+    });
+
+    it('ignores empty group directories', () => {
+      mkdirSync(join(testDir, 'custom', 'empty-group'), { recursive: true });
+
+      const freshService = new SkillsService(testDir);
+      const skills = freshService.getAllSkills();
+      const customSkills = skills.filter((s) => s.source.startsWith('custom'));
+      expect(customSkills).toHaveLength(1);
+      expect(customSkills[0].name).toBe('my-skill');
+    });
+
+    it('handles mixed grouped and ungrouped custom skills', () => {
+      mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
+      writeFileSync(
+        join(testDir, 'custom', 'my-tools', 'tool-a', 'SKILL.md'),
+        '---\nname: tool-a\ndescription: A tool\n---\n'
+      );
+
+      const freshService = new SkillsService(testDir);
+      const skills = freshService.getAllSkills();
+      const customSkills = skills.filter((s) => s.source.startsWith('custom'));
+      expect(customSkills).toHaveLength(2);
+
+      const sources = customSkills.map((s) => s.source).sort();
+      expect(sources).toEqual(['custom', 'custom/my-tools']);
     });
   });
 });

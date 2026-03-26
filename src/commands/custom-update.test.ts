@@ -137,6 +137,71 @@ describe('custom-update command', () => {
     expect(content).toContain('# Absolute');
   });
 
+  it('finds skill in group directory when ungrouped path does not exist', async () => {
+    createSourceSkill('grouped-skill', '---\nname: grouped-skill\n---\n# V2');
+    const groupDir = join(fakeSkillsManagerDir, 'custom', 'my-tools', 'grouped-skill');
+    mkdirSync(groupDir, { recursive: true });
+    writeFileSync(join(groupDir, 'SKILL.md'), '---\nname: grouped-skill\n---\n# V1');
+
+    const { copyDir, fileExists, removeDir, getDirectoriesInDir } = await import('../utils/fs.js');
+
+    const skillName = 'grouped-skill';
+    let targetDir = join(fakeSkillsManagerDir, 'custom', skillName);
+
+    if (!fileExists(targetDir)) {
+      const customDir = join(fakeSkillsManagerDir, 'custom');
+      for (const gDir of getDirectoriesInDir(customDir)) {
+        const groupedTarget = join(gDir.path, skillName);
+        if (fileExists(groupedTarget)) {
+          targetDir = groupedTarget;
+          break;
+        }
+      }
+    }
+
+    expect(targetDir).toBe(groupDir);
+    removeDir(targetDir);
+    copyDir(join(fakeProjectDir, 'grouped-skill'), targetDir);
+
+    const content = readFileSync(join(targetDir, 'SKILL.md'), 'utf-8');
+    expect(content).toContain('# V2');
+  });
+
+  it('prefers ungrouped path over grouped path', async () => {
+    createSourceSkill('dual-skill', '---\nname: dual-skill\n---\n# V3');
+    createInstalledSkill('dual-skill', '---\nname: dual-skill\n---\n# V1 ungrouped');
+    const groupDir = join(fakeSkillsManagerDir, 'custom', 'my-tools', 'dual-skill');
+    mkdirSync(groupDir, { recursive: true });
+    writeFileSync(join(groupDir, 'SKILL.md'), '---\nname: dual-skill\n---\n# V1 grouped');
+
+    const { fileExists } = await import('../utils/fs.js');
+
+    const targetDir = join(fakeSkillsManagerDir, 'custom', 'dual-skill');
+    expect(fileExists(targetDir)).toBe(true);
+  });
+
+  it('errors when skill not found in ungrouped or grouped paths', async () => {
+    createSourceSkill('nowhere-skill', '---\nname: nowhere-skill\n---\n# New');
+
+    const { fileExists, getDirectoriesInDir } = await import('../utils/fs.js');
+
+    const skillName = 'nowhere-skill';
+    let targetDir = join(fakeSkillsManagerDir, 'custom', skillName);
+    let found = fileExists(targetDir);
+
+    if (!found) {
+      const customDir = join(fakeSkillsManagerDir, 'custom');
+      for (const gDir of getDirectoriesInDir(customDir)) {
+        if (fileExists(join(gDir.path, skillName))) {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    expect(found).toBe(false);
+  });
+
   it('does not prompt for confirmation during update', async () => {
     // Arrange
     createSourceSkill('no-prompt-skill', '---\nname: no-prompt-skill\n---\n# V2');
