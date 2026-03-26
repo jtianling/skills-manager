@@ -6,16 +6,20 @@
 
 | 类型 | 存储路径 | 说明 |
 |------|---------|------|
-| official | `~/.skills-manager/official/{providerKey}/` | 官方 skill, 由 OFFICIAL_PROVIDERS registry 定义 |
-| community | `~/.skills-manager/community/{owner}/{repo}/` | 社区仓库 |
+| official | `~/.skills-manager/official/{providerKey}/{repoName}/{skillName}/` | 官方 skill, 由 OFFICIAL_PROVIDERS registry 定义或 owner 匹配 |
+| community | `~/.skills-manager/community/{owner}/{repo}/{skillName}/` | 社区仓库 |
 | custom | `~/.skills-manager/custom/{name}/` | 本地自定义无分组 skill |
 | custom (grouped) | `~/.skills-manager/custom/{groupName}/{name}/` | 本地自定义分组 skill |
 
-official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供者.
+official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供者. 同一 official owner 下的未注册仓库也归类为 official.
 
-#### Scenario: Official 安装路径
-- **WHEN** 安装 official 提供者 (如 openai) 的 skills
-- **THEN** 安装到 `~/.skills-manager/official/openai/{skill-name}/`
+#### Scenario: Official 安装路径 (已注册 repo)
+- **WHEN** 安装 official 提供者 openai 的 skills repo
+- **THEN** 安装到 `~/.skills-manager/official/openai/skills/{skill-name}/`
+
+#### Scenario: Official 安装路径 (未注册 repo, owner 匹配)
+- **WHEN** 安装 vercel-labs/new-repo (owner 匹配但 repo 未注册)
+- **THEN** 安装到 `~/.skills-manager/official/vercel-labs/new-repo/{skill-name}/`
 
 #### Scenario: Community 安装路径
 - **WHEN** 安装 community 仓库 `obra/superpowers` 的 skills
@@ -43,10 +47,10 @@ official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供�
 {
   "version": "1.0",
   "sources": {
-    "official/anthropic": {
+    "official/anthropic/skills": {
       "url": "https://github.com/anthropics/skills",
       "type": "official",
-      "repoName": "anthropic",
+      "repoName": "skills",
       "installedAt": "2025-01-15T10:00:00.000Z",
       "updatedAt": "2025-02-01T15:30:00.000Z"
     },
@@ -86,13 +90,17 @@ official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供�
 ### Source Key 命名规则
 
 key 格式:
-- official: `"official/{providerKey}"` (如 `"official/openai"`)
+- official: `"official/{providerKey}/{repoName}"` (如 `"official/openai/skills"`, `"official/vercel-labs/agent-skills"`)
 - community: `"community/{owner}/{repo}"` (如 `"community/obra/superpowers"`)
 - custom: `"custom/{repo}"` (不变)
 
-#### Scenario: Official source key
-- **WHEN** 安装 official provider 'microsoft' 的 skills
-- **THEN** source key SHALL 为 `"official/microsoft"`
+#### Scenario: Official source key (已注册 repo)
+- **WHEN** 安装 official provider 'openai' 的 skills repo
+- **THEN** source key SHALL 为 `"official/openai/skills"`
+
+#### Scenario: Official source key (未注册 repo)
+- **WHEN** 安装 vercel-labs/new-repo (owner 匹配)
+- **THEN** source key SHALL 为 `"official/vercel-labs/new-repo"`
 
 #### Scenario: Community source key
 - **WHEN** 安装 `obra/superpowers` 的 skills
@@ -105,21 +113,30 @@ key 格式:
 `install` 命令接受 `<source>` 参数, 按以下优先级解析:
 
 1. **official 快捷名**: 查询 `OFFICIAL_PROVIDERS[source]`, 匹配则调用 `installFromOfficial(source)`
-2. **`owner/repo` 简写** (如 `Fission-AI/OpenSpec`):
-   - 匹配规则: `!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)`
-   - 转换为 `https://github.com/{owner}/{repo}`
-   - 解析 owner/repo 后, 反查 `OFFICIAL_PROVIDERS` — 匹配则调用 `installFromOfficial(matchedKey)`
-   - 不匹配则继续 GitHub URL 处理
-3. **GitHub URL** (含 `github.com`): 解析 owner/repo, 反查 registry, 匹配则 official, 否则 community
-4. **其他 URL**: 直接使用 git clone
+2. **别名**: 查询所有 provider 的 aliases, 匹配则调用 `installFromOfficial(resolvedKey)`
+3. **`owner/repo` 简写** (如 `vercel-labs/agent-skills`):
+   - 调用 `findOfficialProvider(owner, repo)`:
+     - `exactRepoMatch: true` → 调用 `installFromOfficial(providerKey, repo)` 仅安装该 repo
+     - `exactRepoMatch: false` → 转为 GitHub URL, 走 URL 流程但归类为 official
+     - `null` → 转为 GitHub URL, 走 community 流程
+4. **GitHub URL** (含 `github.com`): 解析 owner/repo, 用 `findOfficialProvider` 判断分类
+5. **其他 URL**: 直接使用 git clone
 
 #### Scenario: anthropic 关键字安装
 - **WHEN** 用户执行 `skillsmgr install anthropic`
-- **THEN** 匹配 `OFFICIAL_PROVIDERS['anthropic']`, 从 `anthropics/skills` 安装到 `official/anthropic/`
+- **THEN** 匹配 `OFFICIAL_PROVIDERS['anthropic']`, 遍历其 repos, 安装到 `official/anthropic/{repoName}/`
 
-#### Scenario: owner/repo 简写识别为 official
-- **WHEN** 用户执行 `skillsmgr install openai/skills`
-- **THEN** 解析 owner=openai, repo=skills, 反查 registry 匹配 openai 条目, 安装到 `official/openai/`
+#### Scenario: 别名安装
+- **WHEN** 用户执行 `skillsmgr install vercel`
+- **THEN** 解析别名为 vercel-labs, 调用 `installFromOfficial('vercel-labs')`
+
+#### Scenario: owner/repo 简写, 已注册 repo
+- **WHEN** 用户执行 `skillsmgr install vercel-labs/agent-skills`
+- **THEN** findOfficialProvider 返回 exactRepoMatch=true, 调用 `installFromOfficial('vercel-labs', 'agent-skills')`
+
+#### Scenario: owner/repo 简写, 未注册 repo
+- **WHEN** 用户执行 `skillsmgr install vercel-labs/new-repo`
+- **THEN** findOfficialProvider 返回 exactRepoMatch=false, 转为 GitHub URL, 安装到 `official/vercel-labs/new-repo/`
 
 #### Scenario: owner/repo 简写识别为 community
 - **WHEN** 用户执行 `skillsmgr install obra/superpowers`
@@ -127,7 +144,7 @@ key 格式:
 
 #### Scenario: GitHub URL 识别为 official
 - **WHEN** 用户执行 `skillsmgr install https://github.com/vercel-labs/agent-skills`
-- **THEN** 解析 owner=vercel-labs, repo=agent-skills, 反查 registry 匹配, 安装到 `official/vercel-labs/`
+- **THEN** 解析 owner=vercel-labs, repo=agent-skills, 反查 registry 匹配, 安装到 `official/vercel-labs/agent-skills/`
 
 ### 选项
 
@@ -317,14 +334,19 @@ git clone 回退路径中的目标目录和 source key SHALL 使用与 GitHub AP
 
 | 场景 | 路径 |
 |------|------|
-| official 快捷名 | `~/.skills-manager/official/{providerKey}/{skill-name}/` |
-| official owner/repo 或 URL | `~/.skills-manager/official/{providerKey}/{skill-name}/` |
+| official 快捷名 (多 repo) | `~/.skills-manager/official/{providerKey}/{repoName}/{skill-name}/` |
+| official owner/repo (已注册) | `~/.skills-manager/official/{providerKey}/{repoName}/{skill-name}/` |
+| official owner/repo (未注册, owner 匹配) | `~/.skills-manager/official/{providerKey}/{repoName}/{skill-name}/` |
 | community GitHub 仓库 | `~/.skills-manager/community/{owner}/{repo}/{skill-name}/` |
 | `--custom` 选项 | `~/.skills-manager/custom/{repo}/{skill-name}/` |
 
-#### Scenario: getTargetDir for official
-- **WHEN** 调用 `getTargetDir` 且 owner/repo 匹配 official registry
-- **THEN** 返回 `~/.skills-manager/official/{providerKey}/{skillName}`
+#### Scenario: getTargetDir for official (已注册)
+- **WHEN** 调用 `getTargetDir` 且 owner/repo 匹配 official registry (exactRepoMatch=true)
+- **THEN** 返回 `~/.skills-manager/official/{providerKey}/{repoName}/{skillName}`
+
+#### Scenario: getTargetDir for official (未注册 repo)
+- **WHEN** 调用 `getTargetDir` 且 owner 匹配 official (exactRepoMatch=false)
+- **THEN** 返回 `~/.skills-manager/official/{providerKey}/{repoName}/{skillName}`
 
 #### Scenario: getTargetDir for community
 - **WHEN** 调用 `getTargetDir` 且 owner/repo 不匹配 official registry
