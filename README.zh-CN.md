@@ -1,164 +1,166 @@
 # skillsmgr
 
-AI 编码工具的统一 Skills 管理器。在 `~/.skills-manager/` 中管理 skills，并部署到多个 AI 工具。
+面向 AI 编码工具的统一 Skills 管理器。先把 skills 安装到 `~/.skills-manager/`，再通过统一的 `.agents/skills/` 目录部署到项目里。
 
 [English](./README.md)
 
+## 亮点
+
+- 在 `official/`、`community/`、`custom/` 三类来源中统一管理 skills
+- 只部署一次到 `.agents/skills/`，对不原生支持的工具自动创建 symlink bridge
+- 支持 GitHub 仓库、单个 skill URL、根目录 skill 仓库，以及分组嵌套的 skill 目录
+- 交互式选择器支持搜索和 vi 风格导航
+- 在 `~/.skills-manager/sources.json` 中记录来源，便于后续 `update`
+
+## 环境要求
+
+- Node.js `>=18`
+
 ## 支持的工具
 
-| 工具 | Skills 目录 | 支持模式特定 |
-|------|------------|-------------|
-| Claude Code | `.claude/skills/` | 否 |
-| Cursor | `.cursor/skills/` | 否 |
-| Windsurf | `.windsurf/skills/` | 否 |
-| Cline | `.cline/skills/` | 否 |
-| Roo Code | `.roo/skills/` | 是 |
-| Kilo Code | `.kilocode/skills/` | 是 |
-| OpenCode | `.opencode/skills/` | 否 |
-| Trae | `.trae/skills/` | 否 |
-| Antigravity | `.agent/skills/` | 否 |
+所有 skill 都统一部署到 `.agents/skills/`。原生工具直接读取该目录，非原生工具通过符号链接桥接到旧目录。
+
+| 工具 | 类型 | 项目中的路径 |
+|------|------|-------------|
+| Claude Code | Symlink bridge | `.claude/skills -> .agents/skills` |
+| Codex | 原生 | `.agents/skills` |
+| Gemini CLI | 原生 | `.agents/skills` |
+| OpenCode | 原生 | `.agents/skills` |
+| OpenClaw | 原生 | `.agents/skills` |
+| Antigravity | 原生 | `.agents/skills` |
+| Cline | 原生 | `.agents/skills` |
+| Cursor | Symlink bridge | `.cursor/skills -> .agents/skills` |
+| Kilo Code | Symlink bridge | `.kilocode/skills -> .agents/skills` |
+| Roo Code | Symlink bridge | `.roo/skills -> .agents/skills` |
+| Trae | Symlink bridge | `.trae/skills -> .agents/skills` |
+| Windsurf | Symlink bridge | `.windsurf/skills -> .agents/skills` |
 
 ## 快速开始
 
 ```bash
-# 初始化 skills 管理器
+# 1. 初始化 ~/.skills-manager/
 npx skillsmgr setup
 
-# 安装官方 Anthropic skills
+# 2. 安装官方 Anthropic skills
 npx skillsmgr install anthropic
 
-# 部署 skills 到你的项目
+# 3. 部署到当前项目
 cd your-project
 npx skillsmgr init
-```
 
-## 命令
-
-### `npx skillsmgr setup`
-
-初始化 `~/.skills-manager/` 目录结构，包含示例 skill。
-
-```bash
-npx skillsmgr setup
-```
-
-### `npx skillsmgr install <source>`
-
-从仓库下载 skills。
-
-```bash
-# 安装官方 Anthropic skills
-npx skillsmgr install anthropic
-
-# 从任意 GitHub 仓库安装
-npx skillsmgr install https://github.com/user/skills-repo
-
-# 安装特定 skill
-npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
-
-# 安装所有 skills（无需确认）
-npx skillsmgr install anthropic --all
-
-# 安装到 custom/ 而非 community/
-npx skillsmgr install https://github.com/user/repo --custom
-```
-
-### `npx skillsmgr list`
-
-列出可用的 skills。
-
-```bash
-# 列出所有可用 skills
-npx skillsmgr list
-
-# 列出当前项目已部署的 skills
+# 4. 查看当前项目中的已部署 skills
 npx skillsmgr list --deployed
 ```
 
-### `npx skillsmgr init`
+## 部署模型
 
-交互式部署 skills 到当前项目。
+当前版本统一采用 `.agents/skills/` 作为项目内技能目录：
 
-```bash
-npx skillsmgr init
+```text
+project/
+├── .agents/
+│   └── skills/
+│       ├── code-review -> ~/.skills-manager/official/anthropic/code-review
+│       └── example-skill -> ~/.skills-manager/custom/example-skill
+├── .claude/
+│   └── skills -> ../.agents/skills
+└── .cursor/
+    └── skills -> ../.agents/skills
 ```
 
-功能：
-- 选择目标工具（Claude Code、Cursor 等）
-- 为 Roo Code / Kilo Code 选择模式
-- 通过搜索过滤选择要部署的 skills
-- 增量更新（添加/移除 skills）
+- 原生工具直接读取 `.agents/skills/`
+- 非原生工具在 `init` 时创建 symlink bridge
+- 默认用符号链接部署 skill；如果需要项目内独立副本，可使用 `--copy`
 
-### `npx skillsmgr add <skill>`
+## 命令
 
-快速添加 skill 到项目。
+| 命令 | 别名 | 说明 |
+|------|------|------|
+| `skillsmgr setup` | - | 初始化 `~/.skills-manager/`，并创建 `custom/example-skill/` |
+| `skillsmgr install <source>` | `i` | 从 Anthropic、GitHub 或其他 git 来源安装 skills |
+| `skillsmgr custom-install <name>` | `ci` | 把当前工作目录下的本地 skill 安装到 `custom/` |
+| `skillsmgr list` | - | 列出 `~/.skills-manager/` 中已安装的 skills |
+| `skillsmgr list --deployed` | - | 列出当前项目中已部署的 skills 和已配置工具 |
+| `skillsmgr init` | - | 交互式部署到当前项目 |
+| `skillsmgr add <name>` | - | 把一个已安装 skill 加到 `.agents/skills/` |
+| `skillsmgr remove <name>` | - | 从 `.agents/skills/` 移除一个已部署 skill |
+| `skillsmgr sync` | - | 校验已部署 skills，处理 orphaned skill，并在需要时刷新 copy 部署 |
+| `skillsmgr update [source]` | - | 从已记录的来源更新已安装 skills |
 
-```bash
-# 添加到所有已配置的工具
-npx skillsmgr add code-review
+## 安装 Skills
 
-# 添加到特定工具
-npx skillsmgr add code-review --tool claude-code
-
-# 使用复制模式而非符号链接
-npx skillsmgr add code-review --copy
-```
-
-### `npx skillsmgr remove <skill>`
-
-从项目移除 skill。
+### 安装官方 Anthropic skills
 
 ```bash
-# 从所有工具移除
-npx skillsmgr remove code-review
-
-# 从特定工具移除
-npx skillsmgr remove code-review --tool claude-code
+npx skillsmgr install anthropic
+npx skillsmgr install anthropic --all
 ```
 
-### `npx skillsmgr sync`
-
-同步并验证已部署的 skills。
+### 从 GitHub 安装
 
 ```bash
-npx skillsmgr sync
+# owner/repo 简写
+npx skillsmgr install Fission-AI/OpenSpec
+
+# 完整 GitHub URL
+npx skillsmgr install https://github.com/user/skills-repo
+
+# 单个 skill 路径
+npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
 ```
 
-### `npx skillsmgr update`
-
-从远程更新已安装的 skills 到最新版本。
+### 安装本地自定义 skill
 
 ```bash
-# 更新所有已安装的源
-npx skillsmgr update
-
-# 更新特定源
-npx skillsmgr update anthropic
+# 当前目录下需要存在 ./my-skill/SKILL.md
+npx skillsmgr custom-install my-skill
 ```
+
+### 常用安装选项
+
+```bash
+# 不交互，安装发现到的全部 skills
+npx skillsmgr install anthropic --all
+
+# 把远程来源安装到 custom 分类而不是 community
+npx skillsmgr install https://github.com/user/repo --custom
+```
+
+当前安装器支持这些常见仓库结构：
+
+- `skills/<skill>/SKILL.md`
+- `src/skills/<skill>/SKILL.md`
+- `skills/<group>/<skill>/SKILL.md`
+- 仓库根目录存在 `SKILL.md`
+
+## 交互式操作
+
+`install` 和 `init` 使用统一的交互式选择器，常用按键如下：
+
+- `j` / `k` 或方向键：移动
+- `gg` / `G`：跳到顶部或底部
+- `/`：列表较大时进入搜索模式
+- `space`：切换选择
+- `ctrl+a`：切换所有可见项
+- `enter`：确认
+- `q` 或 `ctrl+c`：取消
 
 ## 目录结构
 
-```
+```text
 ~/.skills-manager/
-├── official/           # 官方 skills (anthropic/skills)
+├── official/
 │   └── anthropic/
-│       ├── code-review/
-│       └── tdd/
-├── community/          # 社区 skills (其他仓库)
-│   └── awesome-skills/
-│       └── react-patterns/
-└── custom/             # 本地自定义 skills
-    └── my-skill/
+├── community/
+├── custom/
+│   └── example-skill/
+└── sources.json
 ```
 
-## 特性
-
-- **统一管理**：在一处管理所有 skills
-- **多工具支持**：部署到 9 种不同的 AI 工具
-- **默认符号链接**：修改自动同步
-- **搜索过滤**：快速搜索大型 skill 仓库
-- **进度指示**：下载时显示可视化反馈
-- **增量更新**：无需完全重新部署即可添加/移除 skills
+- `official/`：官方来源，例如 `anthropic`
+- `community/`：第三方仓库
+- `custom/`：本地 skill，或明确按 custom 分类安装的 skill
+- `sources.json`：供 `update` 使用的来源元数据
 
 ## 许可证
 

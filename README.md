@@ -1,164 +1,166 @@
 # skillsmgr
 
-Unified skills manager for AI coding tools. Manage skills in `~/.skills-manager/` and deploy them to multiple AI tools.
+Unified skills manager for AI coding tools. Install skills into `~/.skills-manager/`, then deploy them to projects through a single `.agents/skills/` directory.
 
 [中文文档](./README.zh-CN.md)
 
+## Highlights
+
+- Manage installed skills in one place: `official/`, `community/`, and `custom/`
+- Deploy once to `.agents/skills/`, with symlink bridges for tools that do not read it natively
+- Support GitHub repos, specific skill URLs, root-skill repos, and nested grouped skill directories
+- Interactive selection UI with search and vi-style navigation
+- Track installed sources in `~/.skills-manager/sources.json` for later updates
+
+## Requirements
+
+- Node.js `>=18`
+
 ## Supported Tools
 
-| Tool | Skills Directory | Mode-Specific |
-|------|-----------------|---------------|
-| Claude Code | `.claude/skills/` | No |
-| Cursor | `.cursor/skills/` | No |
-| Windsurf | `.windsurf/skills/` | No |
-| Cline | `.cline/skills/` | No |
-| Roo Code | `.roo/skills/` | Yes |
-| Kilo Code | `.kilocode/skills/` | Yes |
-| OpenCode | `.opencode/skills/` | No |
-| Trae | `.trae/skills/` | No |
-| Antigravity | `.agent/skills/` | No |
+All skills are deployed to `.agents/skills/`. Native tools read that directory directly. Non-native tools use a symlink bridge to their legacy skill path.
+
+| Tool | Type | Project Path |
+|------|------|--------------|
+| Claude Code | Symlink bridge | `.claude/skills -> .agents/skills` |
+| Codex | Native | `.agents/skills` |
+| Gemini CLI | Native | `.agents/skills` |
+| OpenCode | Native | `.agents/skills` |
+| OpenClaw | Native | `.agents/skills` |
+| Antigravity | Native | `.agents/skills` |
+| Cline | Native | `.agents/skills` |
+| Cursor | Symlink bridge | `.cursor/skills -> .agents/skills` |
+| Kilo Code | Symlink bridge | `.kilocode/skills -> .agents/skills` |
+| Roo Code | Symlink bridge | `.roo/skills -> .agents/skills` |
+| Trae | Symlink bridge | `.trae/skills -> .agents/skills` |
+| Windsurf | Symlink bridge | `.windsurf/skills -> .agents/skills` |
 
 ## Quick Start
 
 ```bash
-# Initialize skills manager
+# 1. Initialize ~/.skills-manager/
 npx skillsmgr setup
 
-# Install official Anthropic skills
+# 2. Install skills from the official Anthropic repository
 npx skillsmgr install anthropic
 
-# Deploy skills to your project
+# 3. Deploy skills to the current project
 cd your-project
 npx skillsmgr init
-```
 
-## Commands
-
-### `npx skillsmgr setup`
-
-Initialize `~/.skills-manager/` directory structure with example skill.
-
-```bash
-npx skillsmgr setup
-```
-
-### `npx skillsmgr install <source>`
-
-Download skills from a repository.
-
-```bash
-# Install official Anthropic skills
-npx skillsmgr install anthropic
-
-# Install from any GitHub repository
-npx skillsmgr install https://github.com/user/skills-repo
-
-# Install specific skill
-npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
-
-# Install all skills without prompting
-npx skillsmgr install anthropic --all
-
-# Install to custom/ instead of community/
-npx skillsmgr install https://github.com/user/repo --custom
-```
-
-### `npx skillsmgr list`
-
-List available skills.
-
-```bash
-# List all available skills
-npx skillsmgr list
-
-# List deployed skills in current project
+# 4. Inspect deployed skills
 npx skillsmgr list --deployed
 ```
 
-### `npx skillsmgr init`
+## Deployment Model
 
-Interactive deployment of skills to current project.
+`skillsmgr` now uses a unified deployment model:
+
+```text
+project/
+├── .agents/
+│   └── skills/
+│       ├── code-review -> ~/.skills-manager/official/anthropic/code-review
+│       └── example-skill -> ~/.skills-manager/custom/example-skill
+├── .claude/
+│   └── skills -> ../.agents/skills
+└── .cursor/
+    └── skills -> ../.agents/skills
+```
+
+- Native tools read `.agents/skills/` directly.
+- Non-native tools are configured by creating a symlink bridge during `init`.
+- Skill deployment defaults to symlinks; use `--copy` if you want project-local copies instead.
+
+## Commands
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `skillsmgr setup` | - | Initialize `~/.skills-manager/` and create `custom/example-skill/` |
+| `skillsmgr install <source>` | `i` | Install skills from Anthropic, GitHub, or another git source |
+| `skillsmgr custom-install <name>` | `ci` | Install a local skill directory from the current working directory into `custom/` |
+| `skillsmgr list` | - | List installed skills in `~/.skills-manager/` |
+| `skillsmgr list --deployed` | - | List deployed skills and configured tools in the current project |
+| `skillsmgr init` | - | Interactive deployment to the current project |
+| `skillsmgr add <name>` | - | Add one installed skill to `.agents/skills/` |
+| `skillsmgr remove <name>` | - | Remove one deployed skill from `.agents/skills/` |
+| `skillsmgr sync` | - | Verify deployed skills, detect orphaned skills, and refresh copied skills when needed |
+| `skillsmgr update [source]` | - | Update installed skills from tracked sources |
+
+## Installing Skills
+
+### Official Anthropic skills
 
 ```bash
-npx skillsmgr init
+npx skillsmgr install anthropic
+npx skillsmgr install anthropic --all
 ```
 
-Features:
-- Select target tools (Claude Code, Cursor, etc.)
-- Select mode for Roo Code / Kilo Code
-- Choose skills to deploy with search filter
-- Incremental updates (add/remove skills)
-
-### `npx skillsmgr add <skill>`
-
-Quick add a skill to project.
+### GitHub repository
 
 ```bash
-# Add to all configured tools
-npx skillsmgr add code-review
+# owner/repo shorthand
+npx skillsmgr install Fission-AI/OpenSpec
 
-# Add to specific tool
-npx skillsmgr add code-review --tool claude-code
+# full GitHub URL
+npx skillsmgr install https://github.com/user/skills-repo
 
-# Use copy mode instead of symlink
-npx skillsmgr add code-review --copy
+# specific skill path
+npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code-review
 ```
 
-### `npx skillsmgr remove <skill>`
-
-Remove a skill from project.
+### Local custom skill
 
 ```bash
-# Remove from all tools
-npx skillsmgr remove code-review
-
-# Remove from specific tool
-npx skillsmgr remove code-review --tool claude-code
+# from a directory that contains ./my-skill/SKILL.md
+npx skillsmgr custom-install my-skill
 ```
 
-### `npx skillsmgr sync`
-
-Sync and verify deployed skills.
+### Useful install options
 
 ```bash
-npx skillsmgr sync
+# install every discovered skill without prompting
+npx skillsmgr install anthropic --all
+
+# treat the installed source as custom instead of community
+npx skillsmgr install https://github.com/user/repo --custom
 ```
 
-### `npx skillsmgr update`
+The installer currently handles these repository layouts:
 
-Update installed skills to latest version from remote.
+- `skills/<skill>/SKILL.md`
+- `src/skills/<skill>/SKILL.md`
+- `skills/<group>/<skill>/SKILL.md`
+- `SKILL.md` at the repository root
 
-```bash
-# Update all installed sources
-npx skillsmgr update
+## Interactive Usage
 
-# Update specific source
-npx skillsmgr update anthropic
-```
+`install` and `init` use an interactive selector with these shortcuts:
 
-## Directory Structure
+- `j` / `k` or arrow keys: move
+- `gg` / `G`: jump to top or bottom
+- `/`: enter search mode when the list is large
+- `space`: toggle selection
+- `ctrl+a`: toggle all visible items
+- `enter`: confirm
+- `q` or `ctrl+c`: cancel
 
-```
+## Directory Layout
+
+```text
 ~/.skills-manager/
-├── official/           # Official skills (anthropic/skills)
+├── official/
 │   └── anthropic/
-│       ├── code-review/
-│       └── tdd/
-├── community/          # Community skills (other repos)
-│   └── awesome-skills/
-│       └── react-patterns/
-└── custom/             # Local custom skills
-    └── my-skill/
+├── community/
+├── custom/
+│   └── example-skill/
+└── sources.json
 ```
 
-## Features
-
-- **Unified Management**: Manage all skills in one place
-- **Multi-tool Support**: Deploy to 9 different AI tools
-- **Symlink by Default**: Changes sync automatically
-- **Search Filter**: Quick search for large skill repositories
-- **Progress Indicators**: Visual feedback during downloads
-- **Incremental Updates**: Add/remove skills without full redeploy
+- `official/`: built-in official sources such as `anthropic`
+- `community/`: third-party repositories
+- `custom/`: local skills and skills intentionally installed as custom
+- `sources.json`: source metadata used by `update`
 
 ## License
 
