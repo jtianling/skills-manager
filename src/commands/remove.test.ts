@@ -43,7 +43,7 @@ describe('remove command', () => {
     const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
     symlinkSync(skillSource, deployedPath);
 
-    await executeRemove('code-review');
+    await executeRemove('code-review', {});
 
     expect(existsSync(deployedPath)).toBe(false);
   });
@@ -57,7 +57,7 @@ describe('remove command', () => {
       throw new Error('process.exit');
     }) as never);
 
-    await expect(executeRemove('nonexistent')).rejects.toThrow('process.exit');
+    await expect(executeRemove('nonexistent', {})).rejects.toThrow('process.exit');
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -66,7 +66,60 @@ describe('remove command', () => {
       throw new Error('process.exit');
     }) as never);
 
-    await expect(executeRemove('anything')).rejects.toThrow('process.exit');
+    await expect(executeRemove('anything', {})).rejects.toThrow('process.exit');
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it('removes skill via --skill flag', async () => {
+    const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+    const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
+    symlinkSync(skillSource, deployedPath);
+
+    await executeRemove(undefined, { skill: ['code-review'] });
+
+    expect(existsSync(deployedPath)).toBe(false);
+  });
+
+  it('merges positional arg with --skill flag', async () => {
+    const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+    const deployedPath1 = join(testProjectDir, '.agents', 'skills', 'code-review');
+    symlinkSync(skillSource, deployedPath1);
+
+    mkdirSync(join(testManagerDir, 'official', 'anthropic', 'skills', 'tdd'), { recursive: true });
+    writeFileSync(
+      join(testManagerDir, 'official', 'anthropic', 'skills', 'tdd', 'SKILL.md'),
+      '---\nname: tdd\ndescription: test\n---\n',
+    );
+    const skillSource2 = join(testManagerDir, 'official', 'anthropic', 'skills', 'tdd');
+    const deployedPath2 = join(testProjectDir, '.agents', 'skills', 'tdd');
+    symlinkSync(skillSource2, deployedPath2);
+
+    await executeRemove('code-review', { skill: ['tdd'] });
+
+    expect(existsSync(deployedPath1)).toBe(false);
+    expect(existsSync(deployedPath2)).toBe(false);
+  });
+
+  it('exits when no skill specified', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit');
+    }) as never);
+
+    await expect(executeRemove(undefined, {})).rejects.toThrow('process.exit');
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('No skill specified')
+    );
+  });
+
+  it('deduplicates positional arg and --skill', async () => {
+    const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+    const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
+    symlinkSync(skillSource, deployedPath);
+
+    await executeRemove('code-review', { skill: ['code-review'] });
+
+    expect(existsSync(deployedPath)).toBe(false);
+    expect(console.log).toHaveBeenCalledWith('  ✓ Removed code-review');
   });
 });

@@ -109,17 +109,17 @@ describe('resolveTargetAgents', () => {
     vi.mocked(interactiveCheckbox).mockResolvedValue([]);
   });
 
-  it('parses single agent from -a flag', async () => {
+  it('uses single agent from -a flag', async () => {
     const result = await resolveTargetAgents(
-      { agent: 'claude-code' },
+      { agent: ['claude-code'] },
       () => [] as ToolName[],
     );
     expect(result).toEqual(['claude-code']);
   });
 
-  it('parses multiple comma-separated agents from -a flag', async () => {
+  it('uses multiple agents from repeated -a flag', async () => {
     const result = await resolveTargetAgents(
-      { agent: 'claude-code,cursor' },
+      { agent: ['claude-code', 'cursor'] },
       () => [] as ToolName[],
     );
     expect(result).toEqual(['claude-code', 'cursor']);
@@ -127,7 +127,7 @@ describe('resolveTargetAgents', () => {
 
   it('exits on invalid agent name', async () => {
     await resolveTargetAgents(
-      { agent: 'invalid-name' },
+      { agent: ['invalid-name'] },
       () => [] as ToolName[],
     );
     expect(mockExit).toHaveBeenCalledWith(1);
@@ -155,9 +155,9 @@ describe('resolveTargetAgents', () => {
     );
   });
 
-  it('exits when -a and -s used together', async () => {
+  it('exits when -a and --same-agents used together', async () => {
     await resolveTargetAgents(
-      { agent: 'claude-code', sameAgents: true },
+      { agent: ['claude-code'], sameAgents: true },
       () => [] as ToolName[],
     );
     expect(mockExit).toHaveBeenCalledWith(1);

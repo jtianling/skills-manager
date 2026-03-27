@@ -249,7 +249,7 @@ describe('add command', () => {
     it('uses specified agent from -a flag', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
 
-      await executeAdd('code-review', { agent: 'claude-code' });
+      await executeAdd('code-review', { agent: ['claude-code'] });
 
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ code-review')
@@ -276,7 +276,7 @@ describe('add command', () => {
     it('rejects -a and -s together', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
 
-      await executeAdd('code-review', { agent: 'claude-code', sameAgents: true });
+      await executeAdd('code-review', { agent: ['claude-code'], sameAgents: true });
 
       expect(process.exit).toHaveBeenCalledWith(1);
       expect(console.log).toHaveBeenCalledWith(
@@ -287,7 +287,7 @@ describe('add command', () => {
     it('rejects invalid agent name', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
 
-      await executeAdd('code-review', { agent: 'invalid-agent' });
+      await executeAdd('code-review', { agent: ['invalid-agent'] });
 
       expect(process.exit).toHaveBeenCalledWith(1);
       expect(console.log).toHaveBeenCalledWith(

@@ -1,0 +1,126 @@
+## ADDED Requirements
+
+### Requirement: --skill 可重复参数
+
+install, uninstall, add, remove 四个命令 SHALL 支持 `-s, --skill <name>` 可重复参数, 用于精确指定操作目标 skill. 多次使用时累积为数组.
+
+#### Scenario: 单个 --skill
+- **WHEN** 用户执行 `skillsmgr install owner/repo --skill frontend-design`
+- **THEN** 仅安装名为 `frontend-design` 的 skill, 跳过 skill 选择界面
+
+#### Scenario: 多个 --skill 累积
+- **WHEN** 用户执行 `skillsmgr install owner/repo -s frontend-design -s skill-creator`
+- **THEN** 仅安装 `frontend-design` 和 `skill-creator` 两个 skill
+
+#### Scenario: --skill 指定不存在的 skill
+- **WHEN** 用户执行 `skillsmgr install owner/repo --skill nonexistent`
+- **AND** 源中不存在名为 `nonexistent` 的 skill
+- **THEN** 输出 `Skill 'nonexistent' not found.`
+- **AND** 以退出码 1 退出
+
+#### Scenario: --skill 与 --all 互斥
+- **WHEN** 用户执行 `skillsmgr install owner/repo --skill s1 --all`
+- **THEN** `--all` 优先, 安装所有 skill (与现有 --all 行为一致)
+
+### Requirement: --agent 可重复参数
+
+install, add, remove 三个命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 用于精确指定目标 agent. uninstall 不支持 (操作中央仓库, 不涉及 agent).
+
+#### Scenario: 单个 --agent
+- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code`
+- **THEN** 仅部署到 claude-code, 跳过 agent 选择界面
+
+#### Scenario: 多个 --agent 累积
+- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code -a opencode`
+- **THEN** 部署到 claude-code 和 opencode
+
+#### Scenario: --agent 指定无效 agent
+- **WHEN** 用户执行 `skillsmgr add code-review -a invalid-name`
+- **THEN** 输出 `Unknown agent: 'invalid-name'. Available agents: claude-code, codex, ...`
+- **AND** 以退出码 1 退出
+
+### Requirement: --skill 和 --agent 组合跳过所有交互
+
+当 `-s` 和 `-a` 都提供时, 命令 SHALL 完全跳过交互选择, 直接执行操作.
+
+#### Scenario: install 完全非交互
+- **WHEN** 用户执行 `skillsmgr install owner/repo -s frontend-design -a claude-code -a opencode`
+- **THEN** 安装 `frontend-design` 并部署到 claude-code 和 opencode, 无任何交互提示
+
+#### Scenario: add 完全非交互
+- **WHEN** 用户执行 `skillsmgr add owner/repo -s skill1 -s skill2 -a claude-code`
+- **THEN** 从 owner/repo 部署 skill1 和 skill2 到 claude-code, 无任何交互提示
+
+#### Scenario: remove 完全非交互
+- **WHEN** 用户执行 `skillsmgr remove -s skill1 -s skill2 -a claude-code`
+- **THEN** 从 claude-code 移除 skill1 和 skill2, 无任何交互提示
+
+### Requirement: 仅 --skill 时只跳过 skill 选择
+
+当只提供 `-s` 不提供 `-a` 时, 跳过 skill 选择但仍交互选择 agent (对于需要 agent 的命令).
+
+#### Scenario: install 有 skill 无 agent
+- **WHEN** 用户执行 `skillsmgr install owner/repo -s frontend-design`
+- **THEN** 跳过 skill 选择, 直接进入 agent 选择交互
+
+#### Scenario: uninstall 有 skill
+- **WHEN** 用户执行 `skillsmgr uninstall -s skill1 -s skill2`
+- **THEN** 直接卸载 skill1 和 skill2, 无交互 (uninstall 无 agent 选择)
+
+### Requirement: 仅 --agent 时只跳过 agent 选择
+
+当只提供 `-a` 不提供 `-s` 时, 跳过 agent 选择但仍交互选择 skill.
+
+#### Scenario: add 有 agent 无 skill
+- **WHEN** 用户执行 `skillsmgr add owner/repo -a claude-code`
+- **THEN** 进入 skill 选择交互, 选择后直接部署到 claude-code
+
+### Requirement: collector 模式参数解析
+
+`-s` 和 `-a` SHALL 使用 Commander.js collector 函数解析, 每次调用累积一个值到数组. 不支持逗号分隔, 不支持空格分隔多值.
+
+#### Scenario: 逗号分隔被视为单个值
+- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code,opencode`
+- **THEN** 系统将 `claude-code,opencode` 视为单个 agent 名称
+- **AND** 输出 `Unknown agent: 'claude-code,opencode'. Available agents: ...`
+
+### Requirement: install 命令的 --skill 与 --agent 参数
+
+install 命令 SHALL 同时支持 `--skill` 和 `--agent` 参数. `--skill` 过滤安装的 skill, `--agent` 指定部署目标.
+
+#### Scenario: install 只装特定 skill 到特定 agent
+- **WHEN** 用户执行 `skillsmgr install anthropic -s code-review -a claude-code`
+- **THEN** 从 anthropic 源安装 code-review 并部署到 claude-code
+
+### Requirement: remove 命令的 positional arg 与 --skill 合并
+
+remove 命令 SHALL 将 positional arg `[name]` 和 `-s` 参数的值合并为操作目标列表. 两者都不提供时报错.
+
+#### Scenario: 只用 positional arg (向后兼容)
+- **WHEN** 用户执行 `skillsmgr remove my-skill`
+- **THEN** 移除 `my-skill`, 行为与之前完全一致
+
+#### Scenario: positional arg 与 --skill 合并
+- **WHEN** 用户执行 `skillsmgr remove my-skill -s other-skill`
+- **THEN** 同时移除 `my-skill` 和 `other-skill`
+
+#### Scenario: 只用 --skill
+- **WHEN** 用户执行 `skillsmgr remove -s skill1 -s skill2`
+- **THEN** 移除 `skill1` 和 `skill2`
+
+#### Scenario: 无参数也无 --skill
+- **WHEN** 用户执行 `skillsmgr remove`
+- **THEN** 输出错误信息提示需要指定 skill 名称
+- **AND** 以退出码 1 退出
+
+### Requirement: remove 命令的 --agent 参数
+
+remove 命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 仅从指定 agent 移除 skill. 不指定时从所有已配置 agent 移除.
+
+#### Scenario: remove 指定 agent
+- **WHEN** 用户执行 `skillsmgr remove my-skill -a claude-code`
+- **THEN** 仅从 claude-code 的部署中移除 `my-skill`, 其他 agent 的部署不受影响
+
+#### Scenario: remove 不指定 agent
+- **WHEN** 用户执行 `skillsmgr remove my-skill`
+- **THEN** 从所有已配置 agent 移除 `my-skill` (保持现有行为)

@@ -5,7 +5,7 @@ import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
-import { AddOptions, SkillInfo } from '../types.js';
+import { AddOptions, SkillInfo, collect } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptSelect, resolveTargetAgents } from '../utils/prompts.js';
 import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.js';
@@ -188,6 +188,19 @@ async function handleUrl(
   await handleRemoteInstallAndDeploy(url, options, scanner, deployer);
 }
 
+function filterSkillsByFlag(
+  repoSkills: SkillInfo[],
+  skillFilter: string[],
+): string[] {
+  for (const name of skillFilter) {
+    if (!repoSkills.some((s) => s.name === name)) {
+      console.log(`Skill '${name}' not found.`);
+      process.exit(1);
+    }
+  }
+  return skillFilter;
+}
+
 async function handleRepoSkillSelection(
   repoSkills: SkillInfo[],
   options: AddOptions,
@@ -203,7 +216,9 @@ async function handleRepoSkillSelection(
     return;
   }
 
-  const selectedNames = await promptSkillsFromRepo(repoSkills, deployedNames);
+  const selectedNames = (options.skill && options.skill.length > 0)
+    ? filterSkillsByFlag(repoSkills, options.skill)
+    : await promptSkillsFromRepo(repoSkills, deployedNames);
   const newSkills = selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
@@ -261,7 +276,9 @@ async function handleRemoteInstallAndDeploy(
 
   let selectedNames: string[];
   try {
-    selectedNames = await promptSkillsFromRepo(installedSkills, deployedNames);
+    selectedNames = (options.skill && options.skill.length > 0)
+      ? filterSkillsByFlag(installedSkills, options.skill)
+      : await promptSkillsFromRepo(installedSkills, deployedNames);
   } catch {
     rollbackInstall(
       installResult.basePath,
@@ -351,9 +368,10 @@ export const addCommand = new Command('add')
   .description('Add a skill to the project')
   .argument('[arg]', 'Skill name, owner/repo, or URL')
   .option('--copy', 'Copy files instead of creating symlinks')
-  .option('-a, --agent <agents>', 'Target agents (comma-separated)')
+  .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('-g, --group <name>', 'Group name to use when installing missing skills')
-  .option('-s, --same-agents', 'Use currently configured agents')
+  .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
+  .option('--same-agents', 'Use currently configured agents')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);
   });

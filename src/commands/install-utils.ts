@@ -182,6 +182,16 @@ export async function selectSkills(skills: InstallableSkill[], options: InstallO
     return skills;
   }
 
+  if (options.skill && options.skill.length > 0) {
+    for (const name of options.skill) {
+      if (!skills.some((s) => s.name === name)) {
+        console.log(`Skill '${name}' not found.`);
+        process.exit(1);
+      }
+    }
+    return skills.filter((s) => options.skill!.includes(s.name));
+  }
+
   const selectedNames = await promptSkillsToInstall(skills);
   if (selectedNames.length === 0) {
     console.log('No skills selected');

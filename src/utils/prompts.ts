@@ -269,7 +269,7 @@ export async function promptOrphanAction(
 }
 
 export interface ResolveAgentsOptions {
-  agent?: string;
+  agent?: string[];
   sameAgents?: boolean;
 }
 
@@ -277,26 +277,25 @@ export async function resolveTargetAgents(
   options: ResolveAgentsOptions,
   getConfiguredTools: () => ToolName[],
 ): Promise<string[]> {
-  if (options.agent && options.sameAgents) {
+  if (options.agent && options.agent.length > 0 && options.sameAgents) {
     console.log('Cannot use --agent and --same-agents together.');
     process.exit(1);
   }
 
-  if (options.agent) {
-    const agents = options.agent.split(',').map((a) => a.trim());
-    for (const agent of agents) {
+  if (options.agent && options.agent.length > 0) {
+    for (const agent of options.agent) {
       if (!SUPPORTED_TOOLS.includes(agent as ToolName)) {
         console.log(`Unknown agent: '${agent}'. Available agents: ${SUPPORTED_TOOLS.join(', ')}`);
         process.exit(1);
       }
     }
-    return agents;
+    return options.agent;
   }
 
   if (options.sameAgents) {
     const configured = getConfiguredTools();
     if (configured.length === 0) {
-      console.log('No agents configured. Run \'skillsmgr init\' or omit -s flag.');
+      console.log('No agents configured. Run \'skillsmgr init\' or omit --same-agents flag.');
       process.exit(1);
     }
     return configured;

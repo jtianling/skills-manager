@@ -7,9 +7,11 @@ import { SourcesService } from '../services/sources.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
+import { collect } from '../types.js';
 
 interface UninstallOptions {
   force?: boolean;
+  skill?: string[];
 }
 
 function scanSkillNames(dir: string, maxDepth: number): string[] {
@@ -236,6 +238,13 @@ export async function executeUninstall(
     process.exit(1);
   }
 
+  if (options.skill && options.skill.length > 0) {
+    for (const name of options.skill) {
+      await uninstallByName(name, options);
+    }
+    return;
+  }
+
   if (identifier === undefined) {
     await interactiveUninstall();
     return;
@@ -259,6 +268,7 @@ export const uninstallCommand = new Command('uninstall')
   .description('Remove skills from ~/.skills-manager/')
   .argument('[identifier]', 'Provider name, owner/repo, or skill name')
   .option('-f, --force', 'Skip confirmation prompt')
+  .option('-s, --skill <name>', 'Specific skill to uninstall (repeatable)', collect, [])
   .action(async (identifier: string | undefined, options: UninstallOptions) => {
     await executeUninstall(identifier, options);
   });

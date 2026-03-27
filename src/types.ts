@@ -30,6 +30,8 @@ export interface InstallOptions {
   custom?: boolean;
   force?: boolean;
   group?: string;
+  skill?: string[];
+  agent?: string[];
 }
 
 export interface InitOptions {
@@ -38,11 +40,20 @@ export interface InitOptions {
 
 export interface AddOptions {
   copy?: boolean;
-  agent?: string;
+  agent?: string[];
   sameAgents?: boolean;
+  skill?: string[];
   group?: string;
+}
+
+export interface RemoveOptions {
+  skill?: string[];
 }
 
 export interface ListOptions {
   deployed?: boolean;
+}
+
+export function collect(val: string, acc: string[]): string[] {
+  return [...acc, val];
 }

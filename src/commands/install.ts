@@ -2,7 +2,7 @@ import { dirname, join } from 'path';
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { GitHubService } from '../services/github.js';
-import type { InstallOptions } from '../types.js';
+import { type InstallOptions, collect } from '../types.js';
 import { fileExists, findScriptFiles, warnScriptFiles } from '../utils/fs.js';
 import { ProgressBar } from '../utils/progress.js';
 import { detectSourceType } from '../utils/source-detection.js';
@@ -413,6 +413,8 @@ export const installCommand = new Command('install')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
   .option('-g, --group <name>', 'Group name for organizing installed skills under custom/')
+  .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
+  .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .action(async (source: string, options: InstallOptions) => {
     await executeInstall(source, options);
   });
