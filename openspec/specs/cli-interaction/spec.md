@@ -16,7 +16,7 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | update | - | [source] (可选) | - | Update installed skills to latest version |
 | list | - | - | --deployed | List available or deployed skills |
 | init | - | - | --copy | Deploy skills to current project |
-| add | - | \<name\> (必填) | --copy | Add a skill to the project |
+| add | - | [arg] (可选) | --copy, -a/--agent, -s/--same-agents | Add a skill to the project |
 | remove | - | \<name\> (必填) | - | Remove a skill from the project |
 | uninstall | - | [identifier] (可选) | -f, --force | Remove skills from ~/.skills-manager/ |
 | sync | - | - | Sync and verify deployed skills |
@@ -46,6 +46,26 @@ The `install` command SHALL have alias `i`.
 #### Scenario: Alias i works
 - **WHEN** user runs `skillsmgr i anthropic`
 - **THEN** the system behaves identically to `skillsmgr install anthropic`
+
+#### Scenario: add 命令参数可选
+- **WHEN** 用户执行 `skillsmgr add` (无参数)
+- **THEN** 命令正常执行, 进入 init 流程
+
+#### Scenario: add 命令接受 --agent 选项
+- **WHEN** 用户执行 `skillsmgr add code-review --agent claude-code`
+- **THEN** 使用 claude-code 作为目标 agent
+
+#### Scenario: add 命令接受 -a 短标志
+- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code`
+- **THEN** 与 `--agent` 行为一致
+
+#### Scenario: add 命令接受 --same-agents 选项
+- **WHEN** 用户执行 `skillsmgr add code-review --same-agents`
+- **THEN** 使用项目已配置的 agents
+
+#### Scenario: add 命令接受 -s 短标志
+- **WHEN** 用户执行 `skillsmgr add code-review -s`
+- **THEN** 与 `--same-agents` 行为一致
 
 ### Requirement: uninstall 命令参数可选
 
@@ -81,11 +101,13 @@ The `install` command SHALL have alias `i`.
 ### 工具选择 (promptTools)
 
 类型: 自定义 interactiveCheckbox (与 skill 选择共用同一组件)
-触发: `init` 命令
+触发: `init` 命令, `add` 命令
+
+提示消息: "Select target agents:" (使用 "agents" 术语替代 "tools")
 
 显示:
 ```
-? Select target tools:
+? Select target agents:
 ❯ ◉ Claude Code [configured]
   ◯ Codex CLI
   ◯ Gemini CLI
@@ -95,9 +117,13 @@ The `install` command SHALL have alias `i`.
 行为:
 - 使用 `interactiveCheckbox` 替代 inquirer checkbox
 - 按 `SUPPORTED_TOOLS` 顺序显示 (claude-code 在前, windsurf 在后)
-- 已配置的工具标记 "[configured]" 并默认选中 (`checked: true`)
+- 已配置的 agent 标记 "[configured]" 并默认选中 (`checked: true`)
 - 导航不循环: 在第一个选项时按上键不动, 在最后一个选项时按下键不动
 - 选中结果: 返回 `string[]` (工具标识符)
+
+#### Scenario: 提示消息使用 agents 术语
+- **WHEN** 用户进入 agent 选择
+- **THEN** 提示消息为 "Select target agents:"
 
 ### Skill 选择 (interactiveCheckbox)
 
@@ -581,18 +607,18 @@ Deployed in current project (.agents/skills/):
   ◉ code-review      (link) ← official/anthropic
   ⚠ my-skill         (copy) ← conflict
 
-Configured tools:
+Configured agents:
   Agents Skills Standard → Codex, Gemini CLI, OpenCode
   Claude Code (symlink: .claude/skills → .agents/skills)
 ```
 
 - skill 名称 padEnd(16) 对齐
 - conflict 状态用 ⚠ 前缀, source 显示 "conflict"
-- Configured tools 分两组: native 工具聚合显示, non-native 工具单独显示 symlink 信息
+- Configured agents 分两组: native 工具聚合显示, non-native 工具单独显示 symlink 信息
 
-#### Scenario: list deployed shows skills and configured tools
+#### Scenario: list deployed shows skills and configured agents
 - **WHEN** 执行 `list --deployed`
-- **THEN** 先显示 `.agents/skills/` 中的 skill 列表, 再显示 configured tools 信息
+- **THEN** 先显示 `.agents/skills/` 中的 skill 列表, 再显示 configured agents 信息
 
 #### Scenario: list deployed empty state
 - **WHEN** 没有已部署 skill
@@ -658,8 +684,11 @@ Downloading 3 skills...
 | init | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 init 流程 |
 | init | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
 | add | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 add 流程 |
-| add | name 匹配到 skill | process.exit(1), 提示 "'name' not found" |
-| add | 有已配置工具 | process.exit(1), 提示 "No tools configured. Run: skillsmgr init" |
+| add (无参数) | 同 init 的前置条件 | 同 init |
+| add (skill name) | name 未找到 | exit(1), 提示 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote." |
+| add (-a 指定无效 agent) | agent 名称不合法 | exit(1), 提示 "Unknown agent: 'xxx'. Available agents: ..." |
+| add (-s 无已配置 agent) | 无已配置 agent | exit(1), 提示 "No agents configured. Run 'skillsmgr init' or omit -s flag." |
+| add (-a 和 -s 同时使用) | 互斥 | exit(1), 提示 "Cannot use --agent and --same-agents together." |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
 | sync | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
@@ -680,6 +709,15 @@ Downloading 3 skills...
 #### Scenario: no available skills message
 - **WHEN** init 时没有可用 skill
 - **THEN** 输出 "No skills found. Run: skillsmgr install anthropic"
+
+#### Scenario: skill name 未找到提示改进
+- **WHEN** `skillsmgr add xxx` 未找到 skill
+- **THEN** 输出 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote."
+
+#### Scenario: 无效 agent 名称报错
+- **WHEN** `skillsmgr add code-review -a invalid`
+- **THEN** 输出 "Unknown agent: 'invalid'. Available agents: claude-code, codex, ..."
+- **AND** exit(1)
 
 ### 退出码
 

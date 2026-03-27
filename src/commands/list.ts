@@ -101,7 +101,7 @@ async function listDeployed(): Promise<void> {
   const nativeTools = configuredTools.filter((t) => TOOL_CONFIGS[t].native);
   const symlinkTools = configuredTools.filter((t) => !TOOL_CONFIGS[t].native);
 
-  console.log('Configured tools:');
+  console.log('Configured agents:');
 
   if (nativeTools.length > 0) {
     const names = nativeTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');

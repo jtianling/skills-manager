@@ -48,6 +48,7 @@ export interface SelectChoice {
   description?: string;
   value: string;
   checked?: boolean;
+  locked?: boolean;
   group?: string;
   subGroup?: string;
   suffix?: string;
@@ -239,9 +240,12 @@ export async function interactiveCheckbox(
             const isGroupChild = choice.subGroup !== undefined;
 
             const lineNum = String(choiceCount).padStart(lineNumberWidth, ' ');
-            const checkbox = isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
+            const isLocked = choice.locked ?? false;
+            const checkbox = isLocked
+              ? '\x1b[2m◉\x1b[0m'
+              : isSelected ? '\x1b[32m◉\x1b[0m' : '◯';
             const prefix = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
-            const highlight = isCursor ? '\x1b[36m' : '';
+            const highlight = isLocked ? '\x1b[2m' : isCursor ? '\x1b[36m' : '';
             const reset = '\x1b[0m';
             const suffixText = isSelected && choice.selectedSuffix ? choice.selectedSuffix : choice.suffix;
             const suffix = suffixText ? ` \x1b[33m${suffixText}\x1b[0m` : '';
@@ -408,16 +412,19 @@ export async function interactiveCheckbox(
         resetViState();
         const item = displayItems[cursor];
         if (item && item.type === 'group-header') {
-          const state = getGroupState(item.childIndices!, selected);
+          const unlocked = item.childIndices!.filter((idx) => !choices[idx].locked);
+          if (unlocked.length === 0) { render(); return; }
+          const state = getGroupState(unlocked, selected);
           if (state === 'all') {
-            item.childIndices!.forEach((idx) => selected.delete(idx));
+            unlocked.forEach((idx) => selected.delete(idx));
           } else {
-            item.childIndices!.forEach((idx) => selected.add(idx));
+            unlocked.forEach((idx) => selected.add(idx));
           }
           onToggle?.(selected, choices);
           render();
         } else if (item && item.type === 'choice') {
           const choiceIndex = item.choiceIndex!;
+          if (choices[choiceIndex].locked) { render(); return; }
           if (selected.has(choiceIndex)) {
             selected.delete(choiceIndex);
           } else {
@@ -431,9 +438,10 @@ export async function interactiveCheckbox(
 
       if (key.name === 'a' && key.ctrl) {
         resetViState();
-        const indicesToToggle = enableSearch && searchQuery
+        const indicesToToggle = (enableSearch && searchQuery
           ? filteredIndices
-          : choices.map((_, i) => i);
+          : choices.map((_, i) => i)
+        ).filter((i) => !choices[i].locked);
 
         const allSelected = indicesToToggle.every((i) => selected.has(i));
         if (allSelected) {

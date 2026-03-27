@@ -36,6 +36,8 @@ export interface InitOptions {
 
 export interface AddOptions {
   copy?: boolean;
+  agent?: string;
+  sameAgents?: boolean;
 }
 
 export interface ListOptions {

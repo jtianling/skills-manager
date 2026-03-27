@@ -6,7 +6,7 @@ import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { InitOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
-import { promptTools, promptSkills } from '../utils/prompts.js';
+import { promptAgents, promptSkills } from '../utils/prompts.js';
 import { executeSetup } from './setup.js';
 
 export async function executeInit(options: InitOptions): Promise<void> {
@@ -28,7 +28,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
 
   const configuredTools = scanner.getConfiguredTools();
 
-  const selectedTools = await promptTools(configuredTools);
+  const selectedTools = await promptAgents(configuredTools);
 
   const agentsSelected = selectedTools.includes('agents-skills-standard');
   const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');

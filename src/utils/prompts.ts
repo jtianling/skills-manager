@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { SkillInfo } from '../types.js';
-import { SUPPORTED_TOOLS } from '../constants.js';
+import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
 import { interactiveCheckbox } from './interactive-select.js';
 
 /**
@@ -19,7 +19,7 @@ function handlePromptError(error: unknown): never {
 
 const AGENTS_SKILLS_STANDARD_VALUE = 'agents-skills-standard';
 
-export async function promptTools(configuredTools?: string[]): Promise<string[]> {
+export async function promptAgents(configuredTools?: string[]): Promise<string[]> {
   const nativeTools = SUPPORTED_TOOLS.filter((t) => TOOL_CONFIGS[t].native);
   const symlinkTools = SUPPORTED_TOOLS.filter((t) => !TOOL_CONFIGS[t].native);
 
@@ -50,7 +50,7 @@ export async function promptTools(configuredTools?: string[]): Promise<string[]>
   const agentsIndex = 0;
 
   return interactiveCheckbox({
-    message: 'Select target tools:',
+    message: 'Select target agents:',
     choices,
     onToggle(selected) {
       const hasAnySymlink = symlinkTools.some((_, i) => selected.has(i + 1));
@@ -68,10 +68,30 @@ function parseSource(source: string): { category: string; groupId?: string } {
   return { category, groupId: parts.slice(1).join('/') };
 }
 
-export async function promptSkills(
+function buildSkillChoices(
   skills: SkillInfo[],
-  deployedSkillNames: string[] = []
-): Promise<string[]> {
+  mapChoice: (
+    skill: SkillInfo,
+    category: string,
+    groupId?: string
+  ) => {
+    name: string;
+    description: string;
+    value: string;
+    checked?: boolean;
+    group?: string;
+    subGroup?: string;
+    suffix?: string;
+  }
+): Array<{
+  name: string;
+  description: string;
+  value: string;
+  checked?: boolean;
+  group?: string;
+  subGroup?: string;
+  suffix?: string;
+}> {
   const grouped: Record<string, SkillInfo[]> = {};
   for (const skill of skills) {
     if (!grouped[skill.source]) {
@@ -93,8 +113,22 @@ export async function promptSkills(
   for (const [source, sourceSkills] of Object.entries(grouped)) {
     const { category, groupId } = parseSource(source);
     for (const skill of sourceSkills) {
+      choices.push(mapChoice(skill, category, groupId));
+    }
+  }
+
+  return choices;
+}
+
+export async function promptSkills(
+  skills: SkillInfo[],
+  deployedSkillNames: string[] = []
+): Promise<string[]> {
+  const choices = buildSkillChoices(
+    skills,
+    (skill, category, groupId) => {
       const isDeployed = deployedSkillNames.includes(skill.name);
-      choices.push({
+      return {
         name: skill.name,
         description: skill.description,
         value: skill.name,
@@ -102,12 +136,32 @@ export async function promptSkills(
         group: category,
         subGroup: groupId,
         suffix: isDeployed ? '[deployed]' : undefined,
-      });
+      };
     }
-  }
+  );
 
   return interactiveCheckbox({
     message: 'Select skills to deploy:',
+    choices,
+    pageSize: 15,
+  });
+}
+
+export async function promptSkillsToUninstall(skills: SkillInfo[]): Promise<string[]> {
+  const choices = buildSkillChoices(
+    skills,
+    (skill, category, groupId) => ({
+      name: skill.name,
+      description: skill.description,
+      value: skill.path,
+      checked: false,
+      group: category,
+      subGroup: groupId,
+    })
+  );
+
+  return interactiveCheckbox({
+    message: 'Select skills to uninstall:',
     choices,
     pageSize: 15,
   });
@@ -212,4 +266,41 @@ export async function promptOrphanAction(
   } catch (error) {
     handlePromptError(error);
   }
+}
+
+export interface ResolveAgentsOptions {
+  agent?: string;
+  sameAgents?: boolean;
+}
+
+export async function resolveTargetAgents(
+  options: ResolveAgentsOptions,
+  getConfiguredTools: () => ToolName[],
+): Promise<string[]> {
+  if (options.agent && options.sameAgents) {
+    console.log('Cannot use --agent and --same-agents together.');
+    process.exit(1);
+  }
+
+  if (options.agent) {
+    const agents = options.agent.split(',').map((a) => a.trim());
+    for (const agent of agents) {
+      if (!SUPPORTED_TOOLS.includes(agent as ToolName)) {
+        console.log(`Unknown agent: '${agent}'. Available agents: ${SUPPORTED_TOOLS.join(', ')}`);
+        process.exit(1);
+      }
+    }
+    return agents;
+  }
+
+  if (options.sameAgents) {
+    const configured = getConfiguredTools();
+    if (configured.length === 0) {
+      console.log('No agents configured. Run \'skillsmgr init\' or omit -s flag.');
+      process.exit(1);
+    }
+    return configured;
+  }
+
+  return promptAgents(getConfiguredTools());
 }

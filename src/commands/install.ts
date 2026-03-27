@@ -591,6 +591,95 @@ function saveGitCloneSource(
   });
 }
 
+export interface InstallResult {
+  basePath: string;
+  sourceKey: string;
+}
+
+/**
+ * Install all skills from a source to the central repository.
+ * Returns metadata for potential rollback.
+ * Throws on failure.
+ */
+export async function installSource(source: string): Promise<InstallResult> {
+  const allOptions: InstallOptions = { all: true };
+
+  // Check if input is an official provider shorthand
+  if (OFFICIAL_PROVIDERS[source]) {
+    await installFromOfficial(source, allOptions);
+    const provider = OFFICIAL_PROVIDERS[source];
+    const basePath = join(SKILLS_MANAGER_DIR, 'official', source);
+    const sourceKey = `official/${source}/${provider.repos[0].repo}`;
+    return { basePath, sourceKey };
+  }
+
+  // Check aliases
+  const aliasKey = resolveProviderAlias(source);
+  if (aliasKey) {
+    await installFromOfficial(aliasKey, allOptions);
+    const provider = OFFICIAL_PROVIDERS[aliasKey];
+    const basePath = join(SKILLS_MANAGER_DIR, 'official', aliasKey);
+    const sourceKey = `official/${aliasKey}/${provider.repos[0].repo}`;
+    return { basePath, sourceKey };
+  }
+
+  // Support owner/repo shorthand
+  let resolvedSource = source;
+  if (!source.includes('://') && /^[^/]+\/[^/]+\/?$/.test(source)) {
+    const [shortOwner, shortRepo] = source.replace(/\/$/, '').split('/');
+    const officialMatch = findOfficialProvider(shortOwner, shortRepo);
+    if (officialMatch?.exactRepoMatch) {
+      await installFromOfficial(officialMatch.providerKey, allOptions, shortRepo);
+      const basePath = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, shortRepo);
+      const sourceKey = `official/${officialMatch.providerKey}/${shortRepo}`;
+      return { basePath, sourceKey };
+    }
+    resolvedSource = `https://github.com/${source.replace(/\/$/, '')}`;
+    console.log(`Resolved to ${resolvedSource}`);
+  }
+
+  // Try GitHub API for GitHub URLs
+  if (resolvedSource.includes('github.com')) {
+    const githubService = new GitHubService();
+    const parsed = githubService.parseGitHubUrl(resolvedSource);
+    if (parsed) {
+      const { owner, repo } = parsed;
+      const officialMatch = findOfficialProvider(owner, repo);
+      let basePath: string;
+      let sourceKey: string;
+      if (officialMatch) {
+        basePath = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repo);
+        sourceKey = `official/${officialMatch.providerKey}/${repo}`;
+      } else {
+        basePath = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
+        sourceKey = `community/${owner}/${repo}`;
+      }
+
+      const success = await installFromGitHubUrl(resolvedSource, allOptions);
+      if (success) return { basePath, sourceKey };
+      console.log('GitHub API failed, falling back to git clone...');
+    }
+  }
+
+  // Fall back to git clone
+  await installViaGitClone(resolvedSource, allOptions);
+
+  // Derive basePath from git clone target
+  const ghMatch = resolvedSource.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/);
+  if (ghMatch) {
+    const [, owner, repo] = ghMatch;
+    const basePath = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
+    const sourceKey = `community/${owner}/${repo}`;
+    return { basePath, sourceKey };
+  }
+
+  const repoName = resolvedSource.split('/').pop()?.replace('.git', '') || 'unknown';
+  return {
+    basePath: join(SKILLS_MANAGER_DIR, 'community', repoName),
+    sourceKey: `community/${repoName}`,
+  };
+}
+
 export async function executeInstall(
   source: string,
   options: InstallOptions
