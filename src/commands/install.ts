@@ -1,6 +1,6 @@
 import { dirname, join } from 'path';
 import { Command } from 'commander';
-import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
+import { SKILLS_MANAGER_DIR, STANDARD_SKILL_PATHS, findOfficialProvider } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import type { InstallOptions } from '../types.js';
 import { fileExists, findScriptFiles, warnScriptFiles } from '../utils/fs.js';
@@ -103,7 +103,23 @@ async function fetchManifestSkillPaths(
     const url = `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/.claude-plugin/plugin.json`;
     const response = await fetch(url);
     if (response.ok) {
-      const manifest = await response.json() as { skills?: string | string[] };
+      const manifest = await response.json() as { skills?: string | string[]; metadata?: { pluginRoot?: string }; plugins?: Array<{ source?: string | { source: string }; skills?: string | string[] }> };
+
+      if (Array.isArray(manifest.plugins)) {
+        const pluginRoot = manifest.metadata?.pluginRoot?.replace(/^\.\//, '') ?? '';
+        for (const plugin of manifest.plugins) {
+          if (typeof plugin.source !== 'string') continue;
+          const source = plugin.source.replace(/^\.\//, '');
+          const pluginBase = pluginRoot ? `${pluginRoot}/${source}` : source;
+
+          if (typeof plugin.skills === 'string') {
+            paths.push(`${pluginBase}/${plugin.skills}`.replace(/\/+/g, '/').replace(/\/$/, ''));
+          } else {
+            paths.push(`${pluginBase}/skills`);
+          }
+        }
+      }
+
       if (typeof manifest.skills === 'string') {
         paths.push(manifest.skills.replace(/^\.\//, '').replace(/\/$/, ''));
       }
@@ -141,7 +157,7 @@ async function listGitHubRepoSkills(
   }
 
   // 2. Discover from priority standard paths
-  for (const skillsPath of ['skills', '.github/skills']) {
+  for (const skillsPath of STANDARD_SKILL_PATHS) {
     try {
       const skills = await githubService.listSkills(owner, repo, skillsPath);
       for (const skill of skills) {
@@ -412,7 +428,7 @@ export const installCommand = new Command('install')
   .option('--all', 'Install all skills without prompting')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
-  .option('-g, --group <name>', 'Group name for organizing installed skills under custom/')
+  .option('--group <name>', 'Group name for organizing installed skills under custom/')
   .action(async (source: string, options: InstallOptions) => {
     await executeInstall(source, options);
   });

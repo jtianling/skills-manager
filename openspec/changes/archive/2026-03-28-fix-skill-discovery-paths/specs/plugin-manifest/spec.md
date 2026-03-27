@@ -1,31 +1,4 @@
-# plugin-manifest Specification
-
-## Purpose
-TBD - created by archiving change add-plugin-manifest-support. Update Purpose after archive.
-## Requirements
-### Requirement: 解析 marketplace.json 多 plugin 目录
-
-系统 SHALL 读取仓库根目录下 `.claude-plugin/marketplace.json` 文件, 解析其中的 `metadata.pluginRoot` 和 `plugins` 数组, 为每个 plugin 构造 skill 搜索路径.
-
-搜索路径构造规则:
-- 基础路径 = `basePath` + `pluginRoot` + `plugin.source`
-- 每个 plugin 的 skills 目录 = 基础路径 + `plugin.skills`(若为字符串)
-- 若 plugin 未声明 `skills` 字段, 使用基础路径 + `skills/` 作为约定目录
-
-#### Scenario: marketplace.json 存在且包含多个 plugin
-
-- **WHEN** 仓库根目录存在 `.claude-plugin/marketplace.json`, 内容包含 `pluginRoot: "./.github/plugins"` 和 3 个 plugin 声明
-- **THEN** 系统 SHALL 返回 3 个 skill 搜索路径, 每个对应一个 plugin 的 skills 目录
-
-#### Scenario: marketplace.json 不存在
-
-- **WHEN** 仓库根目录不存在 `.claude-plugin/marketplace.json`
-- **THEN** 系统 SHALL 返回空数组, 不抛出错误
-
-#### Scenario: marketplace.json 格式错误
-
-- **WHEN** `.claude-plugin/marketplace.json` 存在但 JSON 格式无效
-- **THEN** 系统 SHALL 返回空数组, 不抛出错误
+## MODIFIED Requirements
 
 ### Requirement: 解析 plugin.json 单 plugin 目录
 
@@ -50,25 +23,6 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 
 - **WHEN** 仓库根目录不存在 `.claude-plugin/plugin.json`
 - **THEN** 系统 SHALL 返回空数组, 不抛出错误
-
-### Requirement: 路径安全校验
-
-系统 SHALL 校验 manifest 中声明的所有路径, 拒绝可能导致路径穿越的值.
-
-校验规则:
-- `pluginRoot`, `plugin.source`, `plugin.skills` 中的相对路径 MUST 以 `./` 开头
-- 路径 MUST NOT 包含 `..` 片段
-- 解析后的绝对路径 MUST 位于 `basePath` 目录内
-
-#### Scenario: 路径包含 .. 片段
-
-- **WHEN** manifest 中 plugin.source 值为 `"../../etc"`
-- **THEN** 系统 SHALL 跳过该 plugin, 不将其路径加入搜索列表
-
-#### Scenario: 路径不以 ./ 开头
-
-- **WHEN** manifest 中 plugin.source 值为 `"/absolute/path"`
-- **THEN** 系统 SHALL 跳过该 plugin
 
 ### Requirement: 集成到 Git clone 安装流程
 
@@ -96,14 +50,7 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 - **WHEN** 仓库不包含任何 plugin manifest 文件, 标准目录均不存在或为空
 - **THEN** 系统 SHALL 检查根目录 SKILL.md 作为最终 fallback
 
-### Requirement: 跳过远程 source 声明
-
-系统 SHALL 跳过 manifest 中 `source` 为对象类型(包含 `repo` 字段的远程引用)的 plugin 条目, 仅处理字符串类型的本地相对路径.
-
-#### Scenario: plugin source 为远程对象
-
-- **WHEN** marketplace.json 中某 plugin 的 source 为 `{"source": "some-repo", "repo": "https://github.com/..."}`
-- **THEN** 系统 SHALL 跳过该 plugin, 不尝试解析其 skills 路径
+## ADDED Requirements
 
 ### Requirement: GitHub API 路径标准目录对齐
 
@@ -113,4 +60,3 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 
 - **WHEN** 通过 GitHub API 安装仓库, 仓库的 `.claude/skills/` 目录下有 skill 子目录
 - **THEN** 系统 SHALL 发现并列出这些 skills
-

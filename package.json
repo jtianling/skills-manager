@@ -1,6 +1,6 @@
 {
   "name": "skillsmgr",
-  "version": "0.9.8",
+  "version": "0.10.1",
   "description": "Unified skills manager for AI coding tools",
   "type": "module",
   "bin": {
@@ -24,8 +24,8 @@
     "cursor",
     "windsurf",
     "cline",
-    "roo-code",
-    "kilo-code",
+    "roo",
+    "kilo",
     "antigravity",
     "opencode",
     "trae",

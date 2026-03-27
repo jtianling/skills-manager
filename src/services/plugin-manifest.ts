@@ -116,11 +116,14 @@ export function getPluginSkillPaths(basePath: string): string[] {
     dirs.push(...parseMarketplaceManifest(basePath, marketplace));
   }
 
-  const plugin = tryParseJson<PluginManifest>(
+  const pluginRaw = tryParseJson<PluginManifest & MarketplaceManifest>(
     join(basePath, '.claude-plugin', 'plugin.json'),
   );
-  if (plugin) {
-    dirs.push(...parsePluginManifest(basePath, plugin));
+  if (pluginRaw) {
+    if (Array.isArray(pluginRaw.plugins)) {
+      dirs.push(...parseMarketplaceManifest(basePath, pluginRaw));
+    }
+    dirs.push(...parsePluginManifest(basePath, pluginRaw));
   }
 
   return [...new Set(dirs)];

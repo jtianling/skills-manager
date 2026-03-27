@@ -167,6 +167,63 @@ describe('getPluginSkillPaths', () => {
     });
   });
 
+  describe('plugin.json marketplace format', () => {
+    it('discovers skills when plugin.json has plugins array', () => {
+      mkdirSync(join(basePath, '.claude-plugin'), { recursive: true });
+      mkdirSync(join(basePath, '.github', 'plugins', 'plugin-a', 'skills'), { recursive: true });
+      mkdirSync(join(basePath, '.github', 'plugins', 'plugin-b', 'skills'), { recursive: true });
+
+      writeFileSync(
+        join(basePath, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({
+          metadata: { pluginRoot: './.github/plugins' },
+          plugins: [
+            { name: 'plugin-a', source: './plugin-a', skills: 'skills/' },
+            { name: 'plugin-b', source: './plugin-b', skills: 'skills/' },
+          ],
+        }),
+      );
+
+      const paths = getPluginSkillPaths(basePath);
+      expect(paths).toContain(join(basePath, '.github', 'plugins', 'plugin-a', 'skills'));
+      expect(paths).toContain(join(basePath, '.github', 'plugins', 'plugin-b', 'skills'));
+    });
+
+    it('merges both formats when plugin.json has plugins array and top-level skills', () => {
+      mkdirSync(join(basePath, '.claude-plugin'), { recursive: true });
+      mkdirSync(join(basePath, 'skills'), { recursive: true });
+      mkdirSync(join(basePath, 'plugins', 'extra', 'skills'), { recursive: true });
+
+      writeFileSync(
+        join(basePath, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({
+          skills: './skills/',
+          metadata: { pluginRoot: './plugins' },
+          plugins: [
+            { name: 'extra', source: './extra', skills: 'skills/' },
+          ],
+        }),
+      );
+
+      const paths = getPluginSkillPaths(basePath);
+      expect(paths).toContain(join(basePath, 'plugins', 'extra', 'skills'));
+      expect(paths).toContain(join(basePath, 'skills'));
+    });
+
+    it('still works as simple format when no plugins array', () => {
+      mkdirSync(join(basePath, '.claude-plugin'), { recursive: true });
+      mkdirSync(join(basePath, 'my-skills'), { recursive: true });
+
+      writeFileSync(
+        join(basePath, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'test', skills: './my-skills' }),
+      );
+
+      const paths = getPluginSkillPaths(basePath);
+      expect(paths).toContain(join(basePath, 'my-skills'));
+    });
+  });
+
   describe('edge cases', () => {
     it('returns empty when no manifest files exist', () => {
       const paths = getPluginSkillPaths(basePath);
