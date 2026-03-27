@@ -155,7 +155,8 @@ export async function interactiveCheckbox(
 
   let searchQuery = '';
   let isSearchMode = false;
-  let { displayItems, filteredIndices } = buildDisplayItems(choices, searchQuery);
+  let isFiltered = false;
+  let { displayItems, filteredIndices } = buildDisplayItems(choices, '');
 
   let cursor = displayItems.findIndex((item) => isFocusable(item));
   if (cursor === -1) cursor = 0;
@@ -278,7 +279,7 @@ export async function interactiveCheckbox(
 
       if (enableSearch && isSearchMode) {
         lines.push(
-          '\x1b[2m(↑↓ move, esc exit search, space select, ctrl+a toggle filtered, enter confirm)\x1b[0m'
+          '\x1b[2m(↑↓ move, enter accept, esc cancel search, space select, ctrl+a toggle filtered)\x1b[0m'
         );
       } else if (enableSearch) {
         lines.push(
@@ -360,15 +361,19 @@ export async function interactiveCheckbox(
       lastKeyWasG = false;
     };
 
-    const updateSearch = (newQuery: string) => {
-      searchQuery = newQuery;
-      const result = buildDisplayItems(choices, searchQuery);
+    const rebuildDisplay = () => {
+      const result = buildDisplayItems(choices, isFiltered ? searchQuery : '');
       displayItems = result.displayItems;
       filteredIndices = result.filteredIndices;
-
       cursor = displayItems.findIndex((item) => isFocusable(item));
       if (cursor === -1) cursor = 0;
       scrollOffset = 0;
+    };
+
+    const updateSearch = (newQuery: string) => {
+      searchQuery = newQuery;
+      isFiltered = true;
+      rebuildDisplay();
     };
 
     const handleKeypress = (str: string | undefined, key: readline.Key) => {
@@ -381,6 +386,12 @@ export async function interactiveCheckbox(
       }
 
       if (key.name === 'return') {
+        if (isSearchMode) {
+          isSearchMode = false;
+          render();
+          return;
+        }
+
         cleanup();
         process.stdout.write(`\x1b[${lastRenderedLines}A\x1b[J`);
 
@@ -438,7 +449,7 @@ export async function interactiveCheckbox(
 
       if (key.name === 'a' && key.ctrl) {
         resetViState();
-        const indicesToToggle = (enableSearch && searchQuery
+        const indicesToToggle = (enableSearch && isFiltered
           ? filteredIndices
           : choices.map((_, i) => i)
         ).filter((i) => !choices[i].locked);
@@ -486,6 +497,8 @@ export async function interactiveCheckbox(
       if (key.name === 'escape') {
         if (isSearchMode) {
           isSearchMode = false;
+          isFiltered = false;
+          rebuildDisplay();
           render();
         }
         return;
@@ -497,6 +510,8 @@ export async function interactiveCheckbox(
             updateSearch(searchQuery.slice(0, -1));
           } else {
             isSearchMode = false;
+            isFiltered = false;
+            rebuildDisplay();
           }
           render();
         }
