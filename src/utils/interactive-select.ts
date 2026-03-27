@@ -89,7 +89,8 @@ export function getGroupState(childIndices: number[], selected: Set<number>): Gr
  */
 export function buildDisplayItems(
   choices: SelectChoice[],
-  searchQuery: string
+  searchQuery: string,
+  collapsed: Set<string> = new Set<string>()
 ): { displayItems: DisplayItem[]; filteredIndices: number[] } {
   const displayItems: DisplayItem[] = [];
   const filteredIndices: number[] = [];
@@ -126,6 +127,9 @@ export function buildDisplayItems(
 
     if (currentGroupHeader && choice.subGroup !== undefined) {
       currentGroupHeader.childIndices!.push(index);
+      if (collapsed.has(choice.subGroup)) {
+        return;
+      }
     }
 
     displayItems.push({ type: 'choice', choiceIndex: index });
@@ -153,9 +157,14 @@ export async function interactiveCheckbox(
       .filter((i) => i >= 0)
   );
 
+  const allSubGroups = Array.from(
+    new Set(choices.flatMap((c) => c.subGroup === undefined ? [] : [c.subGroup]))
+  );
+
   let searchQuery = '';
   let isSearchMode = false;
   let isFiltered = false;
+  let collapsed = new Set<string>();
   let { displayItems, filteredIndices } = buildDisplayItems(choices, '');
 
   let cursor = displayItems.findIndex((item) => isFocusable(item));
@@ -223,6 +232,8 @@ export async function interactiveCheckbox(
           } else if (item.type === 'group-header') {
             const childCount = item.childIndices!.length;
             const state = getGroupState(item.childIndices!, selected);
+            const foldIcon = !isFiltered && item.subGroupName && collapsed.has(item.subGroupName)
+              ? '▶' : '▼';
             const triIcon = state === 'all' ? '\x1b[32m◉\x1b[0m'
               : state === 'partial' ? '\x1b[33m◐\x1b[0m'
               : '◯';
@@ -232,13 +243,12 @@ export async function interactiveCheckbox(
             const reset = '\x1b[0m';
             const padding = ' '.repeat(lineNumberWidth);
             lines.push(
-              `${padding} ${prefix} ${triIcon} ${highlight}${item.subGroupName} (${childCount})${reset}`
+              `${padding} ${prefix} ${foldIcon} ${triIcon} ${highlight}${item.subGroupName} (${childCount})${reset}`
             );
           } else {
             const choice = choices[item.choiceIndex!];
             const isSelected = selected.has(item.choiceIndex!);
             const isCursor = i === cursor;
-            const isGroupChild = choice.subGroup !== undefined;
 
             const lineNum = String(choiceCount).padStart(lineNumberWidth, ' ');
             const isLocked = choice.locked ?? false;
@@ -250,14 +260,14 @@ export async function interactiveCheckbox(
             const reset = '\x1b[0m';
             const suffixText = isSelected && choice.selectedSuffix ? choice.selectedSuffix : choice.suffix;
             const suffix = suffixText ? ` \x1b[33m${suffixText}\x1b[0m` : '';
-            const indent = isGroupChild ? '  ' : '';
+            const indent = '    ';
 
             lines.push(
               `${lineNum} ${indent}${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
             );
 
             if (isCursor && choice.description) {
-              const descIndent = lineNumberWidth + 5 + (isGroupChild ? 2 : 0);
+              const descIndent = lineNumberWidth + 9;
               const maxWidth = process.stdout.columns
                 ? process.stdout.columns - descIndent - 1
                 : 80 - descIndent - 1;
@@ -283,11 +293,11 @@ export async function interactiveCheckbox(
         );
       } else if (enableSearch) {
         lines.push(
-          '\x1b[2m(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)\x1b[0m'
         );
       } else {
         lines.push(
-          '\x1b[2m(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)\x1b[0m'
         );
       }
 
@@ -351,6 +361,9 @@ export async function interactiveCheckbox(
     const ensureCursorVisible = () => {
       if (cursor < scrollOffset) {
         scrollOffset = cursor;
+        while (scrollOffset > 0 && !isFocusable(displayItems[scrollOffset - 1])) {
+          scrollOffset--;
+        }
       } else if (cursor >= scrollOffset + pageSize) {
         scrollOffset = cursor - pageSize + 1;
       }
@@ -361,19 +374,87 @@ export async function interactiveCheckbox(
       lastKeyWasG = false;
     };
 
-    const rebuildDisplay = () => {
-      const result = buildDisplayItems(choices, isFiltered ? searchQuery : '');
+    const getCursorTarget = (): { choiceIndex?: number; subGroupName?: string; displayIndex: number } => {
+      const item = displayItems[cursor];
+      if (!item) return { displayIndex: cursor };
+      if (item.type === 'choice') {
+        return { choiceIndex: item.choiceIndex, subGroupName: choices[item.choiceIndex!].subGroup, displayIndex: cursor };
+      }
+      if (item.type === 'group-header') {
+        return { subGroupName: item.subGroupName, displayIndex: cursor };
+      }
+      return { displayIndex: cursor };
+    };
+
+    const resolveCursor = (items: DisplayItem[], target?: { choiceIndex?: number; subGroupName?: string; displayIndex: number }): number => {
+      if (items.length === 0) return 0;
+      if (target?.choiceIndex !== undefined) {
+        const idx = items.findIndex((it) => it.type === 'choice' && it.choiceIndex === target.choiceIndex);
+        if (idx >= 0) return idx;
+      }
+      if (target?.subGroupName !== undefined) {
+        const idx = items.findIndex((it) => it.type === 'group-header' && it.subGroupName === target.subGroupName);
+        if (idx >= 0) return idx;
+      }
+      const preferred = Math.min(target?.displayIndex ?? 0, items.length - 1);
+      if (isFocusable(items[preferred])) return preferred;
+      for (let off = 1; off < items.length; off++) {
+        if (preferred - off >= 0 && isFocusable(items[preferred - off])) return preferred - off;
+        if (preferred + off < items.length && isFocusable(items[preferred + off])) return preferred + off;
+      }
+      const first = items.findIndex((it) => isFocusable(it));
+      return first >= 0 ? first : 0;
+    };
+
+    const rebuildDisplay = (target?: { choiceIndex?: number; subGroupName?: string; displayIndex: number }) => {
+      const result = buildDisplayItems(
+        choices,
+        isFiltered ? searchQuery : '',
+        isFiltered ? new Set<string>() : collapsed
+      );
       displayItems = result.displayItems;
       filteredIndices = result.filteredIndices;
-      cursor = displayItems.findIndex((item) => isFocusable(item));
-      if (cursor === -1) cursor = 0;
-      scrollOffset = 0;
+      cursor = resolveCursor(displayItems, target);
+      ensureCursorVisible();
     };
 
     const updateSearch = (newQuery: string) => {
       searchQuery = newQuery;
       isFiltered = true;
-      rebuildDisplay();
+      rebuildDisplay(getCursorTarget());
+    };
+
+    const collapseCurrentGroup = (): boolean => {
+      const item = displayItems[cursor];
+      if (!item || item.type !== 'group-header' || !item.subGroupName) return false;
+      if (collapsed.has(item.subGroupName)) return false;
+      collapsed = new Set([...collapsed, item.subGroupName]);
+      rebuildDisplay({ subGroupName: item.subGroupName, displayIndex: cursor });
+      return true;
+    };
+
+    const expandCurrentGroup = (): boolean => {
+      const item = displayItems[cursor];
+      if (!item || item.type !== 'group-header' || !item.subGroupName) return false;
+      if (!collapsed.has(item.subGroupName)) return false;
+      const childCount = item.childIndices?.length ?? 0;
+      const next = new Set(collapsed);
+      next.delete(item.subGroupName);
+      collapsed = next;
+      rebuildDisplay({ subGroupName: item.subGroupName, displayIndex: cursor });
+      if (cursor + childCount >= scrollOffset + pageSize) {
+        scrollOffset = Math.max(0, cursor - Math.floor(pageSize / 2));
+      }
+      return true;
+    };
+
+    const toggleAllGroups = (): boolean => {
+      if (allSubGroups.length === 0) return false;
+      const target = getCursorTarget();
+      const hasExpanded = allSubGroups.some((sg) => !collapsed.has(sg));
+      collapsed = hasExpanded ? new Set(allSubGroups) : new Set<string>();
+      rebuildDisplay(target);
+      return true;
     };
 
     const handleKeypress = (str: string | undefined, key: readline.Key) => {
@@ -468,9 +549,7 @@ export async function interactiveCheckbox(
       if (key.name === 'up') {
         resetViState();
         cursor = findPrevFocusable(cursor);
-        if (cursor < scrollOffset) {
-          scrollOffset = cursor;
-        }
+        ensureCursorVisible();
         render();
         return;
       }
@@ -478,9 +557,7 @@ export async function interactiveCheckbox(
       if (key.name === 'down') {
         resetViState();
         cursor = findNextFocusable(cursor);
-        if (cursor >= scrollOffset + pageSize) {
-          scrollOffset = cursor - pageSize + 1;
-        }
+        ensureCursorVisible();
         render();
         return;
       }
@@ -498,7 +575,7 @@ export async function interactiveCheckbox(
         if (isSearchMode) {
           isSearchMode = false;
           isFiltered = false;
-          rebuildDisplay();
+          rebuildDisplay(getCursorTarget());
           render();
         }
         return;
@@ -511,7 +588,7 @@ export async function interactiveCheckbox(
           } else {
             isSearchMode = false;
             isFiltered = false;
-            rebuildDisplay();
+            rebuildDisplay(getCursorTarget());
           }
           render();
         }
@@ -527,6 +604,24 @@ export async function interactiveCheckbox(
       }
 
       if (!isSearchMode) {
+        if (str === 'h' || key.name === 'left') {
+          resetViState();
+          if (collapseCurrentGroup()) render();
+          return;
+        }
+
+        if (str === 'l' || key.name === 'right') {
+          resetViState();
+          if (expandCurrentGroup()) render();
+          return;
+        }
+
+        if (str === 'c') {
+          resetViState();
+          if (toggleAllGroups()) render();
+          return;
+        }
+
         if (str === 'q') {
           cleanup();
           console.log('\nCancelled.');
@@ -568,17 +663,13 @@ export async function interactiveCheckbox(
 
         if (str === 'j') {
           cursor = findNextFocusable(cursor);
-          if (cursor >= scrollOffset + pageSize) {
-            scrollOffset = cursor - pageSize + 1;
-          }
+          ensureCursorVisible();
           render();
           return;
         }
         if (str === 'k') {
           cursor = findPrevFocusable(cursor);
-          if (cursor < scrollOffset) {
-            scrollOffset = cursor;
-          }
+          ensureCursorVisible();
           render();
           return;
         }

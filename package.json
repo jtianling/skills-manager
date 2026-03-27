@@ -1,6 +1,6 @@
 {
   "name": "skillsmgr",
-  "version": "0.9.4",
+  "version": "0.9.7",
   "description": "Unified skills manager for AI coding tools",
   "type": "module",
   "bin": {

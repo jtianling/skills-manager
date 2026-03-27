@@ -96,7 +96,7 @@ describe('interactive select fold E2E', () => {
     let output = await captureOutput();
     expect(output).toContain('alpha-one');
     expect(output).not.toContain('fold all');
-    expect(output).toContain('esc exit search');
+    expect(output).toContain('esc cancel search');
 
     await tmux.sendKeys('C-[');
     await tmux.waitForText(/fold all/, 5_000);
