@@ -23,36 +23,17 @@ export const SUPPORTED_TOOLS = [
 
 export type ToolName = (typeof SUPPORTED_TOOLS)[number];
 
-export interface OfficialProviderRepo {
-  repo: string;
-  skillsPath?: string;
-}
-
-export interface OfficialProvider {
-  owner: string;
-  repos: OfficialProviderRepo[];
-}
-
-export interface OfficialMatch {
-  providerKey: string;
-  exactRepoMatch: boolean;
-}
-
-export const OFFICIAL_PROVIDERS: Record<string, OfficialProvider> = {
-  'anthropic': { owner: 'anthropics', repos: [{ repo: 'skills' }] },
-  'openai': { owner: 'openai', repos: [{ repo: 'skills' }] },
-  'microsoft': { owner: 'microsoft', repos: [{ repo: 'skills', skillsPath: '.github/skills' }] },
-  'vercel-labs': {
-    owner: 'vercel-labs',
-    repos: [{ repo: 'agent-skills' }, { repo: 'agent-browser' }],
-  },
+export const OFFICIAL_OWNERS: Record<string, string> = {
+  'anthropic': 'anthropics',
+  'openai': 'openai',
+  'microsoft': 'microsoft',
+  'vercel-labs': 'vercel-labs',
 };
 
-export function findOfficialProvider(owner: string, repo: string): OfficialMatch | null {
-  for (const [key, provider] of Object.entries(OFFICIAL_PROVIDERS)) {
-    if (provider.owner === owner) {
-      const exactRepoMatch = provider.repos.some((r) => r.repo === repo);
-      return { providerKey: key, exactRepoMatch };
+export function findOfficialProvider(owner: string): string | null {
+  for (const [key, ghOwner] of Object.entries(OFFICIAL_OWNERS)) {
+    if (ghOwner === owner) {
+      return key;
     }
   }
   return null;

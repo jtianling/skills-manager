@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { join, resolve } from 'path';
-import { OFFICIAL_PROVIDERS, SKILLS_MANAGER_DIR } from '../constants.js';
+import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
@@ -203,9 +203,8 @@ export async function executeUpdate(source?: string): Promise<void> {
   const allSources = sourcesService.getAllSources();
 
   if (Object.keys(allSources).length === 0) {
-    const anthropicRepo = OFFICIAL_PROVIDERS.anthropic.repos[0]?.repo ?? 'skills';
     console.log('No installed sources found.');
-    console.log(`\nRun: skillsmgr install ${OFFICIAL_PROVIDERS.anthropic.owner}/${anthropicRepo}`);
+    console.log('\nRun: skillsmgr install anthropics/skills');
     return;
   }
 

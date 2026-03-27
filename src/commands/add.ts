@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { SKILLS_MANAGER_DIR, OFFICIAL_PROVIDERS } from '../constants.js';
+import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
@@ -37,17 +37,11 @@ function findRepoInCentralRepository(
   const allSkills = skillsService.getAllSkills();
 
   // Match official: source = "official/{providerKey}/{repoName}"
-  // Need to check if inputOwner matches the provider's actual owner
-  for (const [providerKey, provider] of Object.entries(OFFICIAL_PROVIDERS)) {
-    if (provider.owner === inputOwner) {
-      for (const repoConfig of provider.repos) {
-        if (repoConfig.repo === inputRepo) {
-          const prefix = `official/${providerKey}/${inputRepo}`;
-          const matched = allSkills.filter((s) => s.source === prefix);
-          if (matched.length > 0) return matched;
-        }
-      }
-    }
+  const providerKey = findOfficialProvider(inputOwner);
+  if (providerKey) {
+    const prefix = `official/${providerKey}/${inputRepo}`;
+    const matched = allSkills.filter((s) => s.source === prefix);
+    if (matched.length > 0) return matched;
   }
 
   // Match community: source = "community/{owner}/{repo}"

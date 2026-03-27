@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { readdirSync } from 'fs';
-import { SKILLS_MANAGER_DIR, OFFICIAL_PROVIDERS } from '../constants.js';
+import { SKILLS_MANAGER_DIR, OFFICIAL_OWNERS } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
@@ -241,7 +241,7 @@ export async function executeUninstall(
     return;
   }
 
-  if (OFFICIAL_PROVIDERS[identifier]) {
+  if (OFFICIAL_OWNERS[identifier]) {
     await uninstallProvider(identifier, options);
     return;
   }

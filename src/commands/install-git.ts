@@ -7,6 +7,7 @@ import { GitService } from '../services/git.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
+import { getPluginSkillPaths } from '../services/plugin-manifest.js';
 import {
   createInstallResult,
   getCustomSkillDir,
@@ -16,6 +17,7 @@ import {
   parseMdDescription,
   prepareTargetDir,
   saveGroupedGitSource,
+  scanSkillDirectories,
   selectSkills,
 } from './install-utils.js';
 import type { InstallableSkill, InstallResult } from './install-utils.js';
@@ -57,10 +59,49 @@ export async function cloneToTemp(source: string): Promise<string> {
   return tempDir;
 }
 
+function discoverManifestSkills(repoPath: string): InstallableSkill[] {
+  const manifestDirs = getPluginSkillPaths(repoPath);
+  if (manifestDirs.length === 0) {
+    return [];
+  }
+
+  const skills: InstallableSkill[] = [];
+  const seenNames = new Set<string>();
+
+  for (const dir of manifestDirs) {
+    for (const skill of scanSkillDirectories(dir)) {
+      if (!seenNames.has(skill.name)) {
+        seenNames.add(skill.name);
+        skills.push(skill);
+      }
+    }
+  }
+
+  return skills;
+}
+
+function mergeSkills(base: InstallableSkill[], extra: InstallableSkill[]): InstallableSkill[] {
+  const seenNames = new Set(base.map((s) => s.name));
+  const merged = [...base];
+
+  for (const skill of extra) {
+    if (!seenNames.has(skill.name)) {
+      seenNames.add(skill.name);
+      merged.push(skill);
+    }
+  }
+
+  return merged;
+}
+
 export function collectGitCloneSkills(repoPath: string): InstallableSkill[] {
+  const manifestSkills = discoverManifestSkills(repoPath);
+
   const skillsSubdir = join(repoPath, 'skills');
   const scanRoot = fileExists(skillsSubdir) ? skillsSubdir : repoPath;
-  let skills = scanForSkills(scanRoot, 3);
+  const scannedSkills = scanForSkills(scanRoot, 3);
+
+  let skills = mergeSkills(manifestSkills, scannedSkills);
 
   if (skills.length === 0) {
     const rootSkillMd = join(repoPath, 'SKILL.md');
@@ -106,15 +147,14 @@ export function saveGitCloneSource(
   let type: 'official' | 'community' | 'custom';
   let sourceKey: string;
 
-  const officialMatch = resolvedOwner && resolvedRepo
-    ? findOfficialProvider(resolvedOwner, resolvedRepo)
+  const providerKey = resolvedOwner
+    ? findOfficialProvider(resolvedOwner)
     : null;
 
-  if (officialMatch || repoPath.includes('/official/')) {
+  if (providerKey || repoPath.includes('/official/')) {
     type = 'official';
-    const providerKey = officialMatch?.providerKey || repoName;
     const repo = resolvedRepo || repoName;
-    sourceKey = `official/${providerKey}/${repo}`;
+    sourceKey = `official/${providerKey || repoName}/${repo}`;
   } else if (options.custom || repoPath.includes('/custom/')) {
     type = 'custom';
     sourceKey = `custom/${repoName}`;
@@ -302,10 +342,13 @@ function tryInstallRootSkillFromClone(repoPath: string, context: GitCloneContext
 }
 
 function findRepoSkills(repoPath: string): InstallableSkill[] {
+  const manifestSkills = discoverManifestSkills(repoPath);
+
   const skillsRoot = fileExists(join(repoPath, 'skills')) ? join(repoPath, 'skills') : repoPath;
-  const skills = scanForSkills(skillsRoot, 2);
-  flattenClonedSkillPaths(repoPath, skillsRoot, skills);
-  return skills;
+  const scannedSkills = scanForSkills(skillsRoot, 2);
+  flattenClonedSkillPaths(repoPath, skillsRoot, scannedSkills);
+
+  return mergeSkills(manifestSkills, scannedSkills);
 }
 
 function finalizeRepoInstall(repoPath: string, skills: InstallableSkill[], context: GitCloneContext): InstallResult {

@@ -61,12 +61,12 @@ function getGitSourceInfo(owner: string, repo: string, options: InstallOptions):
   type: 'official' | 'community' | 'custom';
   sourceKey: string;
 } {
-  const officialMatch = findOfficialProvider(owner, repo);
+  const providerKey = findOfficialProvider(owner);
 
-  if (officialMatch) {
+  if (providerKey) {
     return {
       type: 'official',
-      sourceKey: `official/${officialMatch.providerKey}/${repo}`,
+      sourceKey: `official/${providerKey}/${repo}`,
     };
   }
 
@@ -111,9 +111,9 @@ export function getRemoteSkillTargetDir(owner: string, repo: string, skillName: 
     return getCustomSkillDir(skillName, options.group);
   }
 
-  const officialMatch = findOfficialProvider(owner, repo);
-  if (officialMatch) {
-    return join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repo, skillName);
+  const providerKey = findOfficialProvider(owner);
+  if (providerKey) {
+    return join(SKILLS_MANAGER_DIR, 'official', providerKey, repo, skillName);
   }
 
   if (options.custom) {

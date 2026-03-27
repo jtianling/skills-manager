@@ -1,68 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { OFFICIAL_PROVIDERS, findOfficialProvider } from './constants.js';
+import { OFFICIAL_OWNERS, findOfficialProvider } from './constants.js';
 
-describe('OFFICIAL_PROVIDERS', () => {
+describe('OFFICIAL_OWNERS', () => {
   it('contains all initial providers', () => {
-    expect(OFFICIAL_PROVIDERS).toHaveProperty('anthropic');
-    expect(OFFICIAL_PROVIDERS).toHaveProperty('openai');
-    expect(OFFICIAL_PROVIDERS).toHaveProperty('microsoft');
-    expect(OFFICIAL_PROVIDERS).toHaveProperty('vercel-labs');
+    expect(OFFICIAL_OWNERS).toHaveProperty('anthropic');
+    expect(OFFICIAL_OWNERS).toHaveProperty('openai');
+    expect(OFFICIAL_OWNERS).toHaveProperty('microsoft');
+    expect(OFFICIAL_OWNERS).toHaveProperty('vercel-labs');
   });
 
-  it('anthropic maps to anthropics with skills repo', () => {
-    const provider = OFFICIAL_PROVIDERS['anthropic'];
-    expect(provider.owner).toBe('anthropics');
-    expect(provider.repos).toEqual([{ repo: 'skills' }]);
-  });
-
-  it('microsoft has custom skillsPath', () => {
-    const provider = OFFICIAL_PROVIDERS['microsoft'];
-    expect(provider.repos[0].skillsPath).toBe('.github/skills');
-  });
-
-  it('vercel-labs has multiple repos', () => {
-    const provider = OFFICIAL_PROVIDERS['vercel-labs'];
-    expect(provider.owner).toBe('vercel-labs');
-    expect(provider.repos).toEqual([
-      { repo: 'agent-skills' },
-      { repo: 'agent-browser' },
-    ]);
+  it('maps provider keys to GitHub owners', () => {
+    expect(OFFICIAL_OWNERS['anthropic']).toBe('anthropics');
+    expect(OFFICIAL_OWNERS['openai']).toBe('openai');
+    expect(OFFICIAL_OWNERS['microsoft']).toBe('microsoft');
+    expect(OFFICIAL_OWNERS['vercel-labs']).toBe('vercel-labs');
   });
 });
 
 describe('findOfficialProvider', () => {
-  it('returns OfficialMatch with exactRepoMatch=true for matching owner+repo', () => {
-    expect(findOfficialProvider('anthropics', 'skills')).toEqual({
-      providerKey: 'anthropic',
-      exactRepoMatch: true,
-    });
-    expect(findOfficialProvider('openai', 'skills')).toEqual({
-      providerKey: 'openai',
-      exactRepoMatch: true,
-    });
-    expect(findOfficialProvider('vercel-labs', 'agent-skills')).toEqual({
-      providerKey: 'vercel-labs',
-      exactRepoMatch: true,
-    });
-    expect(findOfficialProvider('vercel-labs', 'agent-browser')).toEqual({
-      providerKey: 'vercel-labs',
-      exactRepoMatch: true,
-    });
-  });
-
-  it('returns OfficialMatch with exactRepoMatch=false for matching owner but unknown repo', () => {
-    expect(findOfficialProvider('anthropics', 'other-repo')).toEqual({
-      providerKey: 'anthropic',
-      exactRepoMatch: false,
-    });
-    expect(findOfficialProvider('vercel-labs', 'unknown-new-repo')).toEqual({
-      providerKey: 'vercel-labs',
-      exactRepoMatch: false,
-    });
+  it('returns provider key for official owners', () => {
+    expect(findOfficialProvider('anthropics')).toBe('anthropic');
+    expect(findOfficialProvider('openai')).toBe('openai');
+    expect(findOfficialProvider('microsoft')).toBe('microsoft');
+    expect(findOfficialProvider('vercel-labs')).toBe('vercel-labs');
   });
 
   it('returns null for non-official owner', () => {
-    expect(findOfficialProvider('obra', 'superpowers')).toBeNull();
-    expect(findOfficialProvider('random-user', 'skills')).toBeNull();
+    expect(findOfficialProvider('obra')).toBeNull();
+    expect(findOfficialProvider('random-user')).toBeNull();
   });
 });

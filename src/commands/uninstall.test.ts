@@ -8,12 +8,9 @@ vi.mock('../constants.js', async () => {
   const testDir = join(tmpdir(), `skillsmgr-test-${process.pid}-${Date.now()}`);
   return {
     SKILLS_MANAGER_DIR: testDir,
-    OFFICIAL_PROVIDERS: {
-      'anthropic': { owner: 'anthropics', repos: [{ repo: 'skills' }] },
-      'vercel-labs': {
-        owner: 'vercel-labs',
-        repos: [{ repo: 'agent-skills' }, { repo: 'agent-browser' }],
-      },
+    OFFICIAL_OWNERS: {
+      'anthropic': 'anthropics',
+      'vercel-labs': 'vercel-labs',
     },
     SKILL_SOURCES: ['official', 'community', 'custom'] as const,
     findOfficialProvider: () => null,

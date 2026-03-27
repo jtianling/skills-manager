@@ -132,11 +132,11 @@ export class GitHubService {
     skillName: string,
     isCustom: boolean = false
   ): string {
-    const officialMatch = findOfficialProvider(owner, repo);
+    const providerKey = findOfficialProvider(owner);
 
     let baseDir: string;
-    if (officialMatch) {
-      baseDir = join(SKILLS_MANAGER_DIR, 'official', officialMatch.providerKey, repo);
+    if (providerKey) {
+      baseDir = join(SKILLS_MANAGER_DIR, 'official', providerKey, repo);
     } else if (isCustom) {
       baseDir = join(SKILLS_MANAGER_DIR, 'custom', repo);
     } else {
