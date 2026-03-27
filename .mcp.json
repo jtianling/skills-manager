@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "codexmcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "/Users/jtianling/workspace/mcps-workspace/codexmcp",
+        "codexmcp"
+      ]
+    }
+  }
+}

@@ -140,9 +140,8 @@ async function listGitHubRepoSkills(
     }
   }
 
-  // 2. Discover from standard paths
-  const standardPaths = ['skills', '.github/skills', '.', 'src/skills'];
-  for (const skillsPath of standardPaths) {
+  // 2. Discover from priority standard paths
+  for (const skillsPath of ['skills', '.github/skills']) {
     try {
       const skills = await githubService.listSkills(owner, repo, skillsPath);
       for (const skill of skills) {
@@ -153,6 +152,20 @@ async function listGitHubRepoSkills(
       }
     } catch {
       continue;
+    }
+  }
+
+  // 3. Fallback: scan root and src/skills only if nothing found yet
+  if (allSkills.length === 0) {
+    for (const fallbackPath of ['.', 'src/skills']) {
+      try {
+        const skills = await githubService.listSkills(owner, repo, fallbackPath);
+        if (skills.length > 0) {
+          return skills;
+        }
+      } catch {
+        continue;
+      }
     }
   }
 
