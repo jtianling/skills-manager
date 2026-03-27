@@ -1,8 +1,14 @@
+import { homedir } from 'os';
 import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
 import { interactiveCheckbox } from './interactive-select.js';
+
+function tildefy(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? path.replace(home, '~') : path;
+}
 
 /**
  * Handle Ctrl+C gracefully during prompts
@@ -19,13 +25,24 @@ function handlePromptError(error: unknown): never {
 
 const AGENTS_SKILLS_STANDARD_VALUE = 'agents-skills-standard';
 
-export async function promptAgents(configuredTools?: string[]): Promise<string[]> {
-  const nativeTools = SUPPORTED_TOOLS.filter((t) => TOOL_CONFIGS[t].native);
-  const symlinkTools = SUPPORTED_TOOLS.filter((t) => !TOOL_CONFIGS[t].native);
+export const DISPLAY_ORDER: ToolName[] = [
+  'claude-code', 'codex', 'cursor', 'openclaw', 'opencode', 'gemini-cli',
+  'github-copilot', 'cline', 'kilo', 'roo', 'kiro-cli', 'trae',
+  'trae-cn', 'codebuddy', 'windsurf', 'goose',
+];
 
-  const nativeNames = nativeTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
-  const hasNativeConfigured = configuredTools?.some((t) => TOOL_CONFIGS[t as keyof typeof TOOL_CONFIGS]?.native);
-  const hasSymlinkConfigured = configuredTools?.some((t) => !TOOL_CONFIGS[t as keyof typeof TOOL_CONFIGS]?.native);
+function getListedTools(): ToolName[] {
+  return DISPLAY_ORDER.filter((t) => TOOL_CONFIGS[t].showInList);
+}
+
+export async function promptAgents(configuredTools?: string[]): Promise<string[]> {
+  const listedTools = getListedTools();
+  const nativeListedTools = listedTools.filter((t) => TOOL_CONFIGS[t].native);
+  const symlinkListedTools = listedTools.filter((t) => !TOOL_CONFIGS[t].native);
+
+  const nativeNames = nativeListedTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
+  const hasNativeConfigured = configuredTools?.some((t) => TOOL_CONFIGS[t as ToolName]?.native);
+  const hasSymlinkConfigured = configuredTools?.some((t) => !TOOL_CONFIGS[t as ToolName]?.native);
 
   const choices = [
     {
@@ -34,7 +51,7 @@ export async function promptAgents(configuredTools?: string[]): Promise<string[]
       checked: (hasNativeConfigured || hasSymlinkConfigured) ?? false,
       suffix: hasNativeConfigured ? '[configured]' : undefined,
     },
-    ...symlinkTools.map((tool) => {
+    ...symlinkListedTools.map((tool) => {
       const config = TOOL_CONFIGS[tool];
       const isConfigured = configuredTools?.includes(tool);
       return {
@@ -53,11 +70,30 @@ export async function promptAgents(configuredTools?: string[]): Promise<string[]
     message: 'Select target agents:',
     choices,
     onToggle(selected) {
-      const hasAnySymlink = symlinkTools.some((_, i) => selected.has(i + 1));
+      const hasAnySymlink = symlinkListedTools.some((_, i) => selected.has(i + 1));
       if (hasAnySymlink && !selected.has(agentsIndex)) {
         selected.add(agentsIndex);
       }
     },
+  });
+}
+
+export async function promptAgentsGlobal(): Promise<string[]> {
+  const listedTools = getListedTools();
+
+  const choices = listedTools.map((tool) => {
+    const config = TOOL_CONFIGS[tool];
+    return {
+      name: config.displayName,
+      value: tool,
+      checked: false,
+    };
+  });
+
+  return interactiveCheckbox({
+    message: 'Select target agents for global install:',
+    choices,
+    pageSize: 16,
   });
 }
 
@@ -276,7 +312,8 @@ export interface ResolveAgentsOptions {
 export async function resolveTargetAgents(
   options: ResolveAgentsOptions,
   getConfiguredTools: () => ToolName[],
-): Promise<string[]> {
+  global?: boolean,
+): Promise<ToolName[]> {
   if (options.agent && options.agent.length > 0 && options.sameAgents) {
     console.log('Cannot use --agent and --same-agents together.');
     process.exit(1);
@@ -289,7 +326,7 @@ export async function resolveTargetAgents(
         process.exit(1);
       }
     }
-    return options.agent;
+    return options.agent as ToolName[];
   }
 
   if (options.sameAgents) {
@@ -301,5 +338,9 @@ export async function resolveTargetAgents(
     return configured;
   }
 
-  return promptAgents(getConfiguredTools());
+  if (global) {
+    return promptAgentsGlobal() as Promise<ToolName[]>;
+  }
+
+  return promptAgents(getConfiguredTools()) as Promise<ToolName[]>;
 }

@@ -3,7 +3,8 @@ import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { fileExists } from '../utils/fs.js';
-import { type RemoveOptions, collect } from '../types.js';
+import { resolveTargetAgents } from '../utils/prompts.js';
+import { type RemoveOptions, type ToolName, collect } from '../types.js';
 
 function resolveSkillNames(
   name: string | undefined,
@@ -21,7 +22,7 @@ function resolveSkillNames(
 
 export async function executeRemove(
   name: string | undefined,
-  options: RemoveOptions,
+  options: RemoveOptions = {},
 ): Promise<void> {
   if (!fileExists(SKILLS_MANAGER_DIR)) {
     console.log('Skills manager not set up. Run: skillsmgr setup');
@@ -33,6 +34,19 @@ export async function executeRemove(
   if (skillNames.length === 0) {
     console.log('No skill specified. Usage: skillsmgr remove <name> or skillsmgr remove -s <name>');
     process.exit(1);
+  }
+
+  if (options.global) {
+    const agents = await resolveTargetAgents(
+      { agent: options.agent },
+      () => [] as ToolName[],
+      true,
+    );
+    const deployer = new Deployer(process.cwd());
+    for (const skillName of skillNames) {
+      deployer.removeSkillGlobal(skillName, agents);
+    }
+    return;
   }
 
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
@@ -59,9 +73,11 @@ export async function executeRemove(
 }
 
 export const removeCommand = new Command('remove')
-  .description('Remove a skill from the project')
+  .description('Remove a skill from the project (or globally with -g)')
   .argument('[name]', 'Skill name to remove')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
+  .option('-g, --global', 'Remove from global agent directories')
+  .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);
   });

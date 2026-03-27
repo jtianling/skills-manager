@@ -175,4 +175,27 @@ describe('resolveTargetAgents', () => {
     expect(result).toEqual(['claude-code']);
     expect(interactiveCheckbox).toHaveBeenCalled();
   });
+
+  it('uses global prompt when global=true', async () => {
+    vi.mocked(interactiveCheckbox).mockResolvedValue(['claude-code']);
+    const getConfigured = () => [] as ToolName[];
+
+    const result = await resolveTargetAgents({}, getConfigured, true);
+
+    expect(result).toEqual(['claude-code']);
+    expect(interactiveCheckbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Select target agents for global install:',
+      })
+    );
+  });
+
+  it('-a flag works with global=true', async () => {
+    const result = await resolveTargetAgents(
+      { agent: ['amp'] },
+      () => [] as ToolName[],
+      true,
+    );
+    expect(result).toEqual(['amp']);
+  });
 });

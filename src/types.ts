@@ -20,9 +20,11 @@ export interface ToolConfig {
   name: ToolName;
   displayName: string;
   skillsDir: string;
+  globalSkillsDir: string;
   supportsLink: boolean;
   native: boolean;
   symlinkDir?: string;
+  showInList: boolean;
 }
 
 export interface InstallOptions {
@@ -36,6 +38,7 @@ export interface InstallOptions {
 
 export interface InitOptions {
   copy?: boolean;
+  global?: boolean;
 }
 
 export interface AddOptions {
@@ -43,11 +46,14 @@ export interface AddOptions {
   agent?: string[];
   sameAgents?: boolean;
   skill?: string[];
+  global?: boolean;
   group?: string;
 }
 
 export interface RemoveOptions {
   skill?: string[];
+  global?: boolean;
+  agent?: string[];
 }
 
 export interface ListOptions {

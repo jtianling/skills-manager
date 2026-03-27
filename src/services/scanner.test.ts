@@ -55,9 +55,9 @@ describe('DeploymentScanner', () => {
       const tools = scanner.getConfiguredTools();
 
       expect(tools).toContain('codex');
+      expect(tools).toContain('cursor');
       expect(tools).toContain('gemini-cli');
       expect(tools).toContain('opencode');
-      expect(tools).toContain('openclaw');
       expect(tools).toContain('antigravity');
       expect(tools).toContain('cline');
     });
@@ -93,7 +93,7 @@ describe('DeploymentScanner', () => {
       const tools = scanner.getConfiguredTools();
 
       expect(tools).not.toContain('claude-code');
-      expect(tools).not.toContain('cursor');
+      expect(tools).not.toContain('kilo');
     });
 
     it('real directory is not detected as symlink bridge', () => {
@@ -101,12 +101,12 @@ describe('DeploymentScanner', () => {
       const targetPath = join(projectDir, '.agents', 'skills', 'test-skill');
       symlinkSync(sourcePath, targetPath);
 
-      mkdirSync(join(projectDir, '.cursor', 'skills'), { recursive: true });
+      mkdirSync(join(projectDir, '.kilocode', 'skills'), { recursive: true });
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
       const tools = scanner.getConfiguredTools();
 
-      expect(tools).not.toContain('cursor');
+      expect(tools).not.toContain('kilo');
     });
   });
 
