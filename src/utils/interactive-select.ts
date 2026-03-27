@@ -73,12 +73,6 @@ export interface DisplayItem {
 
 export type GroupState = 'all' | 'partial' | 'none';
 
-interface CursorTarget {
-  choiceIndex?: number;
-  subGroupName?: string;
-  displayIndex: number;
-}
-
 export function getGroupState(childIndices: number[], selected: Set<number>): GroupState {
   if (childIndices.length === 0) return 'none';
   let selectedCount = 0;
@@ -95,18 +89,16 @@ export function getGroupState(childIndices: number[], selected: Set<number>): Gr
  */
 export function buildDisplayItems(
   choices: SelectChoice[],
-  searchQuery: string,
-  collapsed: Set<string> = new Set<string>()
+  searchQuery: string
 ): { displayItems: DisplayItem[]; filteredIndices: number[] } {
   const displayItems: DisplayItem[] = [];
   const filteredIndices: number[] = [];
   let currentGroup: string | undefined;
   let currentSubGroup: string | undefined;
   let currentGroupHeader: DisplayItem | undefined;
-  const normalizedQuery = searchQuery.toLowerCase();
 
   choices.forEach((choice, index) => {
-    if (searchQuery && !choice.name.toLowerCase().includes(normalizedQuery)) {
+    if (searchQuery && !choice.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return;
     }
 
@@ -134,9 +126,6 @@ export function buildDisplayItems(
 
     if (currentGroupHeader && choice.subGroup !== undefined) {
       currentGroupHeader.childIndices!.push(index);
-      if (collapsed.has(choice.subGroup)) {
-        return;
-      }
     }
 
     displayItems.push({ type: 'choice', choiceIndex: index });
@@ -163,16 +152,11 @@ export async function interactiveCheckbox(
       .map((c, i) => (c.checked ? i : -1))
       .filter((i) => i >= 0)
   );
-  const allSubGroups = Array.from(
-    new Set(
-      choices.flatMap((choice) => choice.subGroup === undefined ? [] : [choice.subGroup])
-    )
-  );
 
   let searchQuery = '';
   let isSearchMode = false;
-  let collapsed = new Set<string>();
-  let { displayItems, filteredIndices } = buildDisplayItems(choices, searchQuery, collapsed);
+  let isFiltered = false;
+  let { displayItems, filteredIndices } = buildDisplayItems(choices, '');
 
   let cursor = displayItems.findIndex((item) => isFocusable(item));
   if (cursor === -1) cursor = 0;
@@ -239,9 +223,6 @@ export async function interactiveCheckbox(
           } else if (item.type === 'group-header') {
             const childCount = item.childIndices!.length;
             const state = getGroupState(item.childIndices!, selected);
-            const foldIcon = !isSearchMode && item.subGroupName && collapsed.has(item.subGroupName)
-              ? '▶'
-              : '▼';
             const triIcon = state === 'all' ? '\x1b[32m◉\x1b[0m'
               : state === 'partial' ? '\x1b[33m◐\x1b[0m'
               : '◯';
@@ -251,7 +232,7 @@ export async function interactiveCheckbox(
             const reset = '\x1b[0m';
             const padding = ' '.repeat(lineNumberWidth);
             lines.push(
-              `${padding} ${prefix} ${foldIcon} ${triIcon} ${highlight}${item.subGroupName} (${childCount})${reset}`
+              `${padding} ${prefix} ${triIcon} ${highlight}${item.subGroupName} (${childCount})${reset}`
             );
           } else {
             const choice = choices[item.choiceIndex!];
@@ -298,15 +279,15 @@ export async function interactiveCheckbox(
 
       if (enableSearch && isSearchMode) {
         lines.push(
-          '\x1b[2m(↑↓ move, esc exit search, space select, ctrl+a toggle filtered, enter confirm)\x1b[0m'
+          '\x1b[2m(↑↓ move, enter accept, esc cancel search, space select, ctrl+a toggle filtered)\x1b[0m'
         );
       } else if (enableSearch) {
         lines.push(
-          '\x1b[2m(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)\x1b[0m'
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
         );
       } else {
         lines.push(
-          '\x1b[2m(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)\x1b[0m'
+          '\x1b[2m(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, q quit, enter confirm)\x1b[0m'
         );
       }
 
@@ -380,142 +361,19 @@ export async function interactiveCheckbox(
       lastKeyWasG = false;
     };
 
-    const getCursorTarget = (): CursorTarget => {
-      const item = displayItems[cursor];
-      if (!item) {
-        return { displayIndex: cursor };
-      }
-
-      if (item.type === 'choice') {
-        return {
-          choiceIndex: item.choiceIndex,
-          subGroupName: choices[item.choiceIndex!].subGroup,
-          displayIndex: cursor,
-        };
-      }
-
-      if (item.type === 'group-header') {
-        return {
-          subGroupName: item.subGroupName,
-          displayIndex: cursor,
-        };
-      }
-
-      return { displayIndex: cursor };
-    };
-
-    const resolveCursor = (
-      nextDisplayItems: DisplayItem[],
-      target?: CursorTarget
-    ): number => {
-      if (nextDisplayItems.length === 0) {
-        return 0;
-      }
-
-      if (target?.choiceIndex !== undefined) {
-        const choiceCursor = nextDisplayItems.findIndex(
-          (item) => item.type === 'choice' && item.choiceIndex === target.choiceIndex
-        );
-        if (choiceCursor >= 0) {
-          return choiceCursor;
-        }
-      }
-
-      if (target?.subGroupName !== undefined) {
-        const groupCursor = nextDisplayItems.findIndex(
-          (item) => item.type === 'group-header' && item.subGroupName === target.subGroupName
-        );
-        if (groupCursor >= 0) {
-          return groupCursor;
-        }
-      }
-
-      const preferredIndex = Math.min(target?.displayIndex ?? 0, nextDisplayItems.length - 1);
-      if (isFocusable(nextDisplayItems[preferredIndex])) {
-        return preferredIndex;
-      }
-
-      for (let offset = 1; offset < nextDisplayItems.length; offset++) {
-        const prev = preferredIndex - offset;
-        if (prev >= 0 && isFocusable(nextDisplayItems[prev])) {
-          return prev;
-        }
-
-        const next = preferredIndex + offset;
-        if (next < nextDisplayItems.length && isFocusable(nextDisplayItems[next])) {
-          return next;
-        }
-      }
-
-      const firstFocusable = nextDisplayItems.findIndex((item) => isFocusable(item));
-      return firstFocusable >= 0 ? firstFocusable : 0;
-    };
-
-    const rebuildDisplayItems = (target?: CursorTarget) => {
-      const result = buildDisplayItems(
-        choices,
-        searchQuery,
-        isSearchMode ? new Set<string>() : collapsed
-      );
+    const rebuildDisplay = () => {
+      const result = buildDisplayItems(choices, isFiltered ? searchQuery : '');
       displayItems = result.displayItems;
       filteredIndices = result.filteredIndices;
-      cursor = resolveCursor(displayItems, target);
-      ensureCursorVisible();
+      cursor = displayItems.findIndex((item) => isFocusable(item));
+      if (cursor === -1) cursor = 0;
+      scrollOffset = 0;
     };
 
     const updateSearch = (newQuery: string) => {
       searchQuery = newQuery;
-      rebuildDisplayItems(getCursorTarget());
-    };
-
-    const collapseCurrentGroup = () => {
-      const item = displayItems[cursor];
-      if (!item || item.type !== 'group-header' || !item.subGroupName) {
-        return false;
-      }
-
-      if (collapsed.has(item.subGroupName)) {
-        return false;
-      }
-
-      collapsed = new Set([...collapsed, item.subGroupName]);
-      rebuildDisplayItems({
-        subGroupName: item.subGroupName,
-        displayIndex: cursor,
-      });
-      return true;
-    };
-
-    const expandCurrentGroup = () => {
-      const item = displayItems[cursor];
-      if (!item || item.type !== 'group-header' || !item.subGroupName) {
-        return false;
-      }
-
-      if (!collapsed.has(item.subGroupName)) {
-        return false;
-      }
-
-      const nextCollapsed = new Set(collapsed);
-      nextCollapsed.delete(item.subGroupName);
-      collapsed = nextCollapsed;
-      rebuildDisplayItems({
-        subGroupName: item.subGroupName,
-        displayIndex: cursor,
-      });
-      return true;
-    };
-
-    const toggleAllGroups = () => {
-      if (allSubGroups.length === 0) {
-        return false;
-      }
-
-      const target = getCursorTarget();
-      const hasExpandedGroup = allSubGroups.some((subGroup) => !collapsed.has(subGroup));
-      collapsed = hasExpandedGroup ? new Set(allSubGroups) : new Set<string>();
-      rebuildDisplayItems(target);
-      return true;
+      isFiltered = true;
+      rebuildDisplay();
     };
 
     const handleKeypress = (str: string | undefined, key: readline.Key) => {
@@ -528,6 +386,12 @@ export async function interactiveCheckbox(
       }
 
       if (key.name === 'return') {
+        if (isSearchMode) {
+          isSearchMode = false;
+          render();
+          return;
+        }
+
         cleanup();
         process.stdout.write(`\x1b[${lastRenderedLines}A\x1b[J`);
 
@@ -585,7 +449,7 @@ export async function interactiveCheckbox(
 
       if (key.name === 'a' && key.ctrl) {
         resetViState();
-        const indicesToToggle = (enableSearch && searchQuery
+        const indicesToToggle = (enableSearch && isFiltered
           ? filteredIndices
           : choices.map((_, i) => i)
         ).filter((i) => !choices[i].locked);
@@ -625,7 +489,6 @@ export async function interactiveCheckbox(
         if (enableSearch) {
           resetViState();
           isSearchMode = !isSearchMode;
-          rebuildDisplayItems(getCursorTarget());
           render();
         }
         return;
@@ -634,8 +497,8 @@ export async function interactiveCheckbox(
       if (key.name === 'escape') {
         if (isSearchMode) {
           isSearchMode = false;
-          searchQuery = '';
-          rebuildDisplayItems(getCursorTarget());
+          isFiltered = false;
+          rebuildDisplay();
           render();
         }
         return;
@@ -647,7 +510,8 @@ export async function interactiveCheckbox(
             updateSearch(searchQuery.slice(0, -1));
           } else {
             isSearchMode = false;
-            rebuildDisplayItems(getCursorTarget());
+            isFiltered = false;
+            rebuildDisplay();
           }
           render();
         }
@@ -663,30 +527,6 @@ export async function interactiveCheckbox(
       }
 
       if (!isSearchMode) {
-        if (str === 'h' || key.name === 'left') {
-          resetViState();
-          if (collapseCurrentGroup()) {
-            render();
-          }
-          return;
-        }
-
-        if (str === 'l' || key.name === 'right') {
-          resetViState();
-          if (expandCurrentGroup()) {
-            render();
-          }
-          return;
-        }
-
-        if (str === 'c') {
-          resetViState();
-          if (toggleAllGroups()) {
-            render();
-          }
-          return;
-        }
-
         if (str === 'q') {
           cleanup();
           console.log('\nCancelled.');

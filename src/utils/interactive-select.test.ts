@@ -165,6 +165,48 @@ describe('group-header batch toggle logic', () => {
   });
 });
 
+describe('search filter state decoupling', () => {
+  const choices: SelectChoice[] = [
+    { name: 'alpha', value: 'alpha', group: 'g1' },
+    { name: 'beta', value: 'beta', group: 'g1' },
+    { name: 'gamma', value: 'gamma', group: 'g2' },
+  ];
+
+  it('shows all items when isFiltered is false (empty query passed)', () => {
+    const { filteredIndices } = buildDisplayItems(choices, '');
+    expect(filteredIndices).toEqual([0, 1, 2]);
+  });
+
+  it('filters items when isFiltered is true (query passed)', () => {
+    const { filteredIndices } = buildDisplayItems(choices, 'alpha');
+    expect(filteredIndices).toEqual([0]);
+  });
+
+  it('Esc behavior: passing empty string restores full list even with searchQuery preserved', () => {
+    const { filteredIndices: filtered } = buildDisplayItems(choices, 'alpha');
+    expect(filtered).toEqual([0]);
+
+    const { filteredIndices: restored } = buildDisplayItems(choices, '');
+    expect(restored).toEqual([0, 1, 2]);
+  });
+
+  it('Enter behavior: passing query preserves filter after exiting search mode', () => {
+    const { filteredIndices } = buildDisplayItems(choices, 'beta');
+    expect(filteredIndices).toEqual([1]);
+
+    const { filteredIndices: stillFiltered } = buildDisplayItems(choices, 'beta');
+    expect(stillFiltered).toEqual([1]);
+  });
+
+  it('re-entering search after Esc can reactivate filter with same query', () => {
+    const { filteredIndices: restored } = buildDisplayItems(choices, '');
+    expect(restored).toEqual([0, 1, 2]);
+
+    const { filteredIndices: refiltered } = buildDisplayItems(choices, 'gamma');
+    expect(refiltered).toEqual([2]);
+  });
+});
+
 describe('getGroupState', () => {
   it('returns none for empty childIndices', () => {
     expect(getGroupState([], new Set())).toBe('none');
