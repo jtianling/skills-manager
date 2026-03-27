@@ -176,6 +176,9 @@ The `install` command SHALL have alias `i`.
 | G (Shift+G) | 跳转到末尾 (无数字缓冲) 或跳转到指定行 (有数字缓冲) | 作为搜索字符输入 |
 | gg | 跳转到列表开头 | 作为搜索字符输入 |
 | 数字 0-9 | 追加到数字缓冲 (用于数字+G 跳转) | 作为搜索字符输入 |
+| h / ← | 折叠光标所在 group-header; choice 上无操作 | 作为搜索字符输入 (h) / 无效果 (←) |
+| l / → | 展开光标所在 group-header; choice 上无操作 | 作为搜索字符输入 (l) / 无效果 (→) |
+| c | 全局 toggle 所有 group-header 折叠状态 | 作为搜索字符输入 |
 | q | 退出程序 (与 Ctrl+C 一致) | 作为搜索字符输入 |
 | / | 进入搜索模式 (仅 enableSearch 时) | 退出搜索模式 |
 | Space | 切换当前项的选中状态; 若光标在 group-header 上, 批量切换所有子项 | 切换当前项的选中状态; 若光标在 group-header 上, 批量切换所有子项 |
@@ -187,9 +190,9 @@ The `install` command SHALL have alias `i`.
 | 字母/数字 (其他) | 忽略 (不触发搜索) | 追加到搜索文本 |
 
 **底部指引文本**:
-- enableSearch 且非搜索模式: `(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, q quit, enter confirm)`
+- enableSearch 且非搜索模式: `(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)`
 - enableSearch 且搜索模式: `(↑↓ move, esc exit search, space select, ctrl+a toggle filtered, enter confirm)`
-- 非 enableSearch: `(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, q quit, enter confirm)`
+- 非 enableSearch: `(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)`
 
 **选中状态显示**:
 - 选中: `◉` (绿色)
@@ -290,7 +293,7 @@ The `install` command SHALL have alias `i`.
 
 #### Scenario: 底部指引显示正确按键 (非搜索模式, enableSearch)
 - **WHEN** enableSearch 为 true 且非搜索模式
-- **THEN** 底部显示 `(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, q quit, enter confirm)`
+- **THEN** 底部显示 `(j/k or ↑↓ move, gg/G jump, / search, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)`
 
 #### Scenario: 搜索模式底部指引
 - **WHEN** 用户处于搜索模式
@@ -298,7 +301,7 @@ The `install` command SHALL have alias `i`.
 
 #### Scenario: 底部指引显示正确按键 (非搜索模式, 非 enableSearch)
 - **WHEN** enableSearch 为 false
-- **THEN** 底部显示 `(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, q quit, enter confirm)`
+- **THEN** 底部显示 `(j/k or ↑↓ move, gg/G jump, space select, ctrl+a all, h/l fold, c fold all, q quit, enter confirm)`
 
 #### Scenario: G 跳到末尾
 - **WHEN** 用户在非搜索模式下按 G (Shift+G), 且之前未输入数字

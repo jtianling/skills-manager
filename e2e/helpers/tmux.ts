@@ -78,6 +78,11 @@ export class TmuxSession {
     );
 
     execSync(
+      `tmux set-option -s escape-time 0`,
+      { stdio: 'pipe' },
+    );
+
+    execSync(
       `tmux send-keys -t "${this.sessionName}" '${wrapperPath} ${cmd.replace(/'/g, "'\\''")}' Enter`,
       { stdio: 'pipe' },
     );

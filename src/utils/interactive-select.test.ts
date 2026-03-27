@@ -85,6 +85,35 @@ describe('buildDisplayItems', () => {
     const groupHeader = displayItems.find((d) => d.type === 'group-header')!;
     expect(groupHeader.childIndices).toEqual([0]);
   });
+
+  it('skips subgroup children when subgroup is collapsed', () => {
+    const choices: SelectChoice[] = [
+      { name: 'alpha', value: 'alpha', group: 'g', subGroup: 'sg' },
+      { name: 'bravo', value: 'bravo', group: 'g', subGroup: 'sg' },
+      { name: 'charlie', value: 'charlie', group: 'g' },
+    ];
+    const { displayItems, filteredIndices } = buildDisplayItems(choices, '', new Set(['sg']));
+
+    expect(filteredIndices).toEqual([0, 1, 2]);
+    expect(displayItems).toEqual([
+      { type: 'separator', text: '── g ──' },
+      { type: 'group-header', subGroupName: 'sg', childIndices: [0, 1] },
+      { type: 'choice', choiceIndex: 2 },
+    ]);
+  });
+
+  it('keeps group-header childIndices complete while collapsed', () => {
+    const choices: SelectChoice[] = [
+      { name: 'alpha', value: 'alpha', group: 'g', subGroup: 'sg' },
+      { name: 'bravo', value: 'bravo', group: 'g', subGroup: 'sg' },
+      { name: 'charlie', value: 'charlie', group: 'g', subGroup: 'sg' },
+    ];
+    const { displayItems } = buildDisplayItems(choices, '', new Set(['sg']));
+
+    const groupHeader = displayItems.find((d) => d.type === 'group-header')!;
+    expect(groupHeader.childIndices).toEqual([0, 1, 2]);
+    expect(displayItems.filter((d) => d.type === 'choice')).toEqual([]);
+  });
 });
 
 describe('group-header batch toggle logic', () => {
@@ -155,5 +184,18 @@ describe('getGroupState', () => {
 
   it('ignores unrelated selected indices', () => {
     expect(getGroupState([0, 1], new Set([0, 1, 5, 10]))).toBe('all');
+  });
+
+  it('uses all collapsed children when calculating state', () => {
+    const choices: SelectChoice[] = [
+      { name: 'alpha', value: 'alpha', group: 'g', subGroup: 'sg' },
+      { name: 'bravo', value: 'bravo', group: 'g', subGroup: 'sg' },
+      { name: 'charlie', value: 'charlie', group: 'g', subGroup: 'sg' },
+    ];
+    const { displayItems } = buildDisplayItems(choices, '', new Set(['sg']));
+    const groupHeader = displayItems.find((d) => d.type === 'group-header')!;
+
+    expect(getGroupState(groupHeader.childIndices!, new Set([0, 2]))).toBe('partial');
+    expect(getGroupState(groupHeader.childIndices!, new Set([0, 1, 2]))).toBe('all');
   });
 });
