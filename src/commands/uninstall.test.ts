@@ -22,6 +22,7 @@ vi.mock('../constants.js', async () => {
 
 vi.mock('../utils/prompts.js', () => ({
   promptConfirm: vi.fn().mockResolvedValue(true),
+  promptSkillsToUninstall: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../utils/interactive-select.js', () => ({
@@ -32,6 +33,7 @@ import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { executeUninstall } from './uninstall.js';
 import { SourcesService } from '../services/sources.js';
 import { promptConfirm } from '../utils/prompts.js';
+import { promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 
 function createSkillDir(path: string, name?: string): void {
@@ -42,6 +44,10 @@ function createSkillDir(path: string, name?: string): void {
 
 describe('uninstall command', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(promptConfirm).mockResolvedValue(true);
+    vi.mocked(promptSkillsToUninstall).mockResolvedValue([]);
+    vi.mocked(interactiveCheckbox).mockResolvedValue([]);
     mkdirSync(SKILLS_MANAGER_DIR, { recursive: true });
   });
 
@@ -159,6 +165,71 @@ describe('uninstall command', () => {
       await executeUninstall('anthropic', {});
 
       expect(existsSync(skillDir)).toBe(true);
+    });
+  });
+
+  describe('interactive uninstall', () => {
+    it('prints empty state when no installed skills exist', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall(undefined, {});
+
+      expect(logSpy).toHaveBeenCalledWith('No installed skills found.');
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+
+      logSpy.mockRestore();
+    });
+
+    it('prints no selection when user selects nothing', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic', 'skills', 'keep-me');
+      createSkillDir(skillDir);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([]);
+
+      await executeUninstall(undefined, {});
+
+      expect(promptSkillsToUninstall).toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith('No skills selected.');
+      expect(existsSync(skillDir)).toBe(true);
+
+      logSpy.mockRestore();
+    });
+
+    it('removes selected skills after confirmation', async () => {
+      const skillA = join(SKILLS_MANAGER_DIR, 'official', 'anthropic', 'skills', 'skill-a');
+      const skillB = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-b');
+      createSkillDir(skillA);
+      createSkillDir(skillB);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skillA, skillB]);
+
+      await executeUninstall(undefined, {});
+
+      expect(existsSync(skillA)).toBe(false);
+      expect(existsSync(skillB)).toBe(false);
+      expect(logSpy).toHaveBeenCalledWith('Removed: skill-a');
+      expect(logSpy).toHaveBeenCalledWith('Removed: skill-b');
+      expect(logSpy).toHaveBeenCalledWith('Uninstalled 2 skills.');
+
+      logSpy.mockRestore();
+    });
+
+    it('does not delete selected skills when confirmation is declined', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'utils', 'keep-me');
+      createSkillDir(skillDir);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skillDir]);
+      vi.mocked(promptConfirm).mockResolvedValueOnce(false);
+
+      await executeUninstall(undefined, {});
+
+      expect(existsSync(skillDir)).toBe(true);
+      expect(logSpy).toHaveBeenCalledWith('Cancelled.');
+
+      logSpy.mockRestore();
     });
   });
 

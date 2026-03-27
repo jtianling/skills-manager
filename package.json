@@ -13,6 +13,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest",
+    "test:e2e": "vitest --config vitest.config.e2e.ts",
+    "test:all": "vitest run && vitest run --config vitest.config.e2e.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
