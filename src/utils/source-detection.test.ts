@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { detectSourceType, hasExplicitLocalPrefix } from './source-detection.js';
 
 describe('detectSourceType', () => {
-  it('treats bare words as local paths', () => {
-    expect(detectSourceType('my-skill')).toBe('local-path');
+  it('returns unknown for bare words', () => {
+    expect(detectSourceType('my-skill')).toBe('unknown');
+    expect(detectSourceType('anthropic')).toBe('unknown');
+    expect(detectSourceType('foo-bar')).toBe('unknown');
   });
 
   it('detects explicit local path prefixes', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
 
@@ -16,14 +16,14 @@ describe('install E2E', () => {
     env?.cleanup();
   });
 
-  it('install anthropic --all downloads skills from GitHub', async () => {
+  it('install anthropics/skills --all downloads skills from GitHub', async () => {
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr setup');
     await tmux.waitForText('Setup complete');
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr install anthropic --all');
+    await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
 
     const officialDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic');
@@ -35,14 +35,14 @@ describe('install E2E', () => {
     expect(Object.keys(sources.sources).some((k: string) => k.includes('anthropic'))).toBe(true);
   });
 
-  it('install anthropic with interactive selection', async () => {
+  it('install anthropics/skills with interactive selection', async () => {
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr setup');
     await tmux.waitForText('Setup complete');
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr install anthropic');
+    await tmux.start('skillsmgr install anthropics/skills');
 
     await tmux.waitForText('Select skills to install', 90_000);
 

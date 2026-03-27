@@ -3,7 +3,8 @@ export type SourceType =
   | 'local-zip'
   | 'remote-url'
   | 'owner-repo'
-  | 'local-path';
+  | 'local-path'
+  | 'unknown';
 
 const LOCAL_PATH_PREFIXES = ['/', './', '../', '~/'];
 const OWNER_REPO_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\/?$/;
@@ -33,5 +34,5 @@ export function detectSourceType(input: string): SourceType {
     return 'local-path';
   }
 
-  return 'local-path';
+  return 'unknown';
 }

@@ -1,9 +1,10 @@
 import { Command } from 'commander';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { OFFICIAL_PROVIDERS, SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
-import { fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
+import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
+import { detectSourceType } from '../utils/source-detection.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
@@ -27,6 +28,50 @@ function getInstalledSkillDirs(targetBase: string): Array<{ name: string; path: 
   return getDirectoriesInDir(targetBase);
 }
 
+function updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
+  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+  const skillName = key.split('/').pop() || key;
+  const originalPath = info.url;
+
+  if (!fileExists(originalPath)) {
+    console.log(`  ⚠ ${skillName}: original path not found: ${originalPath}`);
+    result.failed++;
+    return result;
+  }
+
+  const originalSkillMd = join(originalPath, 'SKILL.md');
+  if (!fileExists(originalSkillMd)) {
+    console.log(`  ⚠ ${skillName}: SKILL.md not found at original path`);
+    result.failed++;
+    return result;
+  }
+
+  const targetDir = join(SKILLS_MANAGER_DIR, key);
+  const localSkillMd = join(targetDir, 'SKILL.md');
+
+  if (fileExists(localSkillMd)) {
+    const localContent = readFileContent(localSkillMd);
+    const originalContent = readFileContent(originalSkillMd);
+
+    if (localContent === originalContent) {
+      console.log(`  ✓ ${skillName}: up to date`);
+      result.upToDate++;
+      return result;
+    }
+  }
+
+  removeDir(targetDir);
+  copyDir(originalPath, targetDir);
+  warnScriptFiles(findScriptFiles(targetDir));
+  console.log(`  ↑ ${skillName}: updated`);
+  result.updated++;
+
+  const sourcesService = new SourcesService();
+  sourcesService.updateTimestamp(key);
+
+  return result;
+}
+
 async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult> {
   const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
 
@@ -37,9 +82,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
   }
 
   if (info.installMethod === 'local-copy') {
-    console.log(`  Skipping ${key.split('/').pop() || key}: installed from local copy, manual reinstall required`);
-    result.skipped++;
-    return result;
+    return updateLocalCopy(key, info);
   }
 
   const parsed = githubService.parseGitHubUrl(info.url);
@@ -168,7 +211,27 @@ export async function executeUpdate(source?: string): Promise<void> {
 
   // If specific source provided, only update that one
   if (source) {
-    // Find matching source
+    const sourceType = detectSourceType(source);
+
+    // Local path: match by resolved absolute path against source url
+    if (sourceType === 'local-path') {
+      const absPath = resolve(process.cwd(), source);
+      const matchingKey = Object.keys(allSources).find(
+        (k) => allSources[k].url === absPath
+      );
+
+      if (!matchingKey) {
+        console.log(`No installed skill found from path: ${absPath}`);
+        return;
+      }
+
+      console.log(`Updating ${matchingKey} from ${absPath}...\n`);
+      const result = updateLocalCopy(matchingKey, allSources[matchingKey]);
+      console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed, ${result.skipped} skipped`);
+      return;
+    }
+
+    // Other types: match by key or repoName
     const matchingKey = Object.keys(allSources).find(
       (k) => k === source || k.endsWith(`/${source}`) || allSources[k].repoName === source
     );

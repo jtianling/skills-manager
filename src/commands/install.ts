@@ -472,6 +472,10 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
       return installResolvedRemoteSource(source, options);
     case 'local-path':
       return installFromLocalDir(source, options);
+    case 'unknown':
+      throw new Error(
+        `Unknown source format '${source}'. Use ./name for local, owner/repo for GitHub.`
+      );
     default: {
       const _exhaustive: never = sourceType;
       return _exhaustive;

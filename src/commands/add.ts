@@ -12,7 +12,7 @@ import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.j
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { executeSetup } from './setup.js';
 import { executeInit } from './init.js';
-import { detectSourceType, hasExplicitLocalPrefix } from '../utils/source-detection.js';
+import { detectSourceType } from '../utils/source-detection.js';
 
 function detectArgFormat(arg: string): 'owner-repo' | 'skill-name' | 'install-source' {
   const sourceType = detectSourceType(arg);
@@ -21,7 +21,7 @@ function detectArgFormat(arg: string): 'owner-repo' | 'skill-name' | 'install-so
     return 'owner-repo';
   }
 
-  if (sourceType === 'local-path' && !hasExplicitLocalPrefix(arg)) {
+  if (sourceType === 'unknown') {
     return 'skill-name';
   }
 

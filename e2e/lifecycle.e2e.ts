@@ -26,7 +26,7 @@ describe('full lifecycle E2E', () => {
 
     // 2. Install --all
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr install anthropic --all');
+    await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
     tmux.destroy();
 

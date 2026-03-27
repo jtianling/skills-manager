@@ -103,12 +103,24 @@ describe('install command', () => {
     return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
   }
 
-  it('installs a bare local directory and records local-copy metadata', async () => {
+  it('rejects bare words with unknown source format error', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit');
+    }) as never);
+
+    await expect(executeInstall('local-skill', {})).rejects.toThrow('process.exit');
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown source format'),
+    );
+    mockExit.mockRestore();
+  });
+
+  it('installs a local directory with explicit ./ prefix', async () => {
     const skillDir = join(testProjectDir, 'local-skill');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: local-skill\ndescription: Local skill\n---\n');
 
-    await executeInstall('local-skill', {});
+    await executeInstall('./local-skill', {});
 
     const targetDir = join(testManagerDir, 'custom', 'local-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);

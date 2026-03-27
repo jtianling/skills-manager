@@ -64,7 +64,7 @@ describe('update command', () => {
     vi.restoreAllMocks();
   });
 
-  it('skips zip and local-copy sources', async () => {
+  it('skips zip sources', async () => {
     const sourcesService = new SourcesService();
     sourcesService.addSource('custom/zip-skill', {
       url: '/tmp/zip-skill.zip',
@@ -72,18 +72,117 @@ describe('update command', () => {
       repoName: 'zip-skill',
       installMethod: 'zip',
     });
-    sourcesService.addSource('custom/local-skill', {
-      url: '/tmp/local-skill',
+
+    await executeUpdate();
+
+    expect(console.log).toHaveBeenCalledWith('  Skipping zip-skill: installed from zip, manual reinstall required');
+    expect(console.log).toHaveBeenCalledWith('Done! 0 updated, 0 up to date, 0 failed, 1 skipped');
+  });
+
+  it('updates local-copy source when original path has changes', async () => {
+    const originalDir = join(tmpdir(), `skillsmgr-original-${Date.now()}`);
+    mkdirSync(originalDir, { recursive: true });
+    writeFileSync(join(originalDir, 'SKILL.md'), 'new content');
+
+    const installedDir = join(testManagerDir, 'custom', 'my-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), 'old content');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/my-skill', {
+      url: originalDir,
       type: 'custom',
-      repoName: 'local-skill',
+      repoName: 'my-skill',
       installMethod: 'local-copy',
     });
 
     await executeUpdate();
 
-    expect(console.log).toHaveBeenCalledWith('  Skipping zip-skill: installed from zip, manual reinstall required');
-    expect(console.log).toHaveBeenCalledWith('  Skipping local-skill: installed from local copy, manual reinstall required');
-    expect(console.log).toHaveBeenCalledWith('Done! 0 updated, 0 up to date, 0 failed, 2 skipped');
+    expect(console.log).toHaveBeenCalledWith('  ↑ my-skill: updated');
+    const updated = readFileSync(join(installedDir, 'SKILL.md'), 'utf-8');
+    expect(updated).toBe('new content');
+
+    rmSync(originalDir, { recursive: true, force: true });
+  });
+
+  it('reports up to date for local-copy source with no changes', async () => {
+    const originalDir = join(tmpdir(), `skillsmgr-original-${Date.now()}`);
+    mkdirSync(originalDir, { recursive: true });
+    writeFileSync(join(originalDir, 'SKILL.md'), 'same content');
+
+    const installedDir = join(testManagerDir, 'custom', 'my-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), 'same content');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/my-skill', {
+      url: originalDir,
+      type: 'custom',
+      repoName: 'my-skill',
+      installMethod: 'local-copy',
+    });
+
+    await executeUpdate();
+
+    expect(console.log).toHaveBeenCalledWith('  ✓ my-skill: up to date');
+
+    rmSync(originalDir, { recursive: true, force: true });
+  });
+
+  it('reports failure when local-copy original path does not exist', async () => {
+    const installedDir = join(testManagerDir, 'custom', 'gone-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), 'content');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/gone-skill', {
+      url: '/nonexistent/path',
+      type: 'custom',
+      repoName: 'gone-skill',
+      installMethod: 'local-copy',
+    });
+
+    await executeUpdate();
+
+    expect(console.log).toHaveBeenCalledWith('  ⚠ gone-skill: original path not found: /nonexistent/path');
+  });
+
+  it('updates local-copy source by path argument', async () => {
+    const originalDir = join(tmpdir(), `skillsmgr-original-path-${Date.now()}`);
+    mkdirSync(originalDir, { recursive: true });
+    writeFileSync(join(originalDir, 'SKILL.md'), 'updated content');
+
+    const installedDir = join(testManagerDir, 'custom', 'path-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), 'old content');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/path-skill', {
+      url: originalDir,
+      type: 'custom',
+      repoName: 'path-skill',
+      installMethod: 'local-copy',
+    });
+
+    await executeUpdate(originalDir);
+
+    expect(console.log).toHaveBeenCalledWith('  ↑ path-skill: updated');
+
+    rmSync(originalDir, { recursive: true, force: true });
+  });
+
+  it('reports not found when path does not match any source', async () => {
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/other', {
+      url: '/some/path',
+      type: 'custom',
+      repoName: 'other',
+      installMethod: 'local-copy',
+    });
+
+    await executeUpdate('/different/path');
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No installed skill found from path'));
   });
 
   it('updates grouped git installs stored as per-skill source keys', async () => {
