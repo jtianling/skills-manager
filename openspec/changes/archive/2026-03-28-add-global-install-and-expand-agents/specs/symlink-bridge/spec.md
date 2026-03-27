@@ -1,8 +1,4 @@
-# Symlink Bridge
-
-非原生工具通过 symlink 桥接访问统一的 `.agents/skills/` 目录.  全局部署时通过 per-skill symlink 部署到各 agent 的全局 skills 目录.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: 全局级 per-skill symlink
 
@@ -20,6 +16,8 @@ symlink 方向: `{globalSkillsDir}/{skill.name}` → `{skill.path}` (中央仓�
 - **WHEN** 项目级已通过 bridge 部署 (.claude/skills → .agents/skills)
 - **AND** 用户全局安装同一 skill
 - **THEN** 全局 `~/.claude/skills/code-review` symlink 独立于项目级 bridge
+
+## MODIFIED Requirements
 
 ### Requirement: Symlink bridge creation for non-native tools
 
@@ -86,27 +84,3 @@ The system SHALL create the parent directory (e.g., `.claude/`) if it does not e
 
 - **WHEN** `.claude/skills` already exists as a real directory (not a symlink)
 - **THEN** the system logs a warning and skips symlink creation for that tool
-
-### Requirement: Symlink bridge removal
-
-The system SHALL remove the symlink (not the target directory) when a non-native tool is unconfigured.  The `.agents/skills/` directory and its contents MUST NOT be affected.
-
-#### Scenario: Remove symlink when tool is deselected
-
-- **WHEN** user deselects claude-code during init (previously configured)
-- **THEN** `.claude/skills` symlink is removed
-- **AND** `.agents/skills/` directory and contents remain intact
-
-### Requirement: Symlink bridge detection
-
-The system SHALL detect existing symlink bridges during scanning to determine which non-native tools are configured.
-
-#### Scenario: Detect configured symlink tool
-
-- **WHEN** `.cursor/skills` is a symlink pointing to `.agents/skills`
-- **THEN** cursor is reported as a configured tool
-
-#### Scenario: Non-symlink directory not detected as bridge
-
-- **WHEN** `.cursor/skills` is a real directory (not a symlink)
-- **THEN** cursor is NOT reported as a configured tool via symlink bridge detection

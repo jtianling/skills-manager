@@ -130,8 +130,11 @@ export function copyDir(src: string, dest: string): void {
 
 export function linkDir(src: string, dest: string): void {
   ensureDir(dirname(dest));
-  if (existsSync(dest)) {
-    unlinkSync(dest);
+  try {
+    const stat = lstatSync(dest);
+    if (stat) unlinkSync(dest);
+  } catch {
+    // dest does not exist
   }
   symlinkSync(src, dest);
 }

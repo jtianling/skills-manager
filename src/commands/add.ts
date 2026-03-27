@@ -5,7 +5,7 @@ import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
-import { AddOptions, SkillInfo } from '../types.js';
+import { AddOptions, SkillInfo, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptSelect, resolveTargetAgents } from '../utils/prompts.js';
 import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.js';
@@ -99,6 +99,24 @@ async function deploySkills(
   }
 }
 
+async function deploySkillsGlobal(
+  skillNames: string[],
+  skillsService: SkillsService,
+  deployer: Deployer,
+  agents: ToolName[],
+  deployMode: 'link' | 'copy',
+): Promise<void> {
+  for (const name of skillNames) {
+    const skill = skillsService.getSkillByName(name);
+    if (!skill) {
+      console.log(`  ⚠ ${name} (not found in central repository)`);
+      continue;
+    }
+
+    deployer.deploySkillGlobal(skill, agents, deployMode);
+  }
+}
+
 function ensureSymlinkBridges(
   selectedAgents: string[],
   deployer: Deployer,
@@ -108,9 +126,12 @@ function ensureSymlinkBridges(
 
   if (!agentsSelected && nonNativeAgents.length === 0) return;
 
+  const processedDirs = new Set<string>();
   for (const agentName of nonNativeAgents) {
     const config = TOOL_CONFIGS[agentName as keyof typeof TOOL_CONFIGS];
-    if (!config || config.native) continue;
+    if (!config || config.native || !config.symlinkDir) continue;
+    if (processedDirs.has(config.symlinkDir)) continue;
+    processedDirs.add(config.symlinkDir);
 
     const created = deployer.createSymlinkBridge(config);
     if (created) {
@@ -142,6 +163,13 @@ async function handleSkillName(
     }));
     const selectedSource = await promptSelect('Select skill:', choices);
     skill = matchingSkills.find((s) => s.source === selectedSource)!;
+  }
+
+  if (options.global) {
+    const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
+    const deployMode = options.copy ? 'copy' : 'link';
+    deployer.deploySkillGlobal(skill, selectedAgents, deployMode);
+    return;
   }
 
   const existingSkills = scanner.getDeployedSkills();
@@ -198,16 +226,25 @@ async function handleRepoSkillSelection(
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
   const allDeployed = repoSkills.every((s) => deployedNames.includes(s.name));
 
-  if (allDeployed) {
+  if (allDeployed && !options.global) {
     console.log('All skills from this source are already deployed.');
     return;
   }
 
-  const selectedNames = await promptSkillsFromRepo(repoSkills, deployedNames);
-  const newSkills = selectedNames.filter((n) => !deployedNames.includes(n));
+  const selectedNames = await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames);
+  const newSkills = options.global
+    ? selectedNames
+    : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
     console.log('No new skills selected.');
+    return;
+  }
+
+  if (options.global) {
+    const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
+    const deployMode = options.copy ? 'copy' : 'link';
+    await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
     return;
   }
 
@@ -226,13 +263,20 @@ async function handleRemoteInstallAndDeploy(
 ): Promise<void> {
   let installResult;
   try {
-    installResult = await installSource(source, { all: true, group: options.group });
+    installResult = await installSource(source, { all: true });
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
     }
     process.exit(1);
   }
+
+  const rollback = () => rollbackInstall(
+    installResult.basePath,
+    installResult.sourceKey,
+    installResult.installedPaths,
+    installResult.sourceKeys,
+  );
 
   // Re-read skills after install
   const freshSkillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -248,12 +292,7 @@ async function handleRemoteInstallAndDeploy(
 
   if (installedSkills.length === 0) {
     console.log('No skills found after installation.');
-    rollbackInstall(
-      installResult.basePath,
-      installResult.sourceKey,
-      installResult.installedPaths,
-      installResult.sourceKeys,
-    );
+    rollback();
     process.exit(1);
   }
 
@@ -261,39 +300,45 @@ async function handleRemoteInstallAndDeploy(
 
   let selectedNames: string[];
   try {
-    selectedNames = await promptSkillsFromRepo(installedSkills, deployedNames);
+    selectedNames = await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames);
   } catch {
-    rollbackInstall(
-      installResult.basePath,
-      installResult.sourceKey,
-      installResult.installedPaths,
-      installResult.sourceKeys,
-    );
+    rollback();
     return;
   }
 
-  const newSkills = selectedNames.filter((n) => !deployedNames.includes(n));
+  const newSkills = options.global
+    ? selectedNames
+    : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
-    rollbackInstall(
-      installResult.basePath,
-      installResult.sourceKey,
-      installResult.installedPaths,
-      installResult.sourceKeys,
-    );
+    rollback();
     return;
   }
 
-  let selectedAgents: string[];
+  if (options.global) {
+    let selectedAgents: ToolName[];
+    try {
+      selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
+    } catch {
+      rollback();
+      return;
+    }
+
+    const deployMode = options.copy ? 'copy' : 'link';
+    try {
+      await deploySkillsGlobal(newSkills, freshSkillsService, deployer, selectedAgents, deployMode);
+    } catch (error) {
+      rollback();
+      throw error;
+    }
+    return;
+  }
+
+  let selectedAgents: ToolName[];
   try {
     selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
   } catch {
-    rollbackInstall(
-      installResult.basePath,
-      installResult.sourceKey,
-      installResult.installedPaths,
-      installResult.sourceKeys,
-    );
+    rollback();
     return;
   }
 
@@ -303,23 +348,77 @@ async function handleRemoteInstallAndDeploy(
     await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode);
     ensureSymlinkBridges(selectedAgents, deployer);
   } catch (error) {
-    rollbackInstall(
-      installResult.basePath,
-      installResult.sourceKey,
-      installResult.installedPaths,
-      installResult.sourceKeys,
-    );
+    rollback();
     throw error;
   }
+}
+
+async function handleGroupBatchDeploy(
+  groupName: string,
+  options: AddOptions,
+  scanner: DeploymentScanner,
+  deployer: Deployer,
+): Promise<void> {
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  const allSkills = skillsService.getAllSkills();
+  const groupSkills = allSkills.filter((s) => s.source.startsWith(`custom/${groupName}`));
+
+  if (groupSkills.length === 0) {
+    console.log(`No skills found in group '${groupName}'.`);
+    process.exit(1);
+    return;
+  }
+
+  const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
+  const selectedNames = await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames);
+  const newSkills = options.global
+    ? selectedNames
+    : selectedNames.filter((n) => !deployedNames.includes(n));
+
+  if (newSkills.length === 0) {
+    console.log('No new skills selected.');
+    return;
+  }
+
+  if (options.global) {
+    const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
+    const deployMode = options.copy ? 'copy' : 'link';
+    await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
+    return;
+  }
+
+  const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
+  const deployMode = options.copy ? 'copy' : 'link';
+
+  await deploySkills(newSkills, skillsService, deployer, scanner, deployMode);
+  ensureSymlinkBridges(selectedAgents, deployer);
 }
 
 export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
 ): Promise<void> {
+  if (options.group && arg) {
+    console.log('Cannot use --group with a skill argument.');
+    process.exit(1);
+    return;
+  }
+
+  // --group batch deploy
+  if (options.group) {
+    if (!fileExists(SKILLS_MANAGER_DIR)) {
+      await executeSetup();
+      console.log();
+    }
+    const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+    const deployer = new Deployer(process.cwd());
+    await handleGroupBatchDeploy(options.group, options, scanner, deployer);
+    return;
+  }
+
   // No argument → init flow
   if (!arg) {
-    await executeInit({ copy: options.copy });
+    await executeInit({ copy: options.copy, global: options.global });
     return;
   }
 
@@ -348,11 +447,12 @@ export async function executeAdd(
 }
 
 export const addCommand = new Command('add')
-  .description('Add a skill to the project')
+  .description('Add a skill to the project (or globally with -g)')
   .argument('[arg]', 'Skill name, owner/repo, or URL')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-a, --agent <agents>', 'Target agents (comma-separated)')
-  .option('-g, --group <name>', 'Group name to use when installing missing skills')
+  .option('-g, --global', 'Install globally to agent user-level directories')
+  .option('--group <name>', 'Batch deploy all skills from a group')
   .option('-s, --same-agents', 'Use currently configured agents')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);

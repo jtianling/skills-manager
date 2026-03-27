@@ -77,7 +77,7 @@ describe('local install E2E', () => {
     createLocalSkill('grouped-skill');
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr install ./grouped-skill -g my-tools', env.projectDir);
+    await tmux.start('skillsmgr install ./grouped-skill --group my-tools', env.projectDir);
     await tmux.waitForText(/Installed|installed/, 15_000);
 
     const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'my-tools', 'grouped-skill');
@@ -124,7 +124,7 @@ describe('local install E2E', () => {
     execSync(`zip -qr "${zipPath}" zip-grouped-skill`, { cwd: env.projectDir });
 
     tmux = new TmuxSession(env);
-    await tmux.start(`skillsmgr install "${zipPath}" -g zip-tools`, env.projectDir);
+    await tmux.start(`skillsmgr install "${zipPath}" --group zip-tools`, env.projectDir);
     await tmux.waitForText(/Installed|installed/, 30_000);
 
     const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'zip-tools', 'zip-grouped-skill');

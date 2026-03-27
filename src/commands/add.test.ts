@@ -24,6 +24,8 @@ import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { installSource } from './install.js';
 import { executeInit } from './init.js';
 import * as constants from '../constants.js';
+import { TOOL_CONFIGS } from '../tools/configs.js';
+import { executeRemove } from './remove.js';
 
 describe('add command', () => {
   let testManagerDir: string;
@@ -191,7 +193,6 @@ describe('add command', () => {
 
       expect(installSource).toHaveBeenCalledWith('unknown/repo', {
         all: true,
-        group: undefined,
       });
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ remote-skill')
@@ -217,30 +218,6 @@ describe('add command', () => {
 
       expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo', {
         all: true,
-        group: undefined,
-      });
-    });
-
-    it('passes --group through to install', async () => {
-      vi.mocked(installSource).mockImplementation(async () => {
-        createSkill('custom/my-tools', 'grouped-url-skill', 'Grouped URL skill');
-        return {
-          basePath: join(testManagerDir, 'custom', 'my-tools', 'grouped-url-skill'),
-          sourceKey: 'custom/my-tools/grouped-url-skill',
-          installedPaths: [join(testManagerDir, 'custom', 'my-tools', 'grouped-url-skill')],
-          sourceKeys: ['custom/my-tools/grouped-url-skill'],
-        };
-      });
-
-      vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['grouped-url-skill'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
-
-      await executeAdd('https://github.com/owner/repo', { group: 'my-tools' });
-
-      expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo', {
-        all: true,
-        group: 'my-tools',
       });
     });
   });
@@ -293,6 +270,106 @@ describe('add command', () => {
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("Unknown agent: 'invalid-agent'")
       );
+    });
+  });
+
+  describe('--group batch deploy', () => {
+    it('rejects --group with a skill argument', async () => {
+      await executeAdd('some-skill', { group: 'dev' });
+
+      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(console.log).toHaveBeenCalledWith(
+        'Cannot use --group with a skill argument.'
+      );
+    });
+
+    it('deploys skills from group', async () => {
+      createSkill('custom/dev', 'skill-a', 'Skill A');
+      createSkill('custom/dev', 'skill-b', 'Skill B');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['skill-a'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd(undefined, { group: 'dev' });
+
+      // Should not call executeInit (group takes priority)
+      expect(executeInit).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('✓ skill-a')
+      );
+    });
+
+    it('exits when group has no skills', async () => {
+      await executeAdd(undefined, { group: 'nonexistent' });
+
+      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(console.log).toHaveBeenCalledWith(
+        "No skills found in group 'nonexistent'."
+      );
+    });
+  });
+
+  describe('-g / --global flag', () => {
+    it('-g without arg delegates to init with global flag', async () => {
+      await executeAdd(undefined, { global: true });
+
+      const { executeInit } = await import('./init.js');
+      expect(executeInit).toHaveBeenCalledWith({ copy: undefined, global: true });
+    });
+
+    it('add -g deploys and remove -g cleans up', async () => {
+      createSkill('official/anthropic/skills', 'code-review', 'Code review');
+      const agent = 'claude-code';
+      const globalDir = TOOL_CONFIGS[agent].globalSkillsDir;
+
+      // add globally
+      await executeAdd('code-review', { global: true, agent });
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('✓ code-review')
+      );
+      expect(existsSync(join(globalDir, 'code-review'))).toBe(true);
+
+      // remove globally
+      await executeRemove('code-review', { global: true, agent });
+      expect(existsSync(join(globalDir, 'code-review'))).toBe(false);
+    });
+
+    it('does not check already-deployed for global mode', async () => {
+      createSkill('official/anthropic/skills', 'code-review', 'Code review');
+      const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      deploySkillAsLink('code-review', sourcePath);
+      const agent = 'claude-code';
+      const globalDir = TOOL_CONFIGS[agent].globalSkillsDir;
+
+      await executeAdd('code-review', { global: true, agent });
+
+      expect(console.log).not.toHaveBeenCalledWith(
+        expect.stringContaining('already deployed')
+      );
+
+      // cleanup
+      await executeRemove('code-review', { global: true, agent });
+      expect(existsSync(join(globalDir, 'code-review'))).toBe(false);
+    });
+
+    it('--group with -g deploys and cleans up', async () => {
+      createSkill('custom/dev', 'skill-a', 'Skill A');
+      const agent = 'claude-code';
+      const globalDir = TOOL_CONFIGS[agent].globalSkillsDir;
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['skill-a'])
+        .mockResolvedValueOnce([agent]);
+
+      await executeAdd(undefined, { global: true, group: 'dev' });
+
+      expect(executeInit).not.toHaveBeenCalled();
+      expect(existsSync(join(globalDir, 'skill-a'))).toBe(true);
+
+      // cleanup
+      await executeRemove('skill-a', { global: true, agent });
+      expect(existsSync(join(globalDir, 'skill-a'))).toBe(false);
     });
   });
 

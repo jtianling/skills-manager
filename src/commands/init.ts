@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import { join } from 'path';
+import { existsSync, readdirSync } from 'fs';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { DeploymentScanner } from '../services/scanner.js';
@@ -6,8 +8,62 @@ import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { InitOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
-import { promptAgents, promptSkills } from '../utils/prompts.js';
+import { promptAgents, promptAgentsGlobal, promptSkills } from '../utils/prompts.js';
 import { executeSetup } from './setup.js';
+
+function scanGlobalDeployedSkills(agents: ToolName[]): string[] {
+  const names = new Set<string>();
+  for (const agentName of agents) {
+    const dir = TOOL_CONFIGS[agentName].globalSkillsDir;
+    if (!existsSync(dir)) continue;
+    try {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (existsSync(join(dir, entry.name, 'SKILL.md'))) {
+          names.add(entry.name);
+        }
+      }
+    } catch {
+      // directory not readable
+    }
+  }
+  return [...names];
+}
+
+async function executeInitGlobal(
+  skillsService: SkillsService,
+  deployer: Deployer,
+  options: InitOptions,
+): Promise<void> {
+  const selectedAgents = await promptAgentsGlobal() as ToolName[];
+
+  if (selectedAgents.length === 0) {
+    console.log('No agents selected');
+    return;
+  }
+
+  const deployedGlobalNames = scanGlobalDeployedSkills(selectedAgents);
+
+  const allSkills = skillsService.getAllSkills();
+  const selectedSkillNames = await promptSkills(allSkills, deployedGlobalNames);
+
+  if (selectedSkillNames.length === 0) {
+    console.log('No skills selected');
+    return;
+  }
+
+  const selectedSkills = skillsService.getSkillsByNames(selectedSkillNames);
+  const deployMode = options.copy ? 'copy' : 'link';
+
+  console.log('\nDeploying globally...\n');
+
+  for (const skill of selectedSkills) {
+    deployer.deploySkillGlobal(skill, selectedAgents, deployMode);
+  }
+
+  console.log(
+    `\nDone! Deployed ${selectedSkillNames.length} skills globally to ${selectedAgents.length} agents.`
+  );
+}
 
 export async function executeInit(options: InitOptions): Promise<void> {
   if (!fileExists(SKILLS_MANAGER_DIR)) {
@@ -16,7 +72,6 @@ export async function executeInit(options: InitOptions): Promise<void> {
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
-  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
 
   const allSkills = skillsService.getAllSkills();
@@ -26,6 +81,12 @@ export async function executeInit(options: InitOptions): Promise<void> {
     process.exit(1);
   }
 
+  if (options.global) {
+    await executeInitGlobal(skillsService, deployer, options);
+    return;
+  }
+
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const configuredTools = scanner.getConfiguredTools();
 
   const selectedTools = await promptAgents(configuredTools);
@@ -130,8 +191,9 @@ export async function executeInit(options: InitOptions): Promise<void> {
 }
 
 export const initCommand = new Command('init')
-  .description('Deploy skills to current project')
+  .description('Deploy skills to current project (or globally with -g)')
   .option('--copy', 'Copy files instead of creating symlinks')
+  .option('-g, --global', 'Deploy skills globally to agent user-level directories')
   .action(async (options: InitOptions) => {
     await executeInit(options);
   });
