@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { getInstalledSkillNames } from './helpers/skills.js';
 
 describe('add E2E', () => {
   let env: TestEnv;
   let tmux: TmuxSession;
+  let skillName: string;
 
   async function setupAndInstall(): Promise<void> {
     tmux = new TmuxSession(env);
@@ -17,6 +19,10 @@ describe('add E2E', () => {
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
     tmux.destroy();
+
+    const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
+    const skills = getInstalledSkillNames(skillsDir);
+    skillName = skills[0];
   }
 
   beforeEach(() => {
@@ -32,10 +38,10 @@ describe('add E2E', () => {
     await setupAndInstall();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr add code-review -a claude-code', env.projectDir);
+    await tmux.start(`skillsmgr add ${skillName} -a claude-code`, env.projectDir);
     await tmux.waitForText('linked', 15_000);
 
-    const skillPath = join(env.projectDir, '.agents', 'skills', 'code-review');
+    const skillPath = join(env.projectDir, '.agents', 'skills', skillName);
     expect(existsSync(skillPath)).toBe(true);
     expect(lstatSync(skillPath).isSymbolicLink()).toBe(true);
 
@@ -48,10 +54,10 @@ describe('add E2E', () => {
     await setupAndInstall();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr add code-review -a claude-code --copy', env.projectDir);
+    await tmux.start(`skillsmgr add ${skillName} -a claude-code --copy`, env.projectDir);
     await tmux.waitForText('copied', 15_000);
 
-    const skillPath = join(env.projectDir, '.agents', 'skills', 'code-review');
+    const skillPath = join(env.projectDir, '.agents', 'skills', skillName);
     expect(existsSync(skillPath)).toBe(true);
     expect(lstatSync(skillPath).isSymbolicLink()).toBe(false);
   });

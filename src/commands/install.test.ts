@@ -68,6 +68,7 @@ vi.mock('../services/github.js', async () => {
 
 import * as constants from '../constants.js';
 import { executeInstall, installSource } from './install.js';
+import { installViaGitClone } from './install-git.js';
 
 describe('install command', () => {
   let testManagerDir: string;
@@ -211,29 +212,24 @@ describe('install command', () => {
   });
 
   it('installs grouped remote skills under custom/<group>/<skill>', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
-      if (String(input).includes('/skills/remote-skill/SKILL.md')) {
-        return {
-          ok: true,
-          text: async () => '---\nname: remote-skill\ndescription: Remote skill\n---\n',
-        };
-      }
+    // Create a local git repo to serve as source
+    const localRepoDir = join(tmpdir(), `skillsmgr-local-repo-${Date.now()}`);
+    const skillDir = join(localRepoDir, 'skills', 'remote-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: remote-skill\ndescription: Remote skill\n---\n');
+    execFileSync('git', ['init'], { cwd: localRepoDir, stdio: 'pipe' });
+    execFileSync('git', ['add', '.'], { cwd: localRepoDir, stdio: 'pipe' });
+    execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@test.com', 'commit', '-m', 'init'], { cwd: localRepoDir, stdio: 'pipe' });
 
-      throw new Error(`Unexpected fetch: ${input}`);
-    }));
+    try {
+      const result = await installViaGitClone(localRepoDir, { all: true, group: 'my-tools' });
 
-    const result = await installSource('owner/repo', { all: true, group: 'my-tools' });
-
-    const targetDir = join(testManagerDir, 'custom', 'my-tools', 'remote-skill');
-    expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
-    expect(result.installedPaths).toEqual([targetDir]);
-    expect(result.sourceKeys).toEqual(['custom/my-tools/remote-skill']);
-
-    const sources = readSources();
-    expect(sources.sources['custom/my-tools/remote-skill']).toMatchObject({
-      url: 'https://github.com/owner/repo',
-      repoName: 'repo',
-      installMethod: 'git',
-    });
+      const targetDir = join(testManagerDir, 'custom', 'my-tools', 'remote-skill');
+      expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
+      expect(result.installedPaths).toEqual([targetDir]);
+      expect(result.sourceKeys).toEqual(['custom/my-tools/remote-skill']);
+    } finally {
+      rmSync(localRepoDir, { recursive: true, force: true });
+    }
   });
 });

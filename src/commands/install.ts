@@ -366,8 +366,7 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
       return installFromZip(source, options);
     case 'owner-repo': {
       const normalizedSource = source.replace(/\/$/, '');
-      const resolvedSource = `https://github.com/${normalizedSource}`;
-      return installResolvedRemoteSource(resolvedSource, options);
+      return installViaGitClone(`https://github.com/${normalizedSource}`, options);
     }
     case 'remote-url':
       return installResolvedRemoteSource(source, options);

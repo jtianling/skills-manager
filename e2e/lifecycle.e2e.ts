@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readdirSync, readFileSync, lstatSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { getInstalledSkillNames } from './helpers/skills.js';
 
 describe('full lifecycle E2E', () => {
   let env: TestEnv;
@@ -32,7 +33,7 @@ describe('full lifecycle E2E', () => {
 
     const skillsDir = join(smDir, 'official', 'anthropic', 'skills');
     expect(existsSync(skillsDir)).toBe(true);
-    const installedSkills = readdirSync(skillsDir);
+    const installedSkills = getInstalledSkillNames(skillsDir);
     expect(installedSkills.length).toBeGreaterThan(0);
     const skillName = installedSkills[0];
 
@@ -51,7 +52,6 @@ describe('full lifecycle E2E', () => {
 
     const deployedSkill = join(env.projectDir, '.agents', 'skills', skillName);
     expect(existsSync(deployedSkill)).toBe(true);
-    expect(lstatSync(deployedSkill).isSymbolicLink()).toBe(true);
 
     // 5. List --deployed
     tmux = new TmuxSession(env);

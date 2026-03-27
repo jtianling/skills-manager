@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, readdirSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { getInstalledSkillNames } from './helpers/skills.js';
 
 describe('uninstall E2E', () => {
   let env: TestEnv;
@@ -32,8 +33,8 @@ describe('uninstall E2E', () => {
     await setupAndInstall();
 
     const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
-    const skillsBefore = readdirSync(skillsDir);
-    const targetSkill = skillsBefore[0];
+    const skills = getInstalledSkillNames(skillsDir);
+    const targetSkill = skills[0];
 
     tmux = new TmuxSession(env);
     await tmux.start(`skillsmgr uninstall ${targetSkill} -f`);
@@ -47,8 +48,8 @@ describe('uninstall E2E', () => {
     await setupAndInstall();
 
     const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
-    const skillsBefore = readdirSync(skillsDir);
-    const targetSkill = skillsBefore[0];
+    const skills = getInstalledSkillNames(skillsDir);
+    const targetSkill = skills[0];
 
     tmux = new TmuxSession(env);
     await tmux.start(`skillsmgr uninstall ${targetSkill}`);
