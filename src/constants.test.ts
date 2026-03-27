@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { OFFICIAL_PROVIDERS, findOfficialProvider, resolveProviderAlias } from './constants.js';
+import { OFFICIAL_PROVIDERS, findOfficialProvider } from './constants.js';
 
 describe('OFFICIAL_PROVIDERS', () => {
   it('contains all initial providers', () => {
@@ -20,14 +20,13 @@ describe('OFFICIAL_PROVIDERS', () => {
     expect(provider.repos[0].skillsPath).toBe('.github/skills');
   });
 
-  it('vercel-labs has multiple repos and aliases', () => {
+  it('vercel-labs has multiple repos', () => {
     const provider = OFFICIAL_PROVIDERS['vercel-labs'];
     expect(provider.owner).toBe('vercel-labs');
     expect(provider.repos).toEqual([
       { repo: 'agent-skills' },
       { repo: 'agent-browser' },
     ]);
-    expect(provider.aliases).toEqual(['vercel']);
   });
 });
 
@@ -65,20 +64,5 @@ describe('findOfficialProvider', () => {
   it('returns null for non-official owner', () => {
     expect(findOfficialProvider('obra', 'superpowers')).toBeNull();
     expect(findOfficialProvider('random-user', 'skills')).toBeNull();
-  });
-});
-
-describe('resolveProviderAlias', () => {
-  it('returns provider key for matching alias', () => {
-    expect(resolveProviderAlias('vercel')).toBe('vercel-labs');
-  });
-
-  it('returns null for non-matching alias', () => {
-    expect(resolveProviderAlias('unknown')).toBeNull();
-  });
-
-  it('returns null for direct provider key (not an alias)', () => {
-    expect(resolveProviderAlias('vercel-labs')).toBeNull();
-    expect(resolveProviderAlias('anthropic')).toBeNull();
   });
 });

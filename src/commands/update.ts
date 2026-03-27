@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { OFFICIAL_PROVIDERS, SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
 import { fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
@@ -12,10 +12,35 @@ interface UpdateResult {
   updated: number;
   upToDate: number;
   failed: number;
+  skipped: number;
+}
+
+function getInstalledSkillDirs(targetBase: string): Array<{ name: string; path: string }> {
+  const rootSkillMd = join(targetBase, 'SKILL.md');
+  if (fileExists(rootSkillMd)) {
+    return [{
+      name: targetBase.split('/').pop() || targetBase,
+      path: targetBase,
+    }];
+  }
+
+  return getDirectoriesInDir(targetBase);
 }
 
 async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult> {
-  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0 };
+  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+
+  if (info.installMethod === 'zip') {
+    console.log(`  Skipping ${key.split('/').pop() || key}: installed from zip, manual reinstall required`);
+    result.skipped++;
+    return result;
+  }
+
+  if (info.installMethod === 'local-copy') {
+    console.log(`  Skipping ${key.split('/').pop() || key}: installed from local copy, manual reinstall required`);
+    result.skipped++;
+    return result;
+  }
 
   const parsed = githubService.parseGitHubUrl(info.url);
   if (!parsed) {
@@ -31,7 +56,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
   // Get the default branch
   const defaultBranch = await githubService.getDefaultBranch(owner, repo);
 
-  const localSkills = getDirectoriesInDir(targetBase);
+  const localSkills = getInstalledSkillDirs(targetBase);
 
   if (localSkills.length > 0) {
     // Try common skills directory locations to find remote path pattern
@@ -135,8 +160,9 @@ export async function executeUpdate(source?: string): Promise<void> {
   const allSources = sourcesService.getAllSources();
 
   if (Object.keys(allSources).length === 0) {
+    const anthropicRepo = OFFICIAL_PROVIDERS.anthropic.repos[0]?.repo ?? 'skills';
     console.log('No installed sources found.');
-    console.log('\nRun: skillsmgr install anthropic');
+    console.log(`\nRun: skillsmgr install ${OFFICIAL_PROVIDERS.anthropic.owner}/${anthropicRepo}`);
     return;
   }
 
@@ -158,7 +184,7 @@ export async function executeUpdate(source?: string): Promise<void> {
 
     console.log(`Updating ${matchingKey}...\n`);
     const result = await updateSource(matchingKey, allSources[matchingKey]);
-    console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed`);
+    console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed, ${result.skipped} skipped`);
     return;
   }
 
@@ -168,6 +194,7 @@ export async function executeUpdate(source?: string): Promise<void> {
   let totalUpdated = 0;
   let totalUpToDate = 0;
   let totalFailed = 0;
+  let totalSkipped = 0;
 
   for (const [key, info] of Object.entries(allSources)) {
     console.log(`${key}:`);
@@ -175,10 +202,11 @@ export async function executeUpdate(source?: string): Promise<void> {
     totalUpdated += result.updated;
     totalUpToDate += result.upToDate;
     totalFailed += result.failed;
+    totalSkipped += result.skipped;
     console.log();
   }
 
-  console.log(`Done! ${totalUpdated} updated, ${totalUpToDate} up to date, ${totalFailed} failed`);
+  console.log(`Done! ${totalUpdated} updated, ${totalUpToDate} up to date, ${totalFailed} failed, ${totalSkipped} skipped`);
 }
 
 export const updateCommand = new Command('update')

@@ -39,7 +39,7 @@ export const customUpdateCommand = new Command('custom-update')
         }
       }
       if (!found) {
-        console.error(`Error: Skill '${skillName}' is not installed. Run: skillsmgr custom-install ${skillName}`);
+        console.error(`Error: Skill '${skillName}' is not installed. Run: skillsmgr install ${skillName}`);
         process.exit(1);
       }
     }

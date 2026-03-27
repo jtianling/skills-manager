@@ -12,11 +12,20 @@ import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.j
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { executeSetup } from './setup.js';
 import { executeInit } from './init.js';
+import { detectSourceType, hasExplicitLocalPrefix } from '../utils/source-detection.js';
 
-function detectArgFormat(arg: string): 'url' | 'owner-repo' | 'skill-name' {
-  if (arg.includes('://')) return 'url';
-  if (arg.includes('/')) return 'owner-repo';
-  return 'skill-name';
+function detectArgFormat(arg: string): 'owner-repo' | 'skill-name' | 'install-source' {
+  const sourceType = detectSourceType(arg);
+
+  if (sourceType === 'owner-repo') {
+    return 'owner-repo';
+  }
+
+  if (sourceType === 'local-path' && !hasExplicitLocalPrefix(arg)) {
+    return 'skill-name';
+  }
+
+  return 'install-source';
 }
 
 function findRepoInCentralRepository(
@@ -126,9 +135,8 @@ async function handleSkillName(
   const matchingSkills = skillsService.findSkillsByName(name);
 
   if (matchingSkills.length === 0) {
-    console.log(`Skill '${name}' not found in central repository.`);
-    console.log("Use 'skillsmgr add owner/repo' or a full URL to install from remote.");
-    process.exit(1);
+    await handleRemoteInstallAndDeploy(name, options, scanner, deployer);
+    return;
   }
 
   let skill = matchingSkills[0];
@@ -224,7 +232,7 @@ async function handleRemoteInstallAndDeploy(
 ): Promise<void> {
   let installResult;
   try {
-    installResult = await installSource(source);
+    installResult = await installSource(source, { all: true, group: options.group });
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
@@ -235,13 +243,23 @@ async function handleRemoteInstallAndDeploy(
   // Re-read skills after install
   const freshSkillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const allSkills = freshSkillsService.getAllSkills();
-  const installedSkills = allSkills.filter((s) =>
-    s.path.startsWith(installResult.basePath)
+  const installedPaths = installResult.installedPaths ?? (installResult.basePath ? [installResult.basePath] : []);
+  if (installedPaths.length === 0) {
+    return;
+  }
+
+  const installedSkills = allSkills.filter((skill) =>
+    installedPaths.some((installedPath) => skill.path === installedPath || skill.path.startsWith(`${installedPath}/`))
   );
 
   if (installedSkills.length === 0) {
     console.log('No skills found after installation.');
-    rollbackInstall(installResult.basePath, installResult.sourceKey);
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
     process.exit(1);
   }
 
@@ -251,14 +269,24 @@ async function handleRemoteInstallAndDeploy(
   try {
     selectedNames = await promptSkillsFromRepo(installedSkills, deployedNames);
   } catch {
-    rollbackInstall(installResult.basePath, installResult.sourceKey);
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
     return;
   }
 
   const newSkills = selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
-    rollbackInstall(installResult.basePath, installResult.sourceKey);
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
     return;
   }
 
@@ -266,7 +294,12 @@ async function handleRemoteInstallAndDeploy(
   try {
     selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
   } catch {
-    rollbackInstall(installResult.basePath, installResult.sourceKey);
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
     return;
   }
 
@@ -276,7 +309,12 @@ async function handleRemoteInstallAndDeploy(
     await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode);
     ensureSymlinkBridges(selectedAgents, deployer);
   } catch (error) {
-    rollbackInstall(installResult.basePath, installResult.sourceKey);
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
     throw error;
   }
 }
@@ -309,7 +347,7 @@ export async function executeAdd(
     case 'owner-repo':
       await handleOwnerRepo(arg, options, skillsService, scanner, deployer);
       break;
-    case 'url':
+    case 'install-source':
       await handleUrl(arg, options, scanner, deployer);
       break;
   }
@@ -320,6 +358,7 @@ export const addCommand = new Command('add')
   .argument('[arg]', 'Skill name, owner/repo, or URL')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-a, --agent <agents>', 'Target agents (comma-separated)')
+  .option('-g, --group <name>', 'Group name to use when installing missing skills')
   .option('-s, --same-agents', 'Use currently configured agents')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);

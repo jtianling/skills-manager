@@ -100,11 +100,12 @@ describe('add command', () => {
     it('exits with message when skill not found', async () => {
       const exitError = new Error('process.exit');
       vi.mocked(process.exit).mockImplementation(() => { throw exitError; });
+      vi.mocked(installSource).mockRejectedValue(new Error('Directory ./nonexistent not found. For remote install, use owner/repo format.'));
 
       await expect(executeAdd('nonexistent', {})).rejects.toThrow('process.exit');
 
-      expect(console.log).toHaveBeenCalledWith(
-        "Skill 'nonexistent' not found in central repository."
+      expect(console.error).toHaveBeenCalledWith(
+        'Error: Directory ./nonexistent not found. For remote install, use owner/repo format.'
       );
       expect(process.exit).toHaveBeenCalledWith(1);
     });
@@ -188,7 +189,10 @@ describe('add command', () => {
 
       await executeAdd('unknown/repo', {});
 
-      expect(installSource).toHaveBeenCalledWith('unknown/repo');
+      expect(installSource).toHaveBeenCalledWith('unknown/repo', {
+        all: true,
+        group: undefined,
+      });
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ remote-skill')
       );
@@ -211,7 +215,33 @@ describe('add command', () => {
 
       await executeAdd('https://github.com/owner/repo', {});
 
-      expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo');
+      expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo', {
+        all: true,
+        group: undefined,
+      });
+    });
+
+    it('passes --group through to install', async () => {
+      vi.mocked(installSource).mockImplementation(async () => {
+        createSkill('custom/my-tools', 'grouped-url-skill', 'Grouped URL skill');
+        return {
+          basePath: join(testManagerDir, 'custom', 'my-tools', 'grouped-url-skill'),
+          sourceKey: 'custom/my-tools/grouped-url-skill',
+          installedPaths: [join(testManagerDir, 'custom', 'my-tools', 'grouped-url-skill')],
+          sourceKeys: ['custom/my-tools/grouped-url-skill'],
+        };
+      });
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['grouped-url-skill'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd('https://github.com/owner/repo', { group: 'my-tools' });
+
+      expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo', {
+        all: true,
+        group: 'my-tools',
+      });
     });
   });
 

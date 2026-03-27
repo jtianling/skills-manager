@@ -31,7 +31,6 @@ export interface OfficialProviderRepo {
 export interface OfficialProvider {
   owner: string;
   repos: OfficialProviderRepo[];
-  aliases?: string[];
 }
 
 export interface OfficialMatch {
@@ -46,7 +45,6 @@ export const OFFICIAL_PROVIDERS: Record<string, OfficialProvider> = {
   'vercel-labs': {
     owner: 'vercel-labs',
     repos: [{ repo: 'agent-skills' }, { repo: 'agent-browser' }],
-    aliases: ['vercel'],
   },
 };
 
@@ -55,15 +53,6 @@ export function findOfficialProvider(owner: string, repo: string): OfficialMatch
     if (provider.owner === owner) {
       const exactRepoMatch = provider.repos.some((r) => r.repo === repo);
       return { providerKey: key, exactRepoMatch };
-    }
-  }
-  return null;
-}
-
-export function resolveProviderAlias(input: string): string | null {
-  for (const [key, provider] of Object.entries(OFFICIAL_PROVIDERS)) {
-    if (provider.aliases?.includes(input)) {
-      return key;
     }
   }
   return null;

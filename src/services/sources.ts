@@ -2,12 +2,15 @@ import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { fileExists, readFileContent, writeFile } from '../utils/fs.js';
 
-const SOURCES_FILE = join(SKILLS_MANAGER_DIR, 'sources.json');
+function getSourcesFile(): string {
+  return join(SKILLS_MANAGER_DIR, 'sources.json');
+}
 
 export interface SourceInfo {
   url: string;
   type: 'official' | 'community' | 'custom';
   repoName: string;
+  installMethod?: 'git' | 'zip' | 'local-copy';
   installedAt: string;
   updatedAt: string;
 }
@@ -19,16 +22,18 @@ export interface SourcesData {
 
 export class SourcesService {
   private load(): SourcesData {
-    if (!fileExists(SOURCES_FILE)) {
+    const sourcesFile = getSourcesFile();
+
+    if (!fileExists(sourcesFile)) {
       return { version: '1.0', sources: {} };
     }
 
-    const content = readFileContent(SOURCES_FILE);
+    const content = readFileContent(sourcesFile);
     return JSON.parse(content) as SourcesData;
   }
 
   private save(data: SourcesData): void {
-    writeFile(SOURCES_FILE, JSON.stringify(data, null, 2));
+    writeFile(getSourcesFile(), JSON.stringify(data, null, 2));
   }
 
   addSource(key: string, info: Omit<SourceInfo, 'installedAt' | 'updatedAt'>): void {

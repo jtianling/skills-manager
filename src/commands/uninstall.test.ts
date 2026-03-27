@@ -13,14 +13,9 @@ vi.mock('../constants.js', async () => {
       'vercel-labs': {
         owner: 'vercel-labs',
         repos: [{ repo: 'agent-skills' }, { repo: 'agent-browser' }],
-        aliases: ['vercel'],
       },
     },
     SKILL_SOURCES: ['official', 'community', 'custom'] as const,
-    resolveProviderAlias: (input: string) => {
-      if (input === 'vercel') return 'vercel-labs';
-      return null;
-    },
     findOfficialProvider: () => null,
   };
 });
@@ -72,15 +67,6 @@ describe('uninstall command', () => {
 
       expect(existsSync(join(SKILLS_MANAGER_DIR, 'official', 'anthropic'))).toBe(false);
       expect(sourcesService.getSource('official/anthropic/skills')).toBeUndefined();
-    });
-
-    it('resolves provider alias', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'official', 'vercel-labs', 'agent-skills', 'my-skill');
-      createSkillDir(skillDir);
-
-      await executeUninstall('vercel', { force: true });
-
-      expect(existsSync(join(SKILLS_MANAGER_DIR, 'official', 'vercel-labs'))).toBe(false);
     });
 
     it('exits when provider has no installed skills', async () => {

@@ -28,6 +28,8 @@ export interface ToolConfig {
 export interface InstallOptions {
   all?: boolean;
   custom?: boolean;
+  force?: boolean;
+  group?: string;
 }
 
 export interface InitOptions {
@@ -38,6 +40,7 @@ export interface AddOptions {
   copy?: boolean;
   agent?: string;
   sameAgents?: boolean;
+  group?: string;
 }
 
 export interface ListOptions {
