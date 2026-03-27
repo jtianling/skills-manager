@@ -6,14 +6,15 @@ import { Deployer } from '../services/deployer.js';
 import { AddOptions } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptSelect } from '../utils/prompts.js';
+import { executeSetup } from './setup.js';
 
 export async function executeAdd(
   name: string,
   options: AddOptions
 ): Promise<void> {
   if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
+    await executeSetup();
+    console.log();
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);

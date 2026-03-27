@@ -297,8 +297,9 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 ## 前置条件
 
-- 所有 skill 操作 (除 `setup`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
-- `init` 和 `add` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropic"
+- 大部分 skill 操作 (除 `setup`, `init`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
+- `init` 和 `add` 检查 `~/.skills-manager/` 目录是否存在, 不存在时自动执行 `executeSetup()` 完成初始化, 然后继续原命令流程
+- `init` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropic"
 - `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr init"
 
 #### Scenario: init precondition check

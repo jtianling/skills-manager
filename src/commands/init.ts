@@ -7,11 +7,12 @@ import { TOOL_CONFIGS } from '../tools/configs.js';
 import { InitOptions, ToolName } from '../types.js';
 import { fileExists } from '../utils/fs.js';
 import { promptTools, promptSkills } from '../utils/prompts.js';
+import { executeSetup } from './setup.js';
 
 export async function executeInit(options: InitOptions): Promise<void> {
   if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
+    await executeSetup();
+    console.log();
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);

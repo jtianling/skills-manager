@@ -18,6 +18,7 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | init | - | - | --copy | Deploy skills to current project |
 | add | - | \<name\> (必填) | --copy | Add a skill to the project |
 | remove | - | \<name\> (必填) | - | Remove a skill from the project |
+| uninstall | - | [identifier] (可选) | -f, --force | Remove skills from ~/.skills-manager/ |
 | sync | - | - | Sync and verify deployed skills |
 
 #### Scenario: CLI help shows skills-only descriptions
@@ -45,6 +46,22 @@ The `install` command SHALL have alias `i`.
 #### Scenario: Alias i works
 - **WHEN** user runs `skillsmgr i anthropic`
 - **THEN** the system behaves identically to `skillsmgr install anthropic`
+
+### Requirement: uninstall 命令参数可选
+
+原命令表中 `uninstall` 的 `<identifier>` 参数从必选改为可选.  无参数时进入交互式卸载模式, 有参数时行为不变.
+
+#### Scenario: 无参数进入交互模式
+- **WHEN** 用户执行 `skillsmgr uninstall`
+- **THEN** 进入交互式卸载模式
+
+#### Scenario: 有参数执行直接卸载
+- **WHEN** 用户执行 `skillsmgr uninstall anthropic`
+- **THEN** 按现有逻辑直接卸载 anthropic provider 下的所有 skill
+
+#### Scenario: --force 仅对有参数模式生效
+- **WHEN** 用户执行 `skillsmgr uninstall` (无参数)
+- **THEN** `--force` 选项不影响交互流程 (无参数就是要交互)
 
 ## 交互式提示
 
@@ -638,9 +655,9 @@ Downloading 3 skills...
 | list | `~/.skills-manager/` 存在 (仅 available 模式) | process.exit(1), 提示 "Run: skillsmgr setup" |
 | list | 有可用 skill (仅 available 模式) | 输出提示信息, 正常返回 |
 | list --deployed | 有部署 | 输出 "No skills deployed in current project.", 正常返回 |
-| init | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
+| init | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 init 流程 |
 | init | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
-| add | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
+| add | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 add 流程 |
 | add | name 匹配到 skill | process.exit(1), 提示 "'name' not found" |
 | add | 有已配置工具 | process.exit(1), 提示 "No tools configured. Run: skillsmgr init" |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
@@ -774,7 +791,8 @@ Downloading 3 skills...
 
 ### 前置条件
 
-- test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1)
+- test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1) (install, update, list, remove, sync 命令)
+- test_precondition_noSkillsManagerDir_autoSetup: ~/.skills-manager/ 不存在时自动执行 setup 后继续 (init, add 命令)
 - test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (init 命令)
 - test_precondition_noConfiguredTools_exits: 无已配置工具时 exit(1) (add 命令)
 - test_precondition_skillNotFound_exits: add 命令找不到 skill 时 exit(1)
