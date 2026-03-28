@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, hasExplicitLocalPrefix } from './source-detection.js';
+import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension } from './source-detection.js';
 
 describe('detectSourceType', () => {
   it('returns unknown for bare words', () => {
@@ -22,8 +22,26 @@ describe('detectSourceType', () => {
 
   it('detects zip inputs with remote zip priority', () => {
     expect(detectSourceType('./my-skill.zip')).toBe('local-zip');
+    expect(detectSourceType('../my-skill.zip')).toBe('local-zip');
+    expect(detectSourceType('/tmp/my-skill.zip')).toBe('local-zip');
+    expect(detectSourceType('~/my-skill.zip')).toBe('local-zip');
+    expect(detectSourceType('my-skill.zip')).toBe('unknown');
     expect(detectSourceType('http://example.com/my-skill.zip')).toBe('remote-zip');
     expect(detectSourceType('https://example.com/my-skill.zip')).toBe('remote-zip');
+  });
+
+  it('detects .skill extension as zip-like', () => {
+    expect(isZipLikeExtension('foo.skill')).toBe(true);
+    expect(isZipLikeExtension('foo.zip')).toBe(true);
+    expect(isZipLikeExtension('foo.tar.gz')).toBe(false);
+
+    expect(detectSourceType('./foo.skill')).toBe('local-zip');
+    expect(detectSourceType('../foo.skill')).toBe('local-zip');
+    expect(detectSourceType('/path/to/foo.skill')).toBe('local-zip');
+    expect(detectSourceType('~/foo.skill')).toBe('local-zip');
+    expect(detectSourceType('foo.skill')).toBe('unknown');
+    expect(detectSourceType('http://example.com/foo.skill')).toBe('remote-zip');
+    expect(detectSourceType('https://example.com/foo.skill')).toBe('remote-zip');
   });
 
   it('detects remote URLs', () => {

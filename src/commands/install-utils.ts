@@ -178,10 +178,6 @@ export async function prepareTargetDir(targetDir: string, overwriteMessage: stri
 }
 
 export async function selectSkills(skills: InstallableSkill[], options: InstallOptions): Promise<InstallableSkill[]> {
-  if (options.all || skills.length <= 1) {
-    return skills;
-  }
-
   if (options.skill && options.skill.length > 0) {
     for (const name of options.skill) {
       if (!skills.some((s) => s.name === name)) {
@@ -190,6 +186,10 @@ export async function selectSkills(skills: InstallableSkill[], options: InstallO
       }
     }
     return skills.filter((s) => options.skill!.includes(s.name));
+  }
+
+  if (options.all || skills.length <= 1) {
+    return skills;
   }
 
   const selectedNames = await promptSkillsToInstall(skills);

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
-import { getInstalledSkillNames } from './helpers/skills.js';
+import { getDeployedSkillNames, getInstalledSkillNames } from './helpers/skills.js';
 
 describe('flags lifecycle E2E', () => {
   let env: TestEnv;
@@ -146,6 +146,9 @@ describe('flags lifecycle E2E', () => {
     const globalDir = join(env.homeDir, '.claude', 'skills');
     expect(existsSync(join(globalDir, skill))).toBe(true);
 
+    // Verify only the target skill was deployed globally
+    expect(getDeployedSkillNames(globalDir)).toEqual([skill]);
+
     // Remove globally from claude-code
     tmux = new TmuxSession(env);
     await tmux.start(
@@ -162,6 +165,7 @@ describe('flags lifecycle E2E', () => {
     env = createTestEnv();
     const { skills, skillsDir } = await setupAndInstall();
     const skill = skills[0];
+    const otherSkills = skills.slice(1);
 
     // 1. Add to project with -s -a (no interaction)
     tmux = new TmuxSession(env);
@@ -175,6 +179,9 @@ describe('flags lifecycle E2E', () => {
     const deployedPath = join(env.projectDir, '.agents', 'skills', skill);
     expect(existsSync(deployedPath)).toBe(true);
     expect(lstatSync(deployedPath).isSymbolicLink()).toBe(true);
+
+    // Verify only the target skill was deployed
+    expect(getDeployedSkillNames(join(env.projectDir, '.agents', 'skills'))).toEqual([skill]);
 
     // 2. Remove from project with -s
     tmux = new TmuxSession(env);
@@ -194,6 +201,11 @@ describe('flags lifecycle E2E', () => {
     tmux.destroy();
 
     expect(existsSync(join(skillsDir, skill))).toBe(false);
+
+    // Verify other skills in the repo are not affected
+    for (const other of otherSkills) {
+      expect(existsSync(join(skillsDir, other, 'SKILL.md'))).toBe(true);
+    }
   });
 
   it('add -s nonexistent skill shows error', async () => {

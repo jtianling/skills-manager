@@ -35,13 +35,18 @@ describe('uninstall E2E', () => {
     const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
     const skills = getInstalledSkillNames(skillsDir);
     const targetSkill = skills[0];
+    const otherSkills = skills.slice(1);
 
     tmux = new TmuxSession(env);
     await tmux.start(`skillsmgr uninstall ${targetSkill} -f`);
     await tmux.waitForText(/Removed|Uninstalled/, 15_000);
 
-    const skillPath = join(skillsDir, targetSkill);
-    expect(existsSync(skillPath)).toBe(false);
+    expect(existsSync(join(skillsDir, targetSkill))).toBe(false);
+
+    // Verify other skills are not affected
+    for (const skill of otherSkills) {
+      expect(existsSync(join(skillsDir, skill, 'SKILL.md'))).toBe(true);
+    }
   });
 
   it('uninstall with confirmation prompt', async () => {

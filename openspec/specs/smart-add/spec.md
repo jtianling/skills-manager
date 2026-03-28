@@ -150,6 +150,39 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **WHEN** URL 安装成功, 安装了 3 个 skills
 - **THEN** 展示 skill 选择列表, 所有 skills 均为未选中状态
 
+## Skill 过滤
+
+### Requirement: -s/--skill 标志指定安装和部署的 skill
+
+`-s`/`--skill` 标志 SHALL 在安装阶段和部署阶段同时生效, 仅安装和部署用户指定的 skill.
+
+当 `-s` 指定了 skill 时:
+1. 远程安装阶段 SHALL 仅安装指定的 skill 到中央仓库, 而非整个仓库的所有 skill
+2. 部署阶段 SHALL 仅部署指定的 skill 到目标 agent
+
+#### Scenario: -s 过滤穿透到安装阶段
+- **WHEN** 用户执行 `skillsmgr add openai/skills -s skill-creator -a claude-code`
+- **AND** 仓库包含 44 个 skills
+- **THEN** 仅安装 `skill-creator` 到中央仓库
+- **AND** 输出 "Found 1 skill."
+- **AND** 仅部署 `skill-creator` 到 claude-code
+
+#### Scenario: -s 指定多个 skill
+- **WHEN** 用户执行 `skillsmgr add openai/skills -s skill-a -s skill-b`
+- **THEN** 仅安装 `skill-a` 和 `skill-b` 到中央仓库
+- **AND** 输出 "Found 2 skills."
+
+#### Scenario: -s 指定不存在的 skill
+- **WHEN** 用户执行 `skillsmgr add openai/skills -s nonexistent`
+- **AND** 仓库中不存在名为 `nonexistent` 的 skill
+- **THEN** 输出 "Skill 'nonexistent' not found."
+- **AND** 以退出码 1 退出
+
+#### Scenario: 不指定 -s 时安装所有 skill
+- **WHEN** 用户执行 `skillsmgr add openai/skills` (无 -s)
+- **THEN** 安装仓库中所有 skill 到中央仓库
+- **AND** 进入 skill 选择 UI 供用户选择要部署的 skill
+
 ## Agent 选择
 
 ### Requirement: 默认交互选择 agent
@@ -219,27 +252,27 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **WHEN** 用户执行 `skillsmgr add code-review -a amp`
 - **THEN** 部署成功, amp 虽不在交互列表但可通过 -a 操作
 
-### Requirement: -s/--same-agents 标志复用已配置 agent
+### Requirement: --same-agents 标志复用已配置 agent
 
-`-s`/`--same-agents` 标志 SHALL 使用项目已配置的 agents, 跳过交互选择.
+`--same-agents` 标志 SHALL 使用项目已配置的 agents, 跳过交互选择.
 
 #### Scenario: 项目有已配置 agent
-- **WHEN** 用户执行 `skillsmgr add code-review -s`
+- **WHEN** 用户执行 `skillsmgr add code-review --same-agents`
 - **AND** 项目已配置 claude-code 和 codex
 - **THEN** 跳过 agent 选择, 部署到 claude-code 和 codex
 
 #### Scenario: 项目无已配置 agent
-- **WHEN** 用户执行 `skillsmgr add code-review -s`
+- **WHEN** 用户执行 `skillsmgr add code-review --same-agents`
 - **AND** 项目无已配置 agent
-- **THEN** 输出 "No agents configured. Run 'skillsmgr init' or omit -s flag."
+- **THEN** 输出 "No agents configured. Run 'skillsmgr init' or omit --same-agents flag."
 - **AND** 以退出码 1 退出
 
-### Requirement: -a 和 -s 互斥
+### Requirement: -a 和 --same-agents 互斥
 
-`-a` 和 `-s` 不可同时使用.
+`-a` 和 `--same-agents` 不可同时使用.
 
-#### Scenario: 同时指定 -a 和 -s
-- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code -s`
+#### Scenario: 同时指定 -a 和 --same-agents
+- **WHEN** 用户执行 `skillsmgr add code-review -a claude-code --same-agents`
 - **THEN** 输出 "Cannot use --agent and --same-agents together."
 - **AND** 以退出码 1 退出
 

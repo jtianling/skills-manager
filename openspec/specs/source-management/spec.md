@@ -146,12 +146,37 @@ key 格式:
 - **WHEN** 用户执行 `skillsmgr install https://github.com/vercel-labs/agent-skills`
 - **THEN** 解析 owner=vercel-labs, repo=agent-skills, 反查 registry 匹配, 安装到 `official/vercel-labs/agent-skills/`
 
+### Requirement: zip 包来源识别 (.zip / .skill)
+
+源类型检测 SHALL 将 `.zip` 和 `.skill` 扩展名视为 zip 包, 但仅当输入带有明确路径前缀 (`./`, `/`, `~/`, `../`) 或 URL 前缀 (`http://`, `https://`) 时.  裸文件名 (如 `foo.zip`, `foo.skill`) SHALL 不被识别为 zip 包来源, 返回 `unknown`.
+
+#### Scenario: 本地带前缀的 zip 包识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install ./foo.zip` 或 `skillsmgr install ./foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `local-zip`, 走 `installFromZip` 流程
+
+#### Scenario: 远程 URL zip 包识别为 remote-zip
+- **WHEN** 用户运行 `skillsmgr install https://example.com/foo.zip` 或 `https://example.com/foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `remote-zip`, 走 `installFromRemoteZip` 流程
+
+#### Scenario: 裸 zip 包文件名不识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install foo.zip` 或 `skillsmgr install foo.skill` (无路径前缀)
+- **THEN** 源类型检测 SHALL 返回 `unknown`, 不走 zip 安装流程
+
+#### Scenario: 绝对路径 zip 包识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install /path/to/foo.zip` 或 `/path/to/foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `local-zip`
+
+#### Scenario: .skill 文件安装结果与 .zip 一致
+- **WHEN** 安装一个 `.skill` 文件, 其内部包含有效的 skill 目录 (含 `SKILL.md`)
+- **THEN** 安装行为 SHALL 与安装同内容的 `.zip` 文件完全一致, 包括目标路径、sources.json 记录和 installMethod
+
 ### 选项
 
 | 选项 | 类型 | 说明 |
 |------|------|------|
 | `--all` | boolean | 安装所有 skill, 跳过选择提示 |
 | `--custom` | boolean | 安装到 custom/ 而非 community/ |
+| `-s, --skill <name>` | string[] | 仅安装指定的 skill (可重复), 跳过选择提示 |
 
 ### GitHub API 下载流程 (优先路径)
 
@@ -166,7 +191,7 @@ key 格式:
 5. 有 skill 时:
    - 使用 ProgressBar 逐个获取 SKILL.md 描述 (通过 raw.githubusercontent.com)
    - 获取失败时 description 为空, 不中断流程
-   - 提示用户选择 (除非 `--all`)
+   - 提示用户选择 (除非 `--all` 或 `--skill` 已指定)
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 (不 exit)
    - 下载选中的 skill
 6. 保存 source 元数据, key 为 `"official/{providerKey}"`, URL 为 `"https://github.com/{owner}/{repo}"`
@@ -207,7 +232,7 @@ key 格式:
    - 逐个获取 SKILL.md 描述, **没有 SKILL.md 的目录 SHALL 作为分组目录处理**: 再调用一次 `listSkills()` 获取其子目录, 对每个子目录检查 SKILL.md. 发现的 skill 使用其完整路径 (如 `skills/research-en/research`) 作为 path, 但 name 仅为最后一段目录名.
    - 分组目录探测限制为一层 — 不做无限递归
    - 过滤后无 skill → 返回 false
-   - 提示选择 (除非 `--all`), 单个 skill 时直接安装不提示
+   - 提示选择 (除非 `--all` 或 `--skill` 已指定), 单个 skill 时直接安装不提示
    - 用户不选择任何 skill 时输出 "No skills selected" 并返回 true (视为成功, 不回退到 git clone)
    - 下载选中的 skill
 7. 确定 source key:
@@ -289,9 +314,13 @@ git clone 回退路径中的目标目录和 source key SHALL 使用与 GitHub AP
    - 删除 `.git` 目录 (不再需要, 已安装完成)
    - 作为单 skill 安装, 不提示选择
 6. 无 skill → `process.exit(1)` 并输出 "No skills found in repository"
-7. 有 skill 且非 `--all` → 提示选择 (单个 skill 时直接安装不提示)
-8. **未选中的 skill 被物理删除** (`removeDir(skill.path)`)
-9. 用户不选择任何 skill 时, **整个仓库目录被删除** (`removeDir(repoPath)`)
+7. 有 skill 时选择逻辑:
+   - `--skill` 指定了 skill 名称 → 仅安装指定的 skill, 跳过选择提示
+   - `--all` 且无 `--skill` → 安装所有 skill, 跳过选择提示
+   - 其他 → 提示选择 (单个 skill 时直接安装不提示)
+8. "Found N skills." 输出: 有 `--skill` 过滤时反映过滤后的数量, 无过滤时反映仓库总数
+9. **未选中的 skill 被物理删除** (`removeDir(skill.path)`)
+10. 用户不选择任何 skill 时, **整个仓库目录被删除** (`removeDir(repoPath)`)
 10. 保存 source 元数据
 
 #### Scenario: Git clone install skills only

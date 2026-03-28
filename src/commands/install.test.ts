@@ -154,27 +154,30 @@ describe('install command', () => {
     });
   });
 
-  it('installs a local zip file and records zip metadata', async () => {
-    const skillDir = join(testProjectDir, 'zip-skill');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: zip-skill\ndescription: Zip skill\n---\n');
+  it.each(['.zip', '.skill'])(
+    'installs a local %s archive with the same target path and source metadata',
+    async (extension) => {
+      const skillDir = join(testProjectDir, 'zip-skill');
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: zip-skill\ndescription: Zip skill\n---\n');
 
-    const zipPath = join(testProjectDir, 'zip-skill.zip');
-    execFileSync('zip', ['-qr', zipPath, 'zip-skill'], { cwd: testProjectDir });
+      const archivePath = join(testProjectDir, `zip-skill${extension}`);
+      execFileSync('zip', ['-qr', archivePath, 'zip-skill'], { cwd: testProjectDir });
 
-    await executeInstall(zipPath, {});
+      await executeInstall(archivePath, {});
 
-    const targetDir = join(testManagerDir, 'custom', 'zip-skill');
-    expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
+      const targetDir = join(testManagerDir, 'custom', 'zip-skill');
+      expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
-    const sources = readSources();
-    expect(sources.sources['custom/zip-skill']).toMatchObject({
-      url: zipPath,
-      type: 'custom',
-      repoName: 'zip-skill',
-      installMethod: 'zip',
-    });
-  });
+      const sources = readSources();
+      expect(sources.sources['custom/zip-skill']).toMatchObject({
+        url: archivePath,
+        type: 'custom',
+        repoName: 'zip-skill',
+        installMethod: 'zip',
+      });
+    }
+  );
 
   it('installs a remote zip file and records the original URL', async () => {
     const skillDir = join(testProjectDir, 'remote-zip-skill');

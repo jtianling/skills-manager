@@ -57,8 +57,12 @@ describe('install E2E', () => {
 
     await tmux.waitForText('Installed', 110_000);
 
-    const officialDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic');
-    expect(existsSync(officialDir)).toBe(true);
+    const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
+    expect(existsSync(skillsDir)).toBe(true);
+
+    // Verify only the selected skill was installed (interactive selected 1)
+    const installed = getInstalledSkillNames(skillsDir);
+    expect(installed).toHaveLength(1);
   });
 
   it('install GitHub tree URL for a specific skill path', async () => {

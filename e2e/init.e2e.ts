@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, lstatSync, readdirSync } from 'fs';
+import { existsSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
-import { getInstalledSkillNames } from './helpers/skills.js';
+import { getDeployedSkillNames, getInstalledSkillNames } from './helpers/skills.js';
 
 describe('init E2E', () => {
   let env: TestEnv;
@@ -51,7 +51,7 @@ describe('init E2E', () => {
     const agentsSkillsDir = join(env.projectDir, '.agents', 'skills');
     expect(existsSync(agentsSkillsDir)).toBe(true);
 
-    const deployed = readdirSync(agentsSkillsDir).filter((f) => !f.startsWith('.'));
+    const deployed = getDeployedSkillNames(agentsSkillsDir);
     expect(deployed.length).toBeGreaterThan(0);
     // Default mode is symlink
     expect(lstatSync(join(agentsSkillsDir, deployed[0])).isSymbolicLink()).toBe(true);
@@ -77,7 +77,7 @@ describe('init E2E', () => {
     const agentsSkillsDir = join(env.projectDir, '.agents', 'skills');
     expect(existsSync(agentsSkillsDir)).toBe(true);
 
-    const deployed = readdirSync(agentsSkillsDir).filter((f) => !f.startsWith('.'));
+    const deployed = getDeployedSkillNames(agentsSkillsDir);
     expect(deployed.length).toBeGreaterThan(0);
     // Copy mode: not a symlink
     expect(lstatSync(join(agentsSkillsDir, deployed[0])).isSymbolicLink()).toBe(false);
@@ -103,7 +103,7 @@ describe('init E2E', () => {
     const globalSkillsDir = join(env.homeDir, '.claude', 'skills');
     expect(existsSync(globalSkillsDir)).toBe(true);
 
-    const deployed = readdirSync(globalSkillsDir).filter((f) => !f.startsWith('.'));
+    const deployed = getDeployedSkillNames(globalSkillsDir);
     expect(deployed.length).toBeGreaterThan(0);
     expect(lstatSync(join(globalSkillsDir, deployed[0])).isSymbolicLink()).toBe(true);
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
-import { getInstalledSkillNames } from './helpers/skills.js';
+import { getDeployedSkillNames, getInstalledSkillNames } from './helpers/skills.js';
 
 describe('full lifecycle E2E', () => {
   let env: TestEnv;
@@ -34,8 +34,9 @@ describe('full lifecycle E2E', () => {
     const skillsDir = join(smDir, 'official', 'anthropic', 'skills');
     expect(existsSync(skillsDir)).toBe(true);
     const installedSkills = getInstalledSkillNames(skillsDir);
-    expect(installedSkills.length).toBeGreaterThan(0);
+    expect(installedSkills.length).toBeGreaterThan(1);
     const skillName = installedSkills[0];
+    const otherSkills = installedSkills.slice(1);
 
     // 3. List
     tmux = new TmuxSession(env);
@@ -52,6 +53,9 @@ describe('full lifecycle E2E', () => {
 
     const deployedSkill = join(env.projectDir, '.agents', 'skills', skillName);
     expect(existsSync(deployedSkill)).toBe(true);
+
+    // Verify only the target skill was deployed, no extras
+    expect(getDeployedSkillNames(join(env.projectDir, '.agents', 'skills'))).toEqual([skillName]);
 
     // 5. List --deployed
     tmux = new TmuxSession(env);
@@ -74,8 +78,12 @@ describe('full lifecycle E2E', () => {
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
     tmux.destroy();
 
-    const skillPath = join(skillsDir, skillName);
-    expect(existsSync(skillPath)).toBe(false);
+    expect(existsSync(join(skillsDir, skillName))).toBe(false);
+
+    // Verify other skills in the same repo are not affected
+    for (const skill of otherSkills) {
+      expect(existsSync(join(skillsDir, skill, 'SKILL.md'))).toBe(true);
+    }
 
     // Verify sources.json is updated
     const sourcesPath = join(smDir, 'sources.json');

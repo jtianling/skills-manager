@@ -4,6 +4,15 @@ import { SkillInfo, ToolConfig, ToolName } from '../types.js';
 import { ensureDir, linkDir, copyDir, isSymlink } from '../utils/fs.js';
 import { AGENTS_SKILLS_DIR, TOOL_CONFIGS } from '../tools/configs.js';
 
+function pathOrLinkExists(p: string): boolean {
+  try {
+    lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class Deployer {
   constructor(private projectDir: string) {}
 
@@ -28,7 +37,7 @@ export class Deployer {
 
   removeSkill(skillName: string): void {
     const skillPath = join(this.projectDir, AGENTS_SKILLS_DIR, skillName);
-    if (existsSync(skillPath)) {
+    if (pathOrLinkExists(skillPath)) {
       rmSync(skillPath, { recursive: true, force: true });
     }
   }
@@ -133,7 +142,7 @@ export class Deployer {
       if (processed.has(skillPath)) continue;
       processed.add(skillPath);
 
-      if (existsSync(skillPath)) {
+      if (pathOrLinkExists(skillPath)) {
         rmSync(skillPath, { recursive: true, force: true });
         console.log(`  ✓ Removed ${skillName} from ${config.globalSkillsDir}`);
         removed = true;

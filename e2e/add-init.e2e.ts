@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
-import { getInstalledSkillNames } from './helpers/skills.js';
+import { getDeployedSkillNames, getInstalledSkillNames } from './helpers/skills.js';
 
 describe('add E2E', () => {
   let env: TestEnv;
@@ -45,6 +45,9 @@ describe('add E2E', () => {
     expect(existsSync(skillPath)).toBe(true);
     expect(lstatSync(skillPath).isSymbolicLink()).toBe(true);
 
+    // Verify only the target skill was deployed, no extras
+    expect(getDeployedSkillNames(join(env.projectDir, '.agents', 'skills'))).toEqual([skillName]);
+
     const bridgePath = join(env.projectDir, '.claude', 'skills');
     expect(existsSync(bridgePath)).toBe(true);
     expect(lstatSync(bridgePath).isSymbolicLink()).toBe(true);
@@ -60,5 +63,8 @@ describe('add E2E', () => {
     const skillPath = join(env.projectDir, '.agents', 'skills', skillName);
     expect(existsSync(skillPath)).toBe(true);
     expect(lstatSync(skillPath).isSymbolicLink()).toBe(false);
+
+    // Verify only the target skill was deployed, no extras
+    expect(getDeployedSkillNames(join(env.projectDir, '.agents', 'skills'))).toEqual([skillName]);
   });
 });

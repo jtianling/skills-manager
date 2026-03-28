@@ -49,10 +49,10 @@ describe('selectSkills with --skill flag', () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  it('--all takes precedence over --skill', async () => {
+  it('--skill takes precedence over --all', async () => {
     const result = await selectSkills(skills, { all: true, skill: ['skill-a'] });
 
-    expect(result).toEqual(skills);
+    expect(result).toEqual([{ name: 'skill-a', description: 'A', path: '/a' }]);
   });
 
   it('falls back to interactive when --skill is empty array', async () => {

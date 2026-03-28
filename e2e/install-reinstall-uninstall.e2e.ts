@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readdirSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { getDeployedSkillNames } from './helpers/skills.js';
 
 describe('install → reinstall → uninstall cycle E2E', () => {
   let env: TestEnv;
@@ -45,10 +46,10 @@ describe('install → reinstall → uninstall cycle E2E', () => {
     expect(existsSync(join(skillsDir, 'skill-creator', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(skillsDir, '.git'))).toBe(false);
 
-    const installedAfterFirst = readdirSync(skillsDir).filter(
-      (f) => !f.startsWith('.'),
-    );
+    const installedAfterFirst = getDeployedSkillNames(skillsDir);
     expect(installedAfterFirst).toContain('skill-creator');
+    // Verify only the selected skill was installed, not the entire repo
+    expect(installedAfterFirst).toHaveLength(1);
 
     // 3. Reinstall openai/skills — verify it still finds all skills (not just the 1 already installed)
     tmux = new TmuxSession(env);

@@ -300,11 +300,16 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       throw new Error('No skills found in repository');
     }
 
-    console.log(`Found ${skills.length} skills.\n`);
-
-    const selectedSkills = context.options.all
-      ? skills
-      : await selectSkills(skills, context.options);
+    let selectedSkills: InstallableSkill[];
+    if (context.options.skill?.length) {
+      selectedSkills = await selectSkills(skills, context.options);
+      console.log(`Found ${selectedSkills.length} skill${selectedSkills.length === 1 ? '' : 's'}.\n`);
+    } else {
+      console.log(`Found ${skills.length} skill${skills.length === 1 ? '' : 's'}.\n`);
+      selectedSkills = context.options.all
+        ? skills
+        : await selectSkills(skills, context.options);
+    }
     if (selectedSkills.length === 0) {
       return createInstallResult([], []);
     }
@@ -337,7 +342,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       context.resolvedRepo,
     );
 
-    console.log(`\n✓ Installed ${installedPaths.length} skills to ${targetBase}`);
+    console.log(`\n✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} to ${targetBase}`);
     return createInstallResult(installedPaths, [sourceKey]);
   } finally {
     removeDir(tempDir);

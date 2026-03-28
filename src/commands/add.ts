@@ -278,7 +278,10 @@ async function handleRemoteInstallAndDeploy(
 ): Promise<void> {
   let installResult;
   try {
-    installResult = await installSource(source, { all: true });
+    installResult = await installSource(source, {
+      all: !(options.skill && options.skill.length > 0),
+      skill: options.skill,
+    });
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
@@ -383,7 +386,6 @@ async function handleGroupBatchDeploy(
   if (groupSkills.length === 0) {
     console.log(`No skills found in group '${groupName}'.`);
     process.exit(1);
-    return;
   }
 
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
@@ -418,7 +420,6 @@ export async function executeAdd(
   if (options.group && arg) {
     console.log('Cannot use --group with a skill argument.');
     process.exit(1);
-    return;
   }
 
   // --group batch deploy

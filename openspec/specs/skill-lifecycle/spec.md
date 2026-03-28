@@ -244,6 +244,50 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - **WHEN** 用户安装根目录 skill 仓库且未使用 `--all` 选项
 - **THEN** 系统直接安装该 skill, 不显示选择提示 (因为只有一个 skill)
 
+## 操作精确性
+
+所有生命周期操作 SHALL 精确作用于目标 skill, 不得对非目标 skill 产生副作用.
+
+### Requirement: install 仅安装指定 skill
+
+使用 `--skill` 过滤时, 仅目标 skill 被安装到中央仓库, 其他 skill 不受影响.
+
+#### Scenario: install -s 不安装其他 skill
+- **WHEN** 仓库包含 skill-a, skill-b, skill-c
+- **AND** 用户执行 `skillsmgr install owner/repo -s skill-a`
+- **THEN** 仅 skill-a 被安装到中央仓库
+- **AND** skill-b, skill-c 不存在于中央仓库
+
+### Requirement: add 仅部署指定 skill
+
+`add` 操作仅在目标位置创建指定 skill 的部署, 不额外部署其他 skill.
+
+#### Scenario: add -s 不部署其他 skill
+- **WHEN** 中央仓库包含 skill-a, skill-b, skill-c
+- **AND** 用户执行 `skillsmgr add owner/repo -s skill-a -a claude-code`
+- **THEN** 仅 skill-a 被部署到项目
+- **AND** 项目中不存在 skill-b, skill-c 的部署
+
+### Requirement: remove 仅移除指定 skill
+
+`remove` 操作仅删除指定 skill 的部署, 其他已部署 skill 不受影响.
+
+#### Scenario: remove 不影响其他已部署 skill
+- **WHEN** 项目中已部署 skill-a 和 skill-b
+- **AND** 用户执行 `skillsmgr remove skill-a`
+- **THEN** skill-a 的部署被移除
+- **AND** skill-b 的部署保持不变
+
+### Requirement: uninstall 仅卸载指定 skill
+
+`uninstall` 操作仅删除指定 skill, 同仓库的其他 skill 不受影响.
+
+#### Scenario: uninstall 不影响同仓库其他 skill
+- **WHEN** 中央仓库中 official/openai/skills/ 下有 skill-a 和 skill-b
+- **AND** 用户执行 `skillsmgr uninstall skill-a -f`
+- **THEN** skill-a 被从中央仓库删除
+- **AND** skill-b 保持不变
+
 ## 前置条件
 
 - 大部分 skill 操作 (除 `setup`, `init`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
