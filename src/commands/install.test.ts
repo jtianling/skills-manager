@@ -214,6 +214,39 @@ describe('install command', () => {
     });
   });
 
+  it('blocks install when same-name skill exists in different group', async () => {
+    const existingDir = join(testManagerDir, 'custom', 'old-group', 'foo-skill');
+    mkdirSync(existingDir, { recursive: true });
+    writeFileSync(join(existingDir, 'SKILL.md'), '---\nname: foo-skill\n---\n');
+
+    const skillDir = join(testProjectDir, 'foo-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: foo-skill\n---\n');
+
+    await executeInstall('./foo-skill', { group: 'new-group' });
+
+    expect(console.log).toHaveBeenCalledWith(
+      "Skill 'foo-skill' already installed at custom/old-group/foo-skill. Remove it first or use a different name."
+    );
+
+    expect(existsSync(join(testManagerDir, 'custom', 'new-group', 'foo-skill'))).toBe(false);
+  });
+
+  it('allows overwrite when same-name skill exists in same group', async () => {
+    const existingDir = join(testManagerDir, 'custom', 'my-tools', 'overwrite-skill');
+    mkdirSync(existingDir, { recursive: true });
+    writeFileSync(join(existingDir, 'SKILL.md'), '---\nname: overwrite-skill\n---\nold');
+
+    const skillDir = join(testProjectDir, 'overwrite-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: overwrite-skill\n---\nnew');
+
+    await executeInstall('./overwrite-skill', { group: 'my-tools', force: true });
+
+    const content = readFileSync(join(existingDir, 'SKILL.md'), 'utf-8');
+    expect(content).toContain('new');
+  });
+
   it('installs grouped remote skills under custom/<group>/<skill>', async () => {
     // Create a local git repo to serve as source
     const localRepoDir = join(tmpdir(), `skillsmgr-local-repo-${Date.now()}`);

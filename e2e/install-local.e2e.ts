@@ -116,6 +116,25 @@ describe('local install E2E', () => {
     expect(sources.sources['custom/zip-test-skill'].installMethod).toBe('zip');
   });
 
+  it('install rejects same-name skill in different group', async () => {
+    await setup();
+    createLocalSkill('conflict-skill');
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install ./conflict-skill --group group-a', env.projectDir);
+    await tmux.waitForText(/Installed|installed/, 15_000);
+    tmux.destroy();
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install ./conflict-skill --group group-b', env.projectDir);
+    const output = await tmux.waitForText(/already installed|Remove it first/, 15_000);
+    expect(output).toContain('conflict-skill');
+    expect(output).toContain('group-a');
+
+    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'group-b', 'conflict-skill');
+    expect(existsSync(targetDir)).toBe(false);
+  });
+
   it('install zip with --group puts skill in group directory', async () => {
     await setup();
     createLocalSkill('zip-grouped-skill');

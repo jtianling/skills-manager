@@ -1,10 +1,11 @@
 import { Command } from 'commander';
-import { join, resolve } from 'path';
+import { basename, join, resolve } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { detectSourceType } from '../utils/source-detection.js';
+import { findInstalledCustomSkill } from './install-utils.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
@@ -212,20 +213,49 @@ export async function executeUpdate(source?: string): Promise<void> {
   if (source) {
     const sourceType = detectSourceType(source);
 
-    // Local path: match by resolved absolute path against source url
     if (sourceType === 'local-path') {
-      const absPath = resolve(process.cwd(), source);
-      const matchingKey = Object.keys(allSources).find(
-        (k) => allSources[k].url === absPath
-      );
+      const sourcePath = resolve(process.cwd(), source);
 
-      if (!matchingKey) {
-        console.log(`No installed skill found from path: ${absPath}`);
+      if (!fileExists(sourcePath)) {
+        console.log(`Source path not found: ${sourcePath}`);
         return;
       }
 
-      console.log(`Updating ${matchingKey} from ${absPath}...\n`);
-      const result = updateLocalCopy(matchingKey, allSources[matchingKey]);
+      if (!fileExists(join(sourcePath, 'SKILL.md'))) {
+        console.log(`SKILL.md not found at: ${sourcePath}`);
+        return;
+      }
+
+      const skillName = basename(sourcePath);
+      const installed = findInstalledCustomSkill(skillName);
+
+      if (!installed) {
+        console.log(`No installed skill found: ${skillName}`);
+        return;
+      }
+
+      console.log(`Updating ${installed.key} from ${sourcePath}...\n`);
+      const result = updateLocalCopy(installed.key, { ...allSources[installed.key], url: sourcePath } as SourceInfo);
+
+      if (result.updated > 0 || result.upToDate > 0) {
+        const existing = allSources[installed.key];
+        if (existing) {
+          sourcesService.addSource(installed.key, {
+            url: sourcePath,
+            type: existing.type,
+            repoName: existing.repoName,
+            installMethod: existing.installMethod,
+          });
+        } else {
+          sourcesService.addSource(installed.key, {
+            url: sourcePath,
+            type: 'custom',
+            repoName: skillName,
+            installMethod: 'local-copy',
+          });
+        }
+      }
+
       console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed, ${result.skipped} skipped`);
       return;
     }

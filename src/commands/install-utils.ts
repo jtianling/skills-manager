@@ -5,6 +5,35 @@ import { SourcesService } from '../services/sources.js';
 import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
 import { promptConfirm, promptSkillsToInstall } from '../utils/prompts.js';
 
+export interface InstalledCustomSkill {
+  key: string;
+  path: string;
+}
+
+export function findInstalledCustomSkill(skillName: string): InstalledCustomSkill | null {
+  const customDir = join(SKILLS_MANAGER_DIR, 'custom');
+  if (!fileExists(customDir)) {
+    return null;
+  }
+
+  const directPath = join(customDir, skillName);
+  if (fileExists(join(directPath, 'SKILL.md'))) {
+    return { key: `custom/${skillName}`, path: directPath };
+  }
+
+  for (const entry of getDirectoriesInDir(customDir)) {
+    if (fileExists(join(entry.path, 'SKILL.md'))) {
+      continue;
+    }
+    const groupedPath = join(entry.path, skillName);
+    if (fileExists(join(groupedPath, 'SKILL.md'))) {
+      return { key: `custom/${entry.name}/${skillName}`, path: groupedPath };
+    }
+  }
+
+  return null;
+}
+
 const sourcesService = new SourcesService();
 
 export interface InstallableSkill {

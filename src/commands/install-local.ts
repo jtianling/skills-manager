@@ -7,6 +7,7 @@ import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, warnScriptFiles } from '../utils/fs.js';
 import {
   createInstallResult,
+  findInstalledCustomSkill,
   getCustomSkillDir,
   getCustomSkillKey,
   getLocalOverwriteMessage,
@@ -61,7 +62,26 @@ export async function installFromLocalDir(source: string, options: InstallOption
     throw new Error(`Skill not found. Expected SKILL.md in ${skillDir}`);
   }
 
-  const targetDir = getCustomSkillDir(skillName, options.group);
+  const existing = findInstalledCustomSkill(skillName);
+  let targetDir: string;
+  let sourceKey: string;
+
+  if (existing) {
+    const existingGroup = existing.key.split('/').length === 3 ? existing.key.split('/')[1] : undefined;
+    const requestedGroup = options.group;
+
+    if (existingGroup !== requestedGroup) {
+      console.log(`Skill '${skillName}' already installed at ${existing.key}. Remove it first or use a different name.`);
+      return createInstallResult([], []);
+    }
+
+    targetDir = existing.path;
+    sourceKey = existing.key;
+  } else {
+    targetDir = getCustomSkillDir(skillName, options.group);
+    sourceKey = getCustomSkillKey(skillName, options.group);
+  }
+
   const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName, options.group), options.force);
   if (!ready) {
     return createInstallResult([], []);
@@ -70,7 +90,6 @@ export async function installFromLocalDir(source: string, options: InstallOption
   copyDir(skillDir, targetDir);
   warnScriptFiles(findScriptFiles(targetDir));
 
-  const sourceKey = getCustomSkillKey(skillName, options.group);
   sourcesService.addSource(sourceKey, {
     url: skillDir,
     type: 'custom',

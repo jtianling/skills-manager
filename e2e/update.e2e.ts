@@ -83,6 +83,100 @@ describe('update E2E', () => {
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 
+  it('update local-path by name matching from different directory', async () => {
+    env = createTestEnv();
+    await setup();
+
+    const originalDir = join(env.homeDir, 'source-a', 'my-local-skill');
+    mkdirSync(originalDir, { recursive: true });
+    writeFileSync(
+      join(originalDir, 'SKILL.md'),
+      '---\nname: my-local-skill\ndescription: A test skill\n---\nOriginal content',
+    );
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr install "${originalDir}"`);
+    await tmux.waitForText('Installed', 30_000);
+    tmux.destroy();
+
+    const diffDir = join(env.homeDir, 'source-b', 'my-local-skill');
+    mkdirSync(diffDir, { recursive: true });
+    writeFileSync(
+      join(diffDir, 'SKILL.md'),
+      '---\nname: my-local-skill\ndescription: A test skill\n---\nUpdated from different dir',
+    );
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr update "${diffDir}"`);
+    const output = await tmux.waitForText('Done!', 10_000);
+    expect(output).toContain('1 updated');
+    tmux.destroy();
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr uninstall my-local-skill -f');
+    await tmux.waitForText(/Removed|Uninstalled/, 10_000);
+  });
+
+  it('update local-path reports not found for uninstalled skill', async () => {
+    env = createTestEnv();
+    await setup();
+
+    const dummyDir = join(env.homeDir, 'dummy-installed');
+    mkdirSync(dummyDir, { recursive: true });
+    writeFileSync(join(dummyDir, 'SKILL.md'), '---\nname: dummy-installed\n---\n');
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr install "${dummyDir}"`);
+    await tmux.waitForText('Installed', 30_000);
+    tmux.destroy();
+
+    const notInstalledDir = join(env.homeDir, 'not-installed-skill');
+    mkdirSync(notInstalledDir, { recursive: true });
+    writeFileSync(join(notInstalledDir, 'SKILL.md'), '---\nname: not-installed-skill\n---\n');
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr update "${notInstalledDir}"`);
+    const output = await tmux.waitForText('No installed skill found', 10_000);
+    expect(output).toContain('not-installed-skill');
+    tmux.destroy();
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr uninstall dummy-installed -f');
+    await tmux.waitForText(/Removed|Uninstalled/, 10_000);
+  });
+
+  it('update local-path finds grouped skill by name', async () => {
+    env = createTestEnv();
+    await setup();
+
+    const skillDir = join(env.homeDir, 'grouped-source', 'grp-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: grp-skill\ndescription: Grouped skill\n---\nOriginal',
+    );
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr install "${skillDir}" --group test-group`);
+    await tmux.waitForText('Installed', 30_000);
+    tmux.destroy();
+
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: grp-skill\ndescription: Grouped skill\n---\nUpdated',
+    );
+
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr update "${skillDir}"`);
+    const output = await tmux.waitForText('Done!', 10_000);
+    expect(output).toContain('1 updated');
+    tmux.destroy();
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr uninstall grp-skill -f');
+    await tmux.waitForText(/Removed|Uninstalled/, 10_000);
+  });
+
   it('update local-copy source detects changes', async () => {
     env = createTestEnv();
     await setup();
