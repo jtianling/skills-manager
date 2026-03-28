@@ -8,6 +8,7 @@ import { initCommand } from './commands/init.js';
 import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { uninstallCommand } from './commands/uninstall.js';
+import { groupCommand } from './commands/group.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -27,5 +28,6 @@ program.addCommand(initCommand);
 program.addCommand(addCommand);
 program.addCommand(removeCommand);
 program.addCommand(uninstallCommand);
+program.addCommand(groupCommand);
 
 program.parse();

@@ -108,28 +108,15 @@ describe('SkillsService', () => {
     });
   });
 
-  describe('custom group scanning', () => {
-    it('detects ungrouped custom skill (has SKILL.md)', () => {
+  describe('custom scanning (flat only)', () => {
+    it('detects custom skill (has SKILL.md)', () => {
       const skill = service.getSkillByName('my-skill');
       expect(skill).toBeDefined();
       expect(skill?.source).toBe('custom');
     });
 
-    it('detects grouped custom skill (group dir without SKILL.md)', () => {
-      mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
-      writeFileSync(
-        join(testDir, 'custom', 'my-tools', 'tool-a', 'SKILL.md'),
-        '---\nname: tool-a\ndescription: A tool\n---\n'
-      );
-
-      const freshService = new SkillsService(testDir);
-      const skill = freshService.getSkillByName('tool-a');
-      expect(skill).toBeDefined();
-      expect(skill?.source).toBe('custom/my-tools');
-    });
-
-    it('ignores empty group directories', () => {
-      mkdirSync(join(testDir, 'custom', 'empty-group'), { recursive: true });
+    it('ignores subdirectories without SKILL.md', () => {
+      mkdirSync(join(testDir, 'custom', 'empty-dir'), { recursive: true });
 
       const freshService = new SkillsService(testDir);
       const skills = freshService.getAllSkills();
@@ -138,7 +125,7 @@ describe('SkillsService', () => {
       expect(customSkills[0].name).toBe('my-skill');
     });
 
-    it('handles mixed grouped and ungrouped custom skills', () => {
+    it('does not recurse into nested directories', () => {
       mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
       writeFileSync(
         join(testDir, 'custom', 'my-tools', 'tool-a', 'SKILL.md'),
@@ -146,12 +133,8 @@ describe('SkillsService', () => {
       );
 
       const freshService = new SkillsService(testDir);
-      const skills = freshService.getAllSkills();
-      const customSkills = skills.filter((s) => s.source.startsWith('custom'));
-      expect(customSkills).toHaveLength(2);
-
-      const sources = customSkills.map((s) => s.source).sort();
-      expect(sources).toEqual(['custom', 'custom/my-tools']);
+      const skill = freshService.getSkillByName('tool-a');
+      expect(skill).toBeUndefined();
     });
   });
 });

@@ -4,6 +4,7 @@ import { readdirSync } from 'fs';
 import { SKILLS_MANAGER_DIR, OFFICIAL_OWNERS } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
+import { GroupsService } from '../services/groups.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
@@ -98,6 +99,11 @@ async function uninstallProvider(providerKey: string, options: UninstallOptions)
     return;
   }
 
+  const groupsService = new GroupsService();
+  for (const name of skillNames) {
+    groupsService.removeSkillFromAll(`official/${providerKey}/${name}`);
+  }
+
   removeDir(providerDir);
   cleanSourcesForDir(`official/${providerKey}`, sourcesService);
   cleanEmptyParents(join(SKILLS_MANAGER_DIR, 'official', providerKey), join(SKILLS_MANAGER_DIR, 'official'));
@@ -124,6 +130,11 @@ async function uninstallCommunitySource(owner: string, repo: string, options: Un
   if (!confirmed) {
     console.log('Cancelled.');
     return;
+  }
+
+  const groupsService = new GroupsService();
+  for (const name of skillNames) {
+    groupsService.removeSkillFromAll(`community/${owner}/${repo}/${name}`);
   }
 
   removeDir(sourceDir);
@@ -184,6 +195,9 @@ async function uninstallByName(name: string, options: UninstallOptions): Promise
     sourcesService.removeSource(skill.source);
   }
 
+  const groupsService = new GroupsService();
+  groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
+
   console.log(`Uninstalled ${skill.name}`);
 }
 
@@ -214,6 +228,8 @@ async function interactiveUninstall(): Promise<void> {
     return;
   }
 
+  const groupsService = new GroupsService();
+
   for (const skill of selectedSkills) {
     removeDir(skill.path);
 
@@ -223,6 +239,7 @@ async function interactiveUninstall(): Promise<void> {
 
     cleanEmptyParents(skillParent, categoryDir);
     cleanSourcesForDir(skill.source, sourcesService);
+    groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
     console.log(`Removed: ${skill.name}`);
   }
 

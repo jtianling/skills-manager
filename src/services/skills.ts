@@ -52,21 +52,9 @@ export class SkillsService {
     if (sourcePrefix === 'custom') {
       const topDirs = getDirectoriesInDir(sourceDir);
       for (const topDir of topDirs) {
-        const skillMdPath = join(topDir.path, 'SKILL.md');
-        if (fileExists(skillMdPath)) {
-          const skill = this.loadSkill(topDir.path, sourcePrefix);
-          if (skill) {
-            skills.push(skill);
-          }
-        } else {
-          const skillDirs = getDirectoriesInDir(topDir.path);
-          for (const skillDir of skillDirs) {
-            const source = `${sourcePrefix}/${topDir.name}`;
-            const skill = this.loadSkill(skillDir.path, source);
-            if (skill) {
-              skills.push(skill);
-            }
-          }
+        const skill = this.loadSkill(topDir.path, sourcePrefix);
+        if (skill) {
+          skills.push(skill);
         }
       }
     } else if (sourcePrefix === 'official') {

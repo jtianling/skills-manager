@@ -67,8 +67,7 @@ vi.mock('../services/github.js', async () => {
 });
 
 import * as constants from '../constants.js';
-import { executeInstall, installSource } from './install.js';
-import { installViaGitClone } from './install-git.js';
+import { executeInstall } from './install.js';
 
 describe('install command', () => {
   let testManagerDir: string;
@@ -135,23 +134,28 @@ describe('install command', () => {
     });
   });
 
-  it('installs a local directory into a custom group', async () => {
+  it('installs a local skill and adds it to virtual group', async () => {
     const skillDir = join(testProjectDir, 'grouped-local-skill');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: grouped-local-skill\ndescription: Grouped local skill\n---\n');
 
     await executeInstall('./grouped-local-skill', { group: 'my-tools' });
 
-    const targetDir = join(testManagerDir, 'custom', 'my-tools', 'grouped-local-skill');
+    // Installed flat (no group subdirectory)
+    const targetDir = join(testManagerDir, 'custom', 'grouped-local-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sources = readSources();
-    expect(sources.sources['custom/my-tools/grouped-local-skill']).toMatchObject({
+    expect(sources.sources['custom/grouped-local-skill']).toMatchObject({
       url: skillDir,
       type: 'custom',
       repoName: 'grouped-local-skill',
       installMethod: 'local-copy',
     });
+
+    // Added to virtual group
+    const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
+    expect(groups['my-tools']).toContain('custom/grouped-local-skill');
   });
 
   it.each(['.zip', '.skill'])(
@@ -214,26 +218,8 @@ describe('install command', () => {
     });
   });
 
-  it('blocks install when same-name skill exists in different group', async () => {
-    const existingDir = join(testManagerDir, 'custom', 'old-group', 'foo-skill');
-    mkdirSync(existingDir, { recursive: true });
-    writeFileSync(join(existingDir, 'SKILL.md'), '---\nname: foo-skill\n---\n');
-
-    const skillDir = join(testProjectDir, 'foo-skill');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: foo-skill\n---\n');
-
-    await executeInstall('./foo-skill', { group: 'new-group' });
-
-    expect(console.log).toHaveBeenCalledWith(
-      "Skill 'foo-skill' already installed at custom/old-group/foo-skill. Remove it first or use a different name."
-    );
-
-    expect(existsSync(join(testManagerDir, 'custom', 'new-group', 'foo-skill'))).toBe(false);
-  });
-
-  it('allows overwrite when same-name skill exists in same group', async () => {
-    const existingDir = join(testManagerDir, 'custom', 'my-tools', 'overwrite-skill');
+  it('overwrites existing same-name custom skill with --force', async () => {
+    const existingDir = join(testManagerDir, 'custom', 'overwrite-skill');
     mkdirSync(existingDir, { recursive: true });
     writeFileSync(join(existingDir, 'SKILL.md'), '---\nname: overwrite-skill\n---\nold');
 
@@ -241,31 +227,9 @@ describe('install command', () => {
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: overwrite-skill\n---\nnew');
 
-    await executeInstall('./overwrite-skill', { group: 'my-tools', force: true });
+    await executeInstall('./overwrite-skill', { force: true });
 
     const content = readFileSync(join(existingDir, 'SKILL.md'), 'utf-8');
     expect(content).toContain('new');
-  });
-
-  it('installs grouped remote skills under custom/<group>/<skill>', async () => {
-    // Create a local git repo to serve as source
-    const localRepoDir = join(tmpdir(), `skillsmgr-local-repo-${Date.now()}`);
-    const skillDir = join(localRepoDir, 'skills', 'remote-skill');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: remote-skill\ndescription: Remote skill\n---\n');
-    execFileSync('git', ['init'], { cwd: localRepoDir, stdio: 'pipe' });
-    execFileSync('git', ['add', '.'], { cwd: localRepoDir, stdio: 'pipe' });
-    execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@test.com', 'commit', '-m', 'init'], { cwd: localRepoDir, stdio: 'pipe' });
-
-    try {
-      const result = await installViaGitClone(localRepoDir, { all: true, group: 'my-tools' });
-
-      const targetDir = join(testManagerDir, 'custom', 'my-tools', 'remote-skill');
-      expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
-      expect(result.installedPaths).toEqual([targetDir]);
-      expect(result.sourceKeys).toEqual(['custom/my-tools/remote-skill']);
-    } finally {
-      rmSync(localRepoDir, { recursive: true, force: true });
-    }
   });
 });

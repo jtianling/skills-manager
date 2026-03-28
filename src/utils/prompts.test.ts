@@ -66,8 +66,8 @@ describe('prompts', () => {
         {
           name: 'review',
           description: 'Review skill',
-          path: '/skills/custom/tools/review',
-          source: 'custom/tools',
+          path: '/skills/custom/review',
+          source: 'custom',
         },
       ],
       ['commit']
@@ -91,7 +91,7 @@ describe('prompts', () => {
           value: 'review',
           checked: false,
           group: 'custom',
-          subGroup: 'tools',
+          subGroup: undefined,
           suffix: undefined,
         },
       ],

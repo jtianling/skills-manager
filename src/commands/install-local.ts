@@ -14,7 +14,6 @@ import {
   prepareTargetDir,
   scanSkillDirectories,
   selectSkills,
-  validateGroupName,
 } from './install-utils.js';
 import type { InstallResult } from './install-utils.js';
 
@@ -46,8 +45,6 @@ export function resolveLocalSourcePath(input: string): string {
 }
 
 export async function installFromLocalDir(source: string, options: InstallOptions): Promise<InstallResult> {
-  validateGroupName(options.group);
-
   const skillDir = resolveLocalSourcePath(source);
   if (!fileExists(skillDir)) {
     if (isBareLocalSource(source)) {
@@ -67,22 +64,14 @@ export async function installFromLocalDir(source: string, options: InstallOption
   let sourceKey: string;
 
   if (existing) {
-    const existingGroup = existing.key.split('/').length === 3 ? existing.key.split('/')[1] : undefined;
-    const requestedGroup = options.group;
-
-    if (existingGroup !== requestedGroup) {
-      console.log(`Skill '${skillName}' already installed at ${existing.key}. Remove it first or use a different name.`);
-      return createInstallResult([], []);
-    }
-
     targetDir = existing.path;
     sourceKey = existing.key;
   } else {
-    targetDir = getCustomSkillDir(skillName, options.group);
-    sourceKey = getCustomSkillKey(skillName, options.group);
+    targetDir = getCustomSkillDir(skillName);
+    sourceKey = getCustomSkillKey(skillName);
   }
 
-  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName, options.group), options.force);
+  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName), options.force);
   if (!ready) {
     return createInstallResult([], []);
   }
@@ -102,8 +91,6 @@ export async function installFromLocalDir(source: string, options: InstallOption
 }
 
 export async function installFromZip(source: string, options: InstallOptions, originalSource = source): Promise<InstallResult> {
-  validateGroupName(options.group);
-
   const zipPath = resolveLocalSourcePath(source);
   if (!fileExists(zipPath)) {
     throw new Error(`Zip file not found: ${zipPath}`);
@@ -131,8 +118,8 @@ export async function installFromZip(source: string, options: InstallOptions, or
     const allScriptFiles: string[] = [];
 
     for (const skill of selectedSkills) {
-      const targetDir = getCustomSkillDir(skill.name, options.group);
-      const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name, options.group), options.force);
+      const targetDir = getCustomSkillDir(skill.name);
+      const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name), options.force);
       if (!ready) {
         break;
       }
@@ -141,7 +128,7 @@ export async function installFromZip(source: string, options: InstallOptions, or
       installedPaths.push(targetDir);
       allScriptFiles.push(...findScriptFiles(targetDir));
 
-      const sourceKey = getCustomSkillKey(skill.name, options.group);
+      const sourceKey = getCustomSkillKey(skill.name);
       sourcesService.addSource(sourceKey, {
         url: originalSource,
         type: 'custom',
@@ -169,8 +156,6 @@ export async function installFromZip(source: string, options: InstallOptions, or
 }
 
 export async function installFromRemoteZip(url: string, options: InstallOptions): Promise<InstallResult> {
-  validateGroupName(options.group);
-
   const tempDir = mkdtempSync(join(tmpdir(), 'skillsmgr-remote-zip-'));
   const zipPath = join(tempDir, 'download.zip');
 

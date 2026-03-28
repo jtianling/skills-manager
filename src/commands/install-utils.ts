@@ -21,16 +21,6 @@ export function findInstalledCustomSkill(skillName: string): InstalledCustomSkil
     return { key: `custom/${skillName}`, path: directPath };
   }
 
-  for (const entry of getDirectoriesInDir(customDir)) {
-    if (fileExists(join(entry.path, 'SKILL.md'))) {
-      continue;
-    }
-    const groupedPath = join(entry.path, skillName);
-    if (fileExists(join(groupedPath, 'SKILL.md'))) {
-      return { key: `custom/${entry.name}/${skillName}`, path: groupedPath };
-    }
-  }
-
   return null;
 }
 
@@ -70,20 +60,12 @@ export function parseMdDescription(content: string): string {
   return parseMdFrontmatter(content).description ?? '';
 }
 
-export function validateGroupName(group?: string): void {
-  if (group && !/^[a-zA-Z0-9_-]+$/.test(group)) {
-    throw new Error('Group name must contain only letters, numbers, hyphens, and underscores');
-  }
+export function getCustomSkillDir(skillName: string): string {
+  return join(SKILLS_MANAGER_DIR, 'custom', skillName);
 }
 
-export function getCustomSkillDir(skillName: string, group?: string): string {
-  return group
-    ? join(SKILLS_MANAGER_DIR, 'custom', group, skillName)
-    : join(SKILLS_MANAGER_DIR, 'custom', skillName);
-}
-
-export function getCustomSkillKey(skillName: string, group?: string): string {
-  return group ? `custom/${group}/${skillName}` : `custom/${skillName}`;
+export function getCustomSkillKey(skillName: string): string {
+  return `custom/${skillName}`;
 }
 
 function getGitSourceInfo(owner: string, repo: string, options: InstallOptions): {
@@ -112,18 +94,6 @@ function getGitSourceInfo(owner: string, repo: string, options: InstallOptions):
   };
 }
 
-export function saveGroupedGitSource(skillName: string, owner: string, repo: string, options: InstallOptions): string {
-  const { type } = getGitSourceInfo(owner, repo, options);
-  const sourceKey = getCustomSkillKey(skillName, options.group);
-  sourcesService.addSource(sourceKey, {
-    url: `https://github.com/${owner}/${repo}`,
-    type,
-    repoName: repo,
-    installMethod: 'git',
-  });
-  return sourceKey;
-}
-
 export function saveRepoGitSource(owner: string, repo: string, options: InstallOptions, url?: string): string {
   const { type, sourceKey } = getGitSourceInfo(owner, repo, options);
   sourcesService.addSource(sourceKey, {
@@ -136,10 +106,6 @@ export function saveRepoGitSource(owner: string, repo: string, options: InstallO
 }
 
 export function getRemoteSkillTargetDir(owner: string, repo: string, skillName: string, options: InstallOptions): string {
-  if (options.group) {
-    return getCustomSkillDir(skillName, options.group);
-  }
-
   const providerKey = findOfficialProvider(owner);
   if (providerKey) {
     return join(SKILLS_MANAGER_DIR, 'official', providerKey, repo, skillName);
@@ -180,10 +146,8 @@ export function scanSkillDirectories(dir: string, maxDepth = 4): InstallableSkil
   return skills;
 }
 
-export function getLocalOverwriteMessage(skillName: string, group?: string): string {
-  return group
-    ? `Skill '${skillName}' already exists in group '${group}'. Overwrite?`
-    : `Skill '${skillName}' already exists. Overwrite?`;
+export function getLocalOverwriteMessage(skillName: string): string {
+  return `Skill '${skillName}' already exists. Overwrite?`;
 }
 
 export async function prepareTargetDir(targetDir: string, overwriteMessage: string, force?: boolean): Promise<boolean> {

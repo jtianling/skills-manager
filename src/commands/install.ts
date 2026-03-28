@@ -2,6 +2,7 @@ import { dirname, join } from 'path';
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR, STANDARD_SKILL_PATHS, findOfficialProvider } from '../constants.js';
 import { GitHubService } from '../services/github.js';
+import { GroupsService, validateGroupName } from '../services/groups.js';
 import { type InstallOptions, collect } from '../types.js';
 import { fileExists, findScriptFiles, warnScriptFiles } from '../utils/fs.js';
 import { ProgressBar } from '../utils/progress.js';
@@ -15,10 +16,8 @@ import {
   parseMdFrontmatter,
   parseMdDescription,
   prepareTargetDir,
-  saveGroupedGitSource,
   saveRepoGitSource,
   selectSkills,
-  validateGroupName,
 } from './install-utils.js';
 import type { InstallResult, InstallableSkill } from './install-utils.js';
 
@@ -28,10 +27,6 @@ function getRemoteRepoTargetBase(
   options: InstallOptions,
   providerKey: string | null,
 ): string {
-  if (options.group) {
-    return join(SKILLS_MANAGER_DIR, 'custom', options.group);
-  }
-
   if (providerKey) {
     return join(SKILLS_MANAGER_DIR, 'official', providerKey, repo);
   }
@@ -52,7 +47,7 @@ async function installDirectGitHubSkill(
 ): Promise<InstallResult> {
   const skillName = path.split('/').pop() || path;
   const targetDir = getRemoteSkillTargetDir(owner, repo, skillName, options);
-  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName, options.group), options.force);
+  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName), options.force);
   if (!ready) {
     return createInstallResult([], []);
   }
@@ -62,9 +57,7 @@ async function installDirectGitHubSkill(
   warnScriptFiles(findScriptFiles(targetDir));
   console.log(`✓ Installed ${skillName} to ${targetDir}`);
 
-  const sourceKey = options.group
-    ? saveGroupedGitSource(skillName, owner, repo, options)
-    : saveRepoGitSource(owner, repo, options, `https://github.com/${owner}/${repo}`);
+  const sourceKey = saveRepoGitSource(owner, repo, options, `https://github.com/${owner}/${repo}`);
 
   return createInstallResult([targetDir], [sourceKey]);
 }
@@ -206,7 +199,7 @@ async function installRootSkillFromGitHubRepo(
   console.log(`Found root skill: ${skillName}${description ? ` - ${description}` : ''}`);
 
   const targetDir = getRemoteSkillTargetDir(owner, repo, skillName, options);
-  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName, options.group), options.force);
+  const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName), options.force);
   if (!ready) {
     return createInstallResult([], []);
   }
@@ -216,11 +209,9 @@ async function installRootSkillFromGitHubRepo(
   console.log(' ✓');
   warnScriptFiles(findScriptFiles(targetDir));
 
-  const sourceKey = options.group
-    ? saveGroupedGitSource(skillName, owner, repo, options)
-    : saveRepoGitSource(owner, repo, options);
+  const sourceKey = saveRepoGitSource(owner, repo, options);
 
-  const targetBase = options.group ? join(SKILLS_MANAGER_DIR, 'custom', options.group) : dirname(targetDir);
+  const targetBase = dirname(targetDir);
   console.log(`\n✓ Installed 1 skill to ${targetBase}`);
   return createInstallResult([targetDir], [sourceKey]);
 }
@@ -296,7 +287,7 @@ async function installSelectedGitHubSkills(
 
   for (const skill of selectedSkills) {
     const targetDir = getRemoteSkillTargetDir(owner, repo, skill.name, options);
-    const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name, options.group), options.force);
+    const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name), options.force);
     if (!ready) {
       break;
     }
@@ -308,14 +299,11 @@ async function installSelectedGitHubSkills(
     installedPaths.push(targetDir);
     allScriptFiles.push(...findScriptFiles(targetDir));
 
-    if (options.group) {
-      sourceKeys.push(saveGroupedGitSource(skill.name, owner, repo, options));
-    }
   }
 
   warnScriptFiles(allScriptFiles);
 
-  if (!options.group && installedPaths.length > 0) {
+  if (installedPaths.length > 0) {
     sourceKeys.push(saveRepoGitSource(owner, repo, options));
   }
 
@@ -328,8 +316,6 @@ export async function installFromGitHubUrl(
   url: string,
   options: InstallOptions,
 ): Promise<InstallResult | null> {
-  validateGroupName(options.group);
-
   const githubService = new GitHubService();
   const parsed = githubService.parseGitHubUrl(url);
   if (!parsed) {
@@ -409,8 +395,24 @@ export async function executeInstall(source: string, options: InstallOptions): P
     process.exit(1);
   }
 
+  if (options.group) {
+    try {
+      validateGroupName(options.group);
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
+
   try {
-    await installBySourceType(source, options);
+    const result = await installBySourceType(source, options);
+
+    if (options.group && result.sourceKeys && result.sourceKeys.length > 0) {
+      const groupsService = new GroupsService();
+      for (const key of result.sourceKeys) {
+        groupsService.addSkill(options.group, key);
+      }
+    }
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
@@ -428,7 +430,7 @@ export const installCommand = new Command('install')
   .option('--all', 'Install all skills without prompting')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
-  .option('--group <name>', 'Group name for organizing installed skills under custom/')
+  .option('--group <name>', 'Add installed skills to a virtual group')
   .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .action(async (source: string, options: InstallOptions) => {

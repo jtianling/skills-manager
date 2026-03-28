@@ -14,7 +14,7 @@ describe('list command two-level grouping', () => {
     mkdirSync(join(testDir, 'official', 'anthropic', 'skills', 'commit-msg'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'obra', 'superpowers', 'skill-a'), { recursive: true });
     mkdirSync(join(testDir, 'community', 'obra', 'superpowers', 'skill-b'), { recursive: true });
-    mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
+    mkdirSync(join(testDir, 'custom', 'tool-a'), { recursive: true });
     mkdirSync(join(testDir, 'custom', 'solo-skill'), { recursive: true });
 
     const skills = [
@@ -22,7 +22,7 @@ describe('list command two-level grouping', () => {
       ['official/anthropic/skills/commit-msg', 'commit-msg', 'Commit messages'],
       ['community/obra/superpowers/skill-a', 'skill-a', 'Skill A'],
       ['community/obra/superpowers/skill-b', 'skill-b', 'Skill B'],
-      ['custom/my-tools/tool-a', 'tool-a', 'Tool A'],
+      ['custom/tool-a', 'tool-a', 'Tool A'],
       ['custom/solo-skill', 'solo-skill', 'Solo skill'],
     ];
 
@@ -70,10 +70,10 @@ describe('list command two-level grouping', () => {
       expect.arrayContaining(['skill-a', 'skill-b'])
     );
 
-    expect(byCategory['custom']).toBeDefined();
-    expect(byCategory['custom']['my-tools']).toEqual(['tool-a']);
-
-    expect(ungroupedByCategory['custom']).toEqual(['solo-skill']);
+    // Custom skills are all flat (no subGroup)
+    expect(ungroupedByCategory['custom']).toEqual(
+      expect.arrayContaining(['tool-a', 'solo-skill'])
+    );
   });
 
   it('counts total skills per category correctly', () => {
@@ -91,21 +91,16 @@ describe('list command two-level grouping', () => {
     expect(categoryCounts['custom']).toBe(2);
   });
 
-  it('handles ungrouped custom skills separately from grouped ones', () => {
+  it('custom skills all have flat source (no subGroup)', () => {
     const service = new SkillsService(testDir);
     const skills = service.getAllSkills();
 
     const customSkills = skills.filter((s) => s.source.startsWith('custom'));
-    const grouped = customSkills.filter((s) => s.source.includes('/'));
-    const ungrouped = customSkills.filter((s) => !s.source.includes('/'));
+    expect(customSkills).toHaveLength(2);
 
-    expect(grouped).toHaveLength(1);
-    expect(grouped[0].name).toBe('tool-a');
-    expect(grouped[0].source).toBe('custom/my-tools');
-
-    expect(ungrouped).toHaveLength(1);
-    expect(ungrouped[0].name).toBe('solo-skill');
-    expect(ungrouped[0].source).toBe('custom');
+    for (const skill of customSkills) {
+      expect(skill.source).toBe('custom');
+    }
   });
 
   it('shows multi-repo provider with separate groupIds', () => {

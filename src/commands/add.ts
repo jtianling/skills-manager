@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
+import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
@@ -379,12 +380,30 @@ async function handleGroupBatchDeploy(
   scanner: DeploymentScanner,
   deployer: Deployer,
 ): Promise<void> {
+  const groupsService = new GroupsService();
+  const skillKeys = groupsService.getGroup(groupName);
+
+  if (!skillKeys || skillKeys.length === 0) {
+    console.log(`No skills found in group '${groupName}'.`);
+    process.exit(1);
+    return;
+  }
+
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const allSkills = skillsService.getAllSkills();
-  const groupSkills = allSkills.filter((s) => s.source.startsWith(`custom/${groupName}`));
+
+  const groupSkills: SkillInfo[] = [];
+  for (const key of skillKeys) {
+    const match = allSkills.find((s) => `${s.source}/${s.name}` === key);
+    if (match) {
+      groupSkills.push(match);
+    } else {
+      console.log(`Skill '${key}' not found, skipping.`);
+    }
+  }
 
   if (groupSkills.length === 0) {
-    console.log(`No skills found in group '${groupName}'.`);
+    console.log(`No valid skills found in group '${groupName}'.`);
     process.exit(1);
   }
 

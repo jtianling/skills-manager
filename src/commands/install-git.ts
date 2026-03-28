@@ -10,13 +10,10 @@ import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileCont
 import { getPluginSkillPaths } from '../services/plugin-manifest.js';
 import {
   createInstallResult,
-  getCustomSkillDir,
-  getCustomSkillKey,
   getLocalOverwriteMessage,
   parseMdFrontmatter,
   parseMdDescription,
   prepareTargetDir,
-  saveGroupedGitSource,
   scanSkillDirectories,
   selectSkills,
 } from './install-utils.js';
@@ -191,66 +188,6 @@ function createGitCloneContext(source: string, options: InstallOptions): GitClon
   return { source, options, resolvedOwner, resolvedRepo };
 }
 
-function saveGroupedGitCloneSource(skillName: string, context: GitCloneContext): string {
-  const { options, resolvedOwner, resolvedRepo, source } = context;
-  if (resolvedOwner && resolvedRepo) {
-    return saveGroupedGitSource(skillName, resolvedOwner, resolvedRepo, options);
-  }
-
-  const sourceKey = getCustomSkillKey(skillName, options.group);
-  sourcesService.addSource(sourceKey, {
-    url: source,
-    type: 'custom',
-    repoName: skillName,
-    installMethod: 'git',
-  });
-  return sourceKey;
-}
-
-async function installGroupedFromGitClone(context: GitCloneContext): Promise<InstallResult> {
-  const tempDir = await cloneToTemp(context.source);
-  const repoPath = join(tempDir, 'repo');
-
-  try {
-    const skills = collectGitCloneSkills(repoPath);
-    if (skills.length === 0) {
-      throw new Error('No skills found in repository');
-    }
-
-    const selectedSkills = await selectSkills(skills, context.options);
-    if (selectedSkills.length === 0) {
-      return createInstallResult([], []);
-    }
-
-    const installedPaths: string[] = [];
-    const sourceKeys: string[] = [];
-    const allScriptFiles: string[] = [];
-
-    for (const skill of selectedSkills) {
-      const targetDir = getCustomSkillDir(skill.name, context.options.group);
-      const ready = await prepareTargetDir(
-        targetDir,
-        getLocalOverwriteMessage(skill.name, context.options.group),
-        context.options.force,
-      );
-      if (!ready) {
-        break;
-      }
-
-      copyDir(skill.path, targetDir);
-      installedPaths.push(targetDir);
-      sourceKeys.push(saveGroupedGitCloneSource(skill.name, context));
-      allScriptFiles.push(...findScriptFiles(targetDir));
-    }
-
-    warnScriptFiles(allScriptFiles);
-    console.log(`✓ Installed ${installedPaths.length} skills to ${join(SKILLS_MANAGER_DIR, 'custom', context.options.group!)}`);
-    return createInstallResult(installedPaths, sourceKeys);
-  } finally {
-    removeDir(tempDir);
-  }
-}
-
 async function installSpecificSkillFromGit(
   gitService: GitService,
   context: GitCloneContext,
@@ -322,7 +259,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       const targetDir = join(targetBase, skill.name);
       const ready = await prepareTargetDir(
         targetDir,
-        getLocalOverwriteMessage(skill.name, context.options.group),
+        getLocalOverwriteMessage(skill.name),
         context.options.force,
       );
       if (!ready) break;
@@ -352,10 +289,6 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
 export async function installViaGitClone(source: string, options: InstallOptions): Promise<InstallResult> {
   const context = createGitCloneContext(source, options);
   const gitService = new GitService();
-
-  if (options.group) {
-    return installGroupedFromGitClone(context);
-  }
 
   if (gitService.isSpecificSkillUrl(source)) {
     return installSpecificSkillFromGit(gitService, context);

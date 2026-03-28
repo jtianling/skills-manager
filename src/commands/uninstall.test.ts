@@ -116,14 +116,13 @@ describe('uninstall command', () => {
       expect(existsSync(otherSkill)).toBe(true);
     });
 
-    it('removes custom skill and cleans empty group dir', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'utils', 'helper-skill');
+    it('removes custom skill from flat directory', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'helper-skill');
       createSkillDir(skillDir);
 
       await executeUninstall('helper-skill', { force: true });
 
       expect(existsSync(skillDir)).toBe(false);
-      expect(existsSync(join(SKILLS_MANAGER_DIR, 'custom', 'utils'))).toBe(false);
     });
 
     it('prompts selection when multiple same-name skills exist', async () => {
@@ -214,7 +213,7 @@ describe('uninstall command', () => {
     });
 
     it('does not delete selected skills when confirmation is declined', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'utils', 'keep-me');
+      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'keep-me');
       createSkillDir(skillDir);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 

@@ -179,12 +179,12 @@ describe('update command', () => {
     mkdirSync(originalDir, { recursive: true });
     writeFileSync(join(originalDir, 'SKILL.md'), 'new content');
 
-    const installedDir = join(testManagerDir, 'custom', 'my-group', 'my-skill');
+    const installedDir = join(testManagerDir, 'custom', 'my-skill');
     mkdirSync(installedDir, { recursive: true });
     writeFileSync(join(installedDir, 'SKILL.md'), 'old content');
 
     const sourcesService = new SourcesService();
-    sourcesService.addSource('custom/my-group/my-skill', {
+    sourcesService.addSource('custom/my-skill', {
       url: '/original/install/path/my-skill',
       type: 'custom',
       repoName: 'my-skill',
@@ -265,15 +265,15 @@ describe('update command', () => {
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
 
-  it('updates grouped git installs stored as per-skill source keys', async () => {
-    const groupedDir = join(testManagerDir, 'custom', 'my-tools', 'grouped-skill');
-    mkdirSync(groupedDir, { recursive: true });
-    writeFileSync(join(groupedDir, 'SKILL.md'), '---\nname: grouped-skill\n---\n');
+  it('updates custom git installs stored as per-skill source keys', async () => {
+    const customDir = join(testManagerDir, 'custom', 'grouped-skill');
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(join(customDir, 'SKILL.md'), '---\nname: grouped-skill\n---\n');
 
     const sourcesService = new SourcesService();
-    sourcesService.addSource('custom/my-tools/grouped-skill', {
+    sourcesService.addSource('custom/grouped-skill', {
       url: 'https://github.com/owner/repo',
-      type: 'community',
+      type: 'custom',
       repoName: 'repo',
       installMethod: 'git',
     });
@@ -294,6 +294,6 @@ describe('update command', () => {
     expect(console.log).toHaveBeenCalledWith('  ✓ grouped-skill: up to date');
 
     const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
-    expect(sourcesData.sources['custom/my-tools/grouped-skill'].installMethod).toBe('git');
+    expect(sourcesData.sources['custom/grouped-skill'].installMethod).toBe('git');
   });
 });

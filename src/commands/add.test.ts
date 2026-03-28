@@ -26,6 +26,7 @@ import { executeInit } from './init.js';
 import * as constants from '../constants.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { executeRemove } from './remove.js';
+import { GroupsService } from '../services/groups.js';
 
 describe('add command', () => {
   let testManagerDir: string;
@@ -273,7 +274,7 @@ describe('add command', () => {
     });
   });
 
-  describe('--group batch deploy', () => {
+  describe('--group batch deploy (virtual groups)', () => {
     it('rejects --group with a skill argument', async () => {
       await executeAdd('some-skill', { group: 'dev' });
 
@@ -283,9 +284,13 @@ describe('add command', () => {
       );
     });
 
-    it('deploys skills from group', async () => {
-      createSkill('custom/dev', 'skill-a', 'Skill A');
-      createSkill('custom/dev', 'skill-b', 'Skill B');
+    it('deploys skills from virtual group', async () => {
+      createSkill('custom', 'skill-a', 'Skill A');
+      createSkill('custom', 'skill-b', 'Skill B');
+
+      const groupsService = new GroupsService();
+      groupsService.addSkill('dev', 'custom/skill-a');
+      groupsService.addSkill('dev', 'custom/skill-b');
 
       vi.mocked(interactiveCheckbox)
         .mockResolvedValueOnce(['skill-a'])
@@ -293,7 +298,6 @@ describe('add command', () => {
 
       await executeAdd(undefined, { group: 'dev' });
 
-      // Should not call executeInit (group takes priority)
       expect(executeInit).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ skill-a')
@@ -306,6 +310,27 @@ describe('add command', () => {
       expect(process.exit).toHaveBeenCalledWith(1);
       expect(console.log).toHaveBeenCalledWith(
         "No skills found in group 'nonexistent'."
+      );
+    });
+
+    it('skips dangling references in group', async () => {
+      createSkill('custom', 'skill-a', 'Skill A');
+
+      const groupsService = new GroupsService();
+      groupsService.addSkill('dev', 'custom/skill-a');
+      groupsService.addSkill('dev', 'custom/deleted-skill');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['skill-a'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd(undefined, { group: 'dev' });
+
+      expect(console.log).toHaveBeenCalledWith(
+        "Skill 'custom/deleted-skill' not found, skipping."
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('✓ skill-a')
       );
     });
   });
@@ -354,7 +379,11 @@ describe('add command', () => {
     });
 
     it('--group with -g deploys and cleans up', async () => {
-      createSkill('custom/dev', 'skill-a', 'Skill A');
+      createSkill('custom', 'skill-a', 'Skill A');
+
+      const groupsService = new GroupsService();
+      groupsService.addSkill('dev', 'custom/skill-a');
+
       const agent = 'claude-code';
       const globalDir = TOOL_CONFIGS[agent].globalSkillsDir;
 
