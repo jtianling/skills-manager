@@ -1,14 +1,14 @@
 # skillsmgr
 
-Unified skills manager for AI coding tools. Install skills into `~/.skills-manager/`, then deploy them to projects through a single `.agents/skills/` directory. Supports 50+ tools with one workflow.
+Unified skills manager for AI coding tools. Install skills into `~/.skills-manager/`, then deploy them to projects through a single `.agents/skills/` directory. Supports 44 tools with one workflow.
 
-[中文文档](./README.zh-CN.md)
+[العربية](./README.ar.md) | [中文](./README.zh-CN.md) | [Français](./README.fr.md) | [Deutsch](./README.de.md) | [Italiano](./README.it.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Português](./README.pt-BR.md) | [Русский](./README.ru.md) | [Español](./README.es.md)
 
 ## Highlights
 
 - **Central repository, deploy anywhere** — Skills are installed once into `~/.skills-manager/`. After that, `add` lets you interactively pick from all locally installed skills and deploy them to any project or globally — no need to remember the original repo URL or path every time.
 - **Custom groups for batch management** — Organize your own skills into named groups (e.g., `--group my-tools`). Deploy an entire group to a project with a single `add --group` command, making it easy to maintain and share personal skill collections.
-- **Zip archive support** — Install skills directly from `.zip` files, which makes it simple to package and share skill bundles outside of GitHub.
+- **Zip archive support** — Install skills directly from `.zip` files or Anthropic's `.skill` packages, which makes it simple to package and share skill bundles outside of GitHub.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ Unified skills manager for AI coding tools. Install skills into `~/.skills-manag
 
 ## Supported Tools
 
-All skills deploy to `.agents/skills/`. Native tools read that directory directly. Non-native tools use a symlink bridge to their legacy skill path. Over 50 tools are supported; the table below lists those shown in the interactive selector.
+All skills deploy to `.agents/skills/`. Native tools read that directory directly. Non-native tools use a symlink bridge to their legacy skill path. The table below lists the 16 tools shown in the interactive selector. An additional 28 agents are also supported and can be targeted directly via the `-a` flag in non-interactive commands (e.g., `skillsmgr add code-review -a amp`). See [docs/supported-agents.md](docs/supported-agents.md) for the full list.
 
 | Tool | Type | Project Path |
 |------|------|--------------|
@@ -160,8 +160,9 @@ npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code
 # install from a local directory (must start with ./ or /)
 npx skillsmgr install ./my-skill
 
-# install from a zip file
+# install from a zip file or .skill package
 npx skillsmgr install ./skills-archive.zip
+npx skillsmgr install ./my-skill.skill
 
 # install into a custom group
 npx skillsmgr install ./my-skill --group my-tools

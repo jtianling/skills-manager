@@ -1,14 +1,14 @@
 # skillsmgr
 
-面向 AI 编码工具的统一 Skills 管理器.  先把 skills 安装到 `~/.skills-manager/`, 再通过统一的 `.agents/skills/` 目录部署到项目里.  支持 50+ 工具, 一套工作流搞定.
+面向 AI 编码工具的统一 Skills 管理器.  先把 skills 安装到 `~/.skills-manager/`, 再通过统一的 `.agents/skills/` 目录部署到项目里.  支持 44 个工具, 一套工作流搞定.
 
-[English](./README.md)
+[English](./README.md) | [العربية](./README.ar.md) | [Français](./README.fr.md) | [Deutsch](./README.de.md) | [Italiano](./README.it.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Português](./README.pt-BR.md) | [Русский](./README.ru.md) | [Español](./README.es.md)
 
 ## 亮点
 
 - **中央仓库, 随处部署** — Skills 只需安装一次到 `~/.skills-manager/`.  之后通过 `add` 命令可以交互式地从所有本地已安装的 skills 中选择, 部署到任意项目或全局 — 不用每次都去翻原始仓库地址或路径.
 - **自定义分组, 批量管理** — 将自己的 skills 组织到命名分组中 (如 `--group my-tools`).  一条 `add --group` 命令即可将整组 skills 部署到项目, 方便维护和分享个人技能集合.
-- **支持 zip 包安装** — 可以直接从 `.zip` 文件安装 skills, 方便在 GitHub 之外打包和分享技能.
+- **支持 zip 包安装** — 可以直接从 `.zip` 文件或 Anthropic 的 `.skill` 包安装 skills, 方便在 GitHub 之外打包和分享技能.
 
 ## 环境要求
 
@@ -16,7 +16,7 @@
 
 ## 支持的工具
 
-所有 skill 统一部署到 `.agents/skills/`.  原生工具直接读取该目录, 非原生工具通过符号链接桥接到旧目录.  总共支持 50+ 工具, 下表列出交互选择器中显示的工具.
+所有 skill 统一部署到 `.agents/skills/`.  原生工具直接读取该目录, 非原生工具通过符号链接桥接到旧目录.  下表列出交互选择器中显示的 16 个工具.  另有 28 个 agent 也受支持, 可通过非交互命令的 `-a` 参数直接指定 (如 `skillsmgr add code-review -a amp`).  完整列表见 [docs/supported-agents.md](docs/supported-agents.md).
 
 | 工具 | 类型 | 项目中的路径 |
 |------|------|-------------|
@@ -160,8 +160,9 @@ npx skillsmgr install https://github.com/anthropics/skills/tree/main/skills/code
 # 从本地目录安装 (路径需以 ./ 或 / 开头)
 npx skillsmgr install ./my-skill
 
-# 从 zip 文件安装
+# 从 zip 文件或 .skill 包安装
 npx skillsmgr install ./skills-archive.zip
+npx skillsmgr install ./my-skill.skill
 
 # 安装到自定义分组
 npx skillsmgr install ./my-skill --group my-tools
