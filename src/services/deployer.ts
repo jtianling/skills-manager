@@ -120,8 +120,9 @@ export class Deployer {
     }
   }
 
-  removeSkillGlobal(skillName: string, agents: ToolName[]): void {
+  removeSkillGlobal(skillName: string, agents: ToolName[]): boolean {
     const processed = new Set<string>();
+    let removed = false;
 
     for (const agentName of agents) {
       const config = TOOL_CONFIGS[agentName];
@@ -135,7 +136,10 @@ export class Deployer {
       if (existsSync(skillPath)) {
         rmSync(skillPath, { recursive: true, force: true });
         console.log(`  ✓ Removed ${skillName} from ${config.globalSkillsDir}`);
+        removed = true;
       }
     }
+
+    return removed;
   }
 }

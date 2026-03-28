@@ -44,7 +44,10 @@ export async function executeRemove(
     );
     const deployer = new Deployer(process.cwd());
     for (const skillName of skillNames) {
-      deployer.removeSkillGlobal(skillName, agents);
+      const removed = deployer.removeSkillGlobal(skillName, agents);
+      if (!removed) {
+        console.log(`'${skillName}' not found in global agent directories`);
+      }
     }
     return;
   }
