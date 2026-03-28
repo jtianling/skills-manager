@@ -1,6 +1,6 @@
 ## Context
 
-skillsmgr 是一个 CLI 工具, 当前有 141 个单元/集成测试, 全部通过.  但核心命令 (install, update, init, sync, remove, setup) 和关键 service (sources, git) 缺少测试覆盖.  完全没有 E2E 测试, 无法验证 TUI 交互 (自定义 interactiveCheckbox 和 inquirer prompts) 的真实行为.
+skillsmgr 是一个 CLI 工具, 当前有 141 个单元/集成测试, 全部通过.  但核心命令 (install, update, init, remove, setup) 和关键 service (sources, git) 缺少测试覆盖.  完全没有 E2E 测试, 无法验证 TUI 交互 (自定义 interactiveCheckbox 和 inquirer prompts) 的真实行为.
 
 现有测试模式: 真实 temp 目录 + vi.mock service 级别 mock + mock inquirer 返回值.
 

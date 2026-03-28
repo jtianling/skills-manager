@@ -82,29 +82,6 @@ init 命令 SHALL 有单元测试覆盖 skill 部署, bridge 创建, unmanaged �
 - **WHEN** .agents/skills/ 中有不在 central repo 的 skill
 - **THEN** 标记为 unmanaged, 不删除
 
-### Requirement: sync 命令测试
-sync 命令 SHALL 有单元测试覆盖 link/copy 状态检查, orphan 处理, conflict 跳过.
-
-#### Scenario: link 类型 skill 直接 up to date
-- **WHEN** 部署的 skill 是 symlink
-- **THEN** 输出 "up to date (link)"
-
-#### Scenario: copy 类型内容一致
-- **WHEN** copy 部署的 SKILL.md 与 source 一致
-- **THEN** 输出 "up to date (copy)"
-
-#### Scenario: copy 类型内容不同
-- **WHEN** copy 部署的 SKILL.md 与 source 不同
-- **THEN** 提示用户选择 overwrite/skip/diff
-
-#### Scenario: orphan skill 处理
-- **WHEN** 部署的 skill 在 central repo 找不到源
-- **THEN** 标记为 orphaned, 提示 remove/keep
-
-#### Scenario: conflict skill 跳过
-- **WHEN** skill 有 conflict 标记
-- **THEN** 输出 "conflict (skipped)"
-
 ### Requirement: remove 命令测试
 remove 命令 SHALL 有单元测试覆盖正常删除和错误情况.
 

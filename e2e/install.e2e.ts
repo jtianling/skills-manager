@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { getInstalledSkillNames } from './helpers/skills.js';
 
 describe('install E2E', () => {
   let env: TestEnv;
@@ -58,5 +59,40 @@ describe('install E2E', () => {
 
     const officialDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic');
     expect(existsSync(officialDir)).toBe(true);
+  });
+
+  it('install GitHub tree URL for a specific skill path', async () => {
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr setup');
+    await tmux.waitForText('Setup complete');
+    tmux.destroy();
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install anthropics/skills --all');
+    await tmux.waitForText('Installed', 110_000);
+    tmux.destroy();
+
+    const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills');
+    const installedSkills = getInstalledSkillNames(skillsDir);
+    expect(installedSkills.length).toBeGreaterThan(0);
+    const targetSkill = installedSkills[0];
+
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.waitForText(/Removed|Uninstalled/, 15_000);
+    tmux.destroy();
+
+    const treeUrl = `https://github.com/anthropics/skills/tree/main/skills/${targetSkill}`;
+    tmux = new TmuxSession(env);
+    await tmux.start(`skillsmgr install ${treeUrl}`);
+    await tmux.waitForText(/Installed|installed/, 90_000);
+
+    const targetDir = join(env.homeDir, '.skills-manager', 'official', 'anthropic', 'skills', targetSkill);
+    expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
+
+    const sourcesPath = join(env.homeDir, '.skills-manager', 'sources.json');
+    const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
+    expect(Object.keys(sources.sources)).toContain('official/anthropic/skills');
+    expect(sources.sources['official/anthropic/skills'].url).toBe('https://github.com/anthropics/skills');
   });
 });

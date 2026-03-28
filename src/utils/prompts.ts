@@ -1,14 +1,8 @@
-import { homedir } from 'os';
 import inquirer from 'inquirer';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
 import { interactiveCheckbox } from './interactive-select.js';
-
-function tildefy(path: string): string {
-  const home = homedir();
-  return path.startsWith(home) ? path.replace(home, '~') : path;
-}
 
 /**
  * Handle Ctrl+C gracefully during prompts
@@ -251,54 +245,6 @@ export async function promptSelect<T extends string>(
     ]);
 
     return selected;
-  } catch (error) {
-    handlePromptError(error);
-  }
-}
-
-export async function promptSyncAction(
-  filename: string,
-  showDiff: boolean = true
-): Promise<'overwrite' | 'skip' | 'diff'> {
-  const choices = [
-    { name: 'Overwrite', value: 'overwrite' },
-    { name: 'Skip', value: 'skip' },
-    ...(showDiff ? [{ name: 'Show diff', value: 'diff' }] : []),
-  ];
-
-  try {
-    const { action } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'action',
-        message: `${filename}: source changed`,
-        choices,
-      },
-    ]);
-
-    return action;
-  } catch (error) {
-    handlePromptError(error);
-  }
-}
-
-export async function promptOrphanAction(
-  skillName: string
-): Promise<'remove' | 'keep'> {
-  try {
-    const { action } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'action',
-        message: `${skillName}: source no longer exists`,
-        choices: [
-          { name: 'Remove', value: 'remove' },
-          { name: 'Keep', value: 'keep' },
-        ],
-      },
-    ]);
-
-    return action;
   } catch (error) {
     handlePromptError(error);
   }

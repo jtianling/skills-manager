@@ -15,7 +15,7 @@
 - [x] 2.5 创建 src/commands/install.test.ts — 输入格式路由 (provider/alias/owner-repo/URL), --all, 未 setup 退出
 - [x] 2.6 创建 src/commands/update.test.ts — 远程比对逻辑, 单源/全量, 无 sources
 - [x] 2.7 创建 src/commands/init.test.ts — link/copy 部署, bridge 创建/移除, unmanaged 保留
-- [x] 2.8 创建 src/commands/sync.test.ts — link up-to-date, copy 比对, orphan, conflict
+- [x] 2.8 ~~创建 src/commands/sync.test.ts~~ (sync 命令已移除)
 
 ## 3. E2E 测试 — 非交互场景
 

@@ -183,57 +183,7 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 **通过 `init` 命令的增量逻辑**:
 - 取消选择的 skill 会被移除, 使用 `deployer.removeSkill()` 处理
 
-### 4. 同步验证
-
-`sync` 命令检查已部署 skill 的状态:
-
-**扫描流程**:
-1. `scanner.scanAllTools()` 遍历所有 12 个工具
-2. 对每个工具, 扫描基础 skillsDir 和 mode-specific 目录
-3. 返回 `ScannedToolDeployment[]`
-4. 过滤掉 skills 为空的工具
-
-#### Scenario: sync only verifies skills
-- **WHEN** 用户执行 `sync` 命令
-- **THEN** 只扫描和验证 skill 部署状态, 不扫描 commands 目录
-
-**检查逻辑** (对每个已部署的 skill):
-
-1. **未托管检测**: `skill.source === 'unknown'` 且 `skill.conflict !== true` 时, 输出 `~ name (unmanaged)` 并跳过后续检查
-2. **冲突检测**: `skill.conflict === true` 时, 输出 "⚠ name: conflict (skipped)" 并跳过
-3. **查找源路径**: 如果 `skill.source !== 'unknown'`, 通过 `skillsService.getSkillByName()` 查找
-4. **孤立检测**: 源路径不存在或 `fileExists(sourcePath)` 返回 false:
-   - 输出 "✗ name: orphaned (source not found)"
-   - 提示用户选择: 移除 (调用 `deployer.removeSkill()`) 或保留
-5. **Symlink 检测**: `isSymlink(deployedPath)` 返回 true:
-   - 输出 "✓ name: up to date (link)"
-   - 不做进一步内容对比 (symlink 天然保持同步)
-6. **Copy 内容对比**: 仅对比 `SKILL.md` 文件:
-   - 源路径的 SKILL.md: `{sourcePath}/SKILL.md`
-   - 部署路径的 SKILL.md: `{deployedPath}/SKILL.md`
-   - 两个文件都存在时才对比, 否则跳过
-   - 内容一致: 输出 "✓ name: up to date (copy)"
-   - 内容不一致: 输出 "⚠ name: source changed (copy)", 提示用户操作
-
-**Sync 对比的局限性**:
-- 仅对比 SKILL.md 文件内容, 不检查 skill 目录中的其他文件
-- 不检查 SKILL.md 以外的文件是否有变更
-- 对于 copy 模式, 如果源或部署位置的 SKILL.md 不存在, 该 skill 被静默跳过, 无任何输出
-
-**用户操作选项**:
-- **Overwrite**: 重新部署 (调用 `deployer.deploySkill()`, mode 固定为 'copy')
-- **Skip**: 不做任何操作
-- **Show diff**: 显示本地和源的 SKILL.md 内容 (各取前 500 字符, 使用 `.slice(0, 500)`), 然后再次提示 Overwrite/Skip/Show diff. 注意: diff 选项后再次选择 diff 会重复显示相同内容
-
-#### Scenario: sync 遇到未托管 skill
-- **WHEN** 已部署 skill 的 source 为 "unknown" 且无冲突
-- **THEN** 输出 `~ skill-name (unmanaged)`, 不提示任何操作, 不检查源文件
-
-#### Scenario: sync 区分未托管和孤立
-- **WHEN** skill 的 source 不为 "unknown" 但源文件已不存在
-- **THEN** 仍然显示 "orphaned" 并提示用户操作 (保持现有行为)
-
-### 5. 更新
+### 4. 更新
 
 `update` 命令从远程拉取最新版本 (详细流程参见 source-management spec):
 - 仅更新本地已安装的 skill, 不安装新 skill
@@ -259,7 +209,6 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 **影响**:
 - `add` 命令: 遇到多个匹配时, 提示用户通过编号选择具体的 source
-- `sync` 命令: 跳过冲突 skill, 不检查其内容
 - `list --deployed`: 显示 "⚠ name (copy) ← conflict"
 - `init` 命令: 不受影响, 因为 skill 选择是基于 name 而非 source
 
@@ -372,19 +321,6 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - test_init_existingSkills_keepsUnchanged: 已部署的 skill 被选中时不重新部署
 - test_init_deselectSkill_removes: 之前部署的 skill 未被选中时被移除
 - test_init_mixedOperations_correctOutput: 同时有 add/keep/remove 时输出正确
-
-### 同步 (sync)
-
-- test_sync_linkedSkill_showsUpToDate: symlink 有效时显示 "up to date (link)"
-- test_sync_orphanedSkill_promptsAction: 源路径不存在时提示用户操作
-- test_sync_orphanedSkill_removeAction_deletesSkill: 用户选择 remove 时删除 skill
-- test_sync_orphanedSkill_keepAction_preservesSkill: 用户选择 keep 时不删除
-- test_sync_copiedSkill_unchanged_showsUpToDate: copy 模式, 内容一致时显示 "up to date (copy)"
-- test_sync_copiedSkill_changed_promptsAction: copy 模式, SKILL.md 内容不同时提示用户
-- test_sync_copiedSkill_overwrite_redeploysAsCopy: 用户选择 overwrite 时重新复制
-- test_sync_copiedSkill_showDiff_displaysContent: 用户选择 diff 时显示两边内容 (各最多 500 字符)
-- test_sync_conflictSkill_skips: 冲突 skill 被跳过并显示警告
-- test_sync_noDeployments_exits: 无任何部署时 process.exit(1)
 
 ### 冲突处理
 

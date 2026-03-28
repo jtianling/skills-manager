@@ -19,7 +19,6 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | add | - | [arg] (可选) | --copy, -a/--agent, -s/--same-agents | Add a skill to the project |
 | remove | - | \<name\> (必填) | - | Remove a skill from the project |
 | uninstall | - | [identifier] (可选) | -f, --force | Remove skills from ~/.skills-manager/ |
-| sync | - | - | Sync and verify deployed skills |
 
 #### Scenario: CLI help shows skills-only descriptions
 - **WHEN** 用户执行 `skillsmgr --help`
@@ -526,34 +525,6 @@ interactiveCheckbox 组件 SHALL 在每个 choice 项前显示行号.  行号从
 - **WHEN** interactiveCheckbox 创建 readline interface
 - **THEN** readline 的 output SHALL 为一个不产生任何输出的 stream, 而非 process.stdout
 
-### 同步操作选择
-
-**源变更时** (promptSyncAction):
-
-类型: inquirer list
-
-```
-? code-review: source changed
-❯ Overwrite
-  Skip
-  Show diff
-```
-
-返回: `'overwrite' | 'skip' | 'diff'`
-
-
-**孤立项时** (promptOrphanAction):
-
-类型: inquirer list
-
-```
-? skill-name: source no longer exists
-❯ Remove
-  Keep
-```
-
-返回: `'remove' | 'keep'`
-
 ### 冲突选择
 
 `add` 遇到多个同名 skill 时:
@@ -698,21 +669,6 @@ Configured agents:
 - **WHEN** 没有已部署 skill
 - **THEN** 输出 "No skills deployed in current project."
 
-### Sync 输出格式
-
-```
-Checking deployed skills...
-
-Claude Code (.claude/skills/):
-  ⚠ conflicted-skill: conflict (skipped)
-  ✗ removed-skill: orphaned (source not found)
-  ✓ linked-skill: up to date (link)
-  ⚠ changed-skill: source changed (copy)
-  ✓ unchanged-skill: up to date (copy)
-
-Sync complete: 1 updated, 1 removed
-```
-
 ### Update 输出格式
 
 ```
@@ -765,8 +721,6 @@ Downloading 3 skills...
 | add (-a 和 -s 同时使用) | 互斥 | exit(1), 提示 "Cannot use --agent and --same-agents together." |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
-| sync | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| sync | 有部署 | process.exit(1), 提示 "No skills deployed in current project." |
 
 #### Scenario: no content found error
 - **WHEN** 安装的仓库中没有 skill
@@ -803,14 +757,13 @@ Downloading 3 skills...
 
 - `install` 命令: 最外层有 try-catch, 捕获 Error 输出 message 并 exit(1)
 - `update` 命令: 每个 skill 的更新有独立 try-catch, 失败不影响其他项
-- `sync` 命令: 无顶层 try-catch, 依赖各服务层的错误处理
 - 文件系统操作 (fs.ts): 大部分不捕获异常, 直接传播给调用者
 
 ## 测试用例
 
 ### 命令注册
 
-- test_program_hasAllCommands: 注册了全部 8 个命令 (setup, install, update, list, init, add, remove, sync)
+- test_program_hasAllCommands: 注册了全部 7 个命令 (setup, install, update, list, init, add, remove)
 - test_program_name_isSkillsmgr: 程序名为 "skillsmgr"
 
 ### interactiveCheckbox
@@ -908,7 +861,7 @@ Downloading 3 skills...
 
 ### 前置条件
 
-- test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1) (install, update, list, remove, sync 命令)
+- test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1) (install, update, list, remove 命令)
 - test_precondition_noSkillsManagerDir_autoSetup: ~/.skills-manager/ 不存在时自动执行 setup 后继续 (init, add 命令)
 - test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (init 命令)
 - test_precondition_noConfiguredTools_exits: 无已配置工具时 exit(1) (add 命令)

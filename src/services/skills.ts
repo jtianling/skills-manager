@@ -139,9 +139,10 @@ export class SkillsService {
     const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
     const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
 
+    const stripQuotes = (s: string) => s.replace(/^["'](.*)["']$/, '$1');
     return {
-      name: nameMatch ? nameMatch[1].trim() : '',
-      description: descMatch ? descMatch[1].trim() : '',
+      name: nameMatch ? stripQuotes(nameMatch[1].trim()) : '',
+      description: descMatch ? stripQuotes(descMatch[1].trim()) : '',
     };
   }
 }

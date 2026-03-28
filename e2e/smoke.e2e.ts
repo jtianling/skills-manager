@@ -1,3 +1,6 @@
+import { execSync } from 'child_process';
+import { existsSync, mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
 
@@ -26,5 +29,56 @@ describe('E2E framework smoke test', () => {
     await tmux.start('skillsmgr --version');
     const output = await tmux.waitForText(/\d+\.\d+\.\d+/);
     expect(output).toMatch(/\d+\.\d+\.\d+/);
+  });
+
+  it('packed npm tarball installs and runs setup successfully', () => {
+    env = createTestEnv();
+
+    const packageJson = JSON.parse(
+      execSync('npm pack --json', {
+        cwd: process.cwd(),
+        encoding: 'utf-8',
+      }),
+    ) as Array<{ filename: string }>;
+    const tarballName = packageJson[0]?.filename;
+    expect(tarballName).toBeTruthy();
+
+    const tarballPath = join(process.cwd(), tarballName);
+    const installDir = join(env.homeDir, 'packed-install');
+    const execEnv = {
+      ...process.env,
+      HOME: env.homeDir,
+    };
+
+    try {
+      mkdirSync(installDir, { recursive: true });
+      execSync('npm init -y >/dev/null 2>&1', {
+        cwd: installDir,
+        env: execEnv,
+        stdio: 'inherit',
+        shell: '/bin/zsh',
+      });
+      execSync(`npm install "${tarballPath}" >/dev/null 2>&1`, {
+        cwd: installDir,
+        env: execEnv,
+        stdio: 'inherit',
+        shell: '/bin/zsh',
+      });
+
+      const output = execSync('./node_modules/.bin/skillsmgr setup', {
+        cwd: installDir,
+        env: execEnv,
+        encoding: 'utf-8',
+      });
+
+      expect(output).toContain('Setup complete');
+      expect(
+        existsSync(join(env.homeDir, '.skills-manager', 'custom', 'example-skill', 'SKILL.md')),
+      ).toBe(true);
+    } finally {
+      if (existsSync(tarballPath)) {
+        rmSync(tarballPath, { force: true });
+      }
+    }
   });
 });

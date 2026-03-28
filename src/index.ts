@@ -7,7 +7,6 @@ import { listCommand } from './commands/list.js';
 import { initCommand } from './commands/init.js';
 import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
-import { syncCommand } from './commands/sync.js';
 import { uninstallCommand } from './commands/uninstall.js';
 
 const require = createRequire(import.meta.url);
@@ -27,7 +26,6 @@ program.addCommand(listCommand);
 program.addCommand(initCommand);
 program.addCommand(addCommand);
 program.addCommand(removeCommand);
-program.addCommand(syncCommand);
 program.addCommand(uninstallCommand);
 
 program.parse();
