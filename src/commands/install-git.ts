@@ -1,9 +1,8 @@
 import { execFileSync } from 'child_process';
-import { basename, dirname, join } from 'path';
+import { basename, join } from 'path';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { SKILLS_MANAGER_DIR, STANDARD_SKILL_PATHS, findOfficialProvider } from '../constants.js';
-import { GitService } from '../services/git.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
@@ -190,28 +189,65 @@ function createGitCloneContext(source: string, options: InstallOptions): GitClon
   return { source, options, resolvedOwner, resolvedRepo };
 }
 
+function parseTreeUrl(url: string): { owner: string; repo: string; branch: string; skillPath: string } | null {
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)/);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2], branch: match[3], skillPath: match[4] };
+}
+
+function isSpecificSkillUrl(url: string): boolean {
+  return url.includes('/tree/');
+}
+
 async function installSpecificSkillFromGit(
-  gitService: GitService,
   context: GitCloneContext,
 ): Promise<InstallResult> {
-  const skillPath = gitService.cloneSpecificSkill(context.source, context.options.custom || false);
-  if (!skillPath) {
+  const parsed = parseTreeUrl(context.source);
+  if (!parsed) {
     throw new Error('Failed to parse skill URL');
   }
 
-  warnScriptFiles(findScriptFiles(skillPath));
-  console.log(`✓ Installed skill to ${skillPath}`);
+  const { skillPath } = parsed;
+  const skillName = basename(skillPath);
+  const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}`;
 
-  const repoBase = dirname(skillPath);
-  const sourceKey = saveGitCloneSource(
-    context.source,
-    repoBase,
-    context.options,
-    context.resolvedOwner,
-    context.resolvedRepo,
-  );
+  const tempDir = await cloneToTemp(repoUrl);
+  const repoPath = join(tempDir, 'repo');
 
-  return createInstallResult([skillPath], [sourceKey]);
+  try {
+    let sourceSkillDir = join(repoPath, skillPath);
+    if (!fileExists(sourceSkillDir)) {
+      // Fallback: search by skill name in the cloned repo
+      const skills = collectGitCloneSkills(repoPath);
+      const match = skills.find((s) => s.name === skillName);
+      if (!match) {
+        throw new Error(`Skill '${skillName}' not found in repository`);
+      }
+      sourceSkillDir = match.path;
+    }
+
+    const targetBase = computeRepoTargetBase(context);
+    const targetDir = join(targetBase, skillName);
+
+    const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skillName), context.options.force);
+    if (!ready) return createInstallResult([], []);
+
+    copyDir(sourceSkillDir, targetDir);
+    warnScriptFiles(findScriptFiles(targetDir));
+    console.log(`✓ Installed skill to ${targetDir}`);
+
+    const sourceKey = saveGitCloneSource(
+      repoUrl,
+      targetBase,
+      context.options,
+      context.resolvedOwner,
+      context.resolvedRepo,
+    );
+
+    return createInstallResult([targetDir], [sourceKey]);
+  } finally {
+    removeDir(tempDir);
+  }
 }
 
 function computeRepoTargetBase(context: GitCloneContext): string {
@@ -290,10 +326,9 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
 
 export async function installViaGitClone(source: string, options: InstallOptions): Promise<InstallResult> {
   const context = createGitCloneContext(source, options);
-  const gitService = new GitService();
 
-  if (gitService.isSpecificSkillUrl(source)) {
-    return installSpecificSkillFromGit(gitService, context);
+  if (isSpecificSkillUrl(source)) {
+    return installSpecificSkillFromGit(context);
   }
 
   return installRepoWithSelection(context);

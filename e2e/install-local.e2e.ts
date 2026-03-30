@@ -72,7 +72,7 @@ describe('local install E2E', () => {
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
   });
 
-  it('install with --group puts skill in group directory', async () => {
+  it('install with --group installs flat and records virtual group', async () => {
     await setup();
     createLocalSkill('grouped-skill');
 
@@ -80,12 +80,16 @@ describe('local install E2E', () => {
     await tmux.start('skillsmgr install ./grouped-skill --group my-tools', env.projectDir);
     await tmux.waitForText(/Installed|installed/, 15_000);
 
-    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'my-tools', 'grouped-skill');
+    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'grouped-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sourcesPath = join(env.homeDir, '.skills-manager', 'sources.json');
     const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
-    expect(sources.sources['custom/my-tools/grouped-skill']).toBeDefined();
+    expect(sources.sources['custom/grouped-skill']).toBeDefined();
+
+    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
+    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    expect(groups['my-tools']).toContain('custom/grouped-skill');
   });
 
   it('install ./nonexistent fails when directory does not exist', async () => {
@@ -116,7 +120,7 @@ describe('local install E2E', () => {
     expect(sources.sources['custom/zip-test-skill'].installMethod).toBe('zip');
   });
 
-  it('install rejects same-name skill in different group', async () => {
+  it('install same skill into different group triggers overwrite and adds to both groups', async () => {
     await setup();
     createLocalSkill('conflict-skill');
 
@@ -126,16 +130,19 @@ describe('local install E2E', () => {
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr install ./conflict-skill --group group-b', env.projectDir);
-    const output = await tmux.waitForText(/already installed|Remove it first/, 15_000);
-    expect(output).toContain('conflict-skill');
-    expect(output).toContain('group-a');
+    await tmux.start('skillsmgr install ./conflict-skill --group group-b -f', env.projectDir);
+    await tmux.waitForText(/Installed|installed/, 15_000);
 
-    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'group-b', 'conflict-skill');
-    expect(existsSync(targetDir)).toBe(false);
+    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'conflict-skill');
+    expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
+
+    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
+    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    expect(groups['group-a']).toContain('custom/conflict-skill');
+    expect(groups['group-b']).toContain('custom/conflict-skill');
   });
 
-  it('install zip with --group puts skill in group directory', async () => {
+  it('install zip with --group installs flat and records virtual group', async () => {
     await setup();
     createLocalSkill('zip-grouped-skill');
 
@@ -146,7 +153,11 @@ describe('local install E2E', () => {
     await tmux.start(`skillsmgr install "${zipPath}" --group zip-tools`, env.projectDir);
     await tmux.waitForText(/Installed|installed/, 30_000);
 
-    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'zip-tools', 'zip-grouped-skill');
+    const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'zip-grouped-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
+
+    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
+    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    expect(groups['zip-tools']).toContain('custom/zip-grouped-skill');
   });
 });

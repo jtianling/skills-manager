@@ -29,7 +29,8 @@ describe('add -s skill filter E2E', () => {
     await tmux.start(
       'skillsmgr add openai/skills -s skill-creator -a claude-code -g',
     );
-    const output = await tmux.waitForText('Installed', 110_000);
+    await tmux.waitForText('Installed', 110_000);
+    const output = await tmux.waitForText(/linked|copied/, 15_000);
     tmux.destroy();
 
     // Verify output says "Found 1 skill"
