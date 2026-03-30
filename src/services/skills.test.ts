@@ -108,14 +108,14 @@ describe('SkillsService', () => {
     });
   });
 
-  describe('custom scanning (flat only)', () => {
+  describe('custom scanning (two-level)', () => {
     it('detects custom skill (has SKILL.md)', () => {
       const skill = service.getSkillByName('my-skill');
       expect(skill).toBeDefined();
       expect(skill?.source).toBe('custom');
     });
 
-    it('ignores subdirectories without SKILL.md', () => {
+    it('ignores empty subdirectories at both levels', () => {
       mkdirSync(join(testDir, 'custom', 'empty-dir'), { recursive: true });
 
       const freshService = new SkillsService(testDir);
@@ -125,7 +125,7 @@ describe('SkillsService', () => {
       expect(customSkills[0].name).toBe('my-skill');
     });
 
-    it('does not recurse into nested directories', () => {
+    it('finds skills in group subdirectories', () => {
       mkdirSync(join(testDir, 'custom', 'my-tools', 'tool-a'), { recursive: true });
       writeFileSync(
         join(testDir, 'custom', 'my-tools', 'tool-a', 'SKILL.md'),
@@ -134,6 +134,32 @@ describe('SkillsService', () => {
 
       const freshService = new SkillsService(testDir);
       const skill = freshService.getSkillByName('tool-a');
+      expect(skill).toBeDefined();
+      expect(skill?.source).toBe('custom');
+    });
+
+    it('finds mixed flat and nested skills', () => {
+      mkdirSync(join(testDir, 'custom', 'openspec', 'openspec-explore'), { recursive: true });
+      writeFileSync(
+        join(testDir, 'custom', 'openspec', 'openspec-explore', 'SKILL.md'),
+        '---\nname: openspec-explore\ndescription: Explore\n---\n'
+      );
+
+      const freshService = new SkillsService(testDir);
+      const customSkills = freshService.getSkillsBySource('custom');
+      const names = customSkills.map((s) => s.name).sort();
+      expect(names).toEqual(['my-skill', 'openspec-explore']);
+    });
+
+    it('does not recurse into skill directories', () => {
+      mkdirSync(join(testDir, 'custom', 'my-skill', 'nested'), { recursive: true });
+      writeFileSync(
+        join(testDir, 'custom', 'my-skill', 'nested', 'SKILL.md'),
+        '---\nname: nested\ndescription: Nested\n---\n'
+      );
+
+      const freshService = new SkillsService(testDir);
+      const skill = freshService.getSkillByName('nested');
       expect(skill).toBeUndefined();
     });
   });

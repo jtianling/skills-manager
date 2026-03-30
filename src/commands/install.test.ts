@@ -179,4 +179,76 @@ describe('install command', () => {
     const content = readFileSync(join(existingDir, 'SKILL.md'), 'utf-8');
     expect(content).toContain('new');
   });
+
+  describe('batch install from directory', () => {
+    function createSkillDir(base: string, name: string): void {
+      const dir = join(base, name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name}\n---\n`);
+    }
+
+    it('batch installs skills from directory without SKILL.md', async () => {
+      const batchDir = join(testProjectDir, 'my-skills');
+      createSkillDir(batchDir, 'skill-a');
+      createSkillDir(batchDir, 'skill-b');
+
+      await executeInstall('./my-skills', { all: true });
+
+      expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-a', 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-b', 'SKILL.md'))).toBe(true);
+
+      const sources = readSources();
+      expect(sources.sources['custom/skill-a']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
+      expect(sources.sources['custom/skill-b']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
+    });
+
+    it('auto-creates group with directory name after batch install', async () => {
+      const batchDir = join(testProjectDir, 'openspec');
+      createSkillDir(batchDir, 'explore');
+      createSkillDir(batchDir, 'ff-change');
+
+      await executeInstall('./openspec', { all: true });
+
+      const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
+      expect(groups['openspec']).toContain('custom/explore');
+      expect(groups['openspec']).toContain('custom/ff-change');
+    });
+
+    it('--group overrides auto group name', async () => {
+      const batchDir = join(testProjectDir, 'openspec');
+      createSkillDir(batchDir, 'explore');
+
+      await executeInstall('./openspec', { all: true, group: 'tools' });
+
+      const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
+      expect(groups['tools']).toContain('custom/explore');
+      expect(groups['openspec']).toBeUndefined();
+    });
+
+    it('--skill filters specific skills in batch install', async () => {
+      const batchDir = join(testProjectDir, 'my-skills');
+      createSkillDir(batchDir, 'skill-a');
+      createSkillDir(batchDir, 'skill-b');
+      createSkillDir(batchDir, 'skill-c');
+
+      await executeInstall('./my-skills', { skill: ['skill-a', 'skill-c'] });
+
+      expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-a', 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-c', 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-b', 'SKILL.md'))).toBe(false);
+    });
+
+    it('errors when directory has no skills', async () => {
+      const emptyDir = join(testProjectDir, 'empty-dir');
+      mkdirSync(emptyDir, { recursive: true });
+
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+
+      await expect(executeInstall('./empty-dir', { all: true })).rejects.toThrow('process.exit');
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('No skills found'));
+      mockExit.mockRestore();
+    });
+  });
 });

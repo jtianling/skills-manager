@@ -99,13 +99,13 @@ describe('findInstalledCustomSkill', () => {
     expect(result).toBeNull();
   });
 
-  it('does not scan nested group directories', () => {
+  it('finds skill in nested subdirectory', () => {
     const groupedDir = join(testManagerDir, 'custom', 'group-a', 'foo');
     mkdirSync(groupedDir, { recursive: true });
     writeFileSync(join(groupedDir, 'SKILL.md'), '---\nname: foo\n---\n');
 
     const result = findInstalledCustomSkill('foo');
-    expect(result).toBeNull();
+    expect(result).toEqual({ key: 'custom/foo', path: groupedDir });
   });
 
   it('returns null when custom directory does not exist', () => {
@@ -124,5 +124,28 @@ describe('findInstalledCustomSkill', () => {
 
     const result = findInstalledCustomSkill('nested-skill');
     expect(result).toBeNull();
+  });
+
+  it('prefers direct path over nested path', () => {
+    const directDir = join(testManagerDir, 'custom', 'my-skill');
+    mkdirSync(directDir, { recursive: true });
+    writeFileSync(join(directDir, 'SKILL.md'), '---\nname: my-skill\n---\n');
+
+    const nestedDir = join(testManagerDir, 'custom', 'group-b', 'my-skill');
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(nestedDir, 'SKILL.md'), '---\nname: my-skill\n---\n');
+
+    const result = findInstalledCustomSkill('my-skill');
+    expect(result).toEqual({ key: 'custom/my-skill', path: directDir });
+  });
+
+  it('finds skill across multiple group subdirectories', () => {
+    mkdirSync(join(testManagerDir, 'custom', 'group-a'), { recursive: true });
+    const groupBDir = join(testManagerDir, 'custom', 'group-b', 'bar');
+    mkdirSync(groupBDir, { recursive: true });
+    writeFileSync(join(groupBDir, 'SKILL.md'), '---\nname: bar\n---\n');
+
+    const result = findInstalledCustomSkill('bar');
+    expect(result).toEqual({ key: 'custom/bar', path: groupBDir });
   });
 });

@@ -55,6 +55,14 @@ export class SkillsService {
         const skill = this.loadSkill(topDir.path, sourcePrefix);
         if (skill) {
           skills.push(skill);
+        } else {
+          const subDirs = getDirectoriesInDir(topDir.path);
+          for (const subDir of subDirs) {
+            const nestedSkill = this.loadSkill(subDir.path, sourcePrefix);
+            if (nestedSkill) {
+              skills.push(nestedSkill);
+            }
+          }
         }
       }
     } else if (sourcePrefix === 'official') {

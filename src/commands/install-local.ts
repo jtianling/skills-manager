@@ -53,12 +53,12 @@ export async function installFromLocalDir(source: string, options: InstallOption
     throw new Error(`Directory not found: ${skillDir}`);
   }
 
-  const skillName = basename(skillDir);
   const skillMd = join(skillDir, 'SKILL.md');
   if (!fileExists(skillMd)) {
-    throw new Error(`Skill not found. Expected SKILL.md in ${skillDir}`);
+    return installFromLocalDirBatch(skillDir, options);
   }
 
+  const skillName = basename(skillDir);
   const existing = findInstalledCustomSkill(skillName);
   let targetDir: string;
   let sourceKey: string;
@@ -88,6 +88,65 @@ export async function installFromLocalDir(source: string, options: InstallOption
 
   console.log(`✓ Installed skill '${skillName}' to ${targetDir}`);
   return createInstallResult([targetDir], [sourceKey]);
+}
+
+async function installFromLocalDirBatch(skillDir: string, options: InstallOptions): Promise<InstallResult> {
+  const dirName = basename(skillDir);
+  const scannedSkills = scanSkillDirectories(skillDir, 1);
+
+  if (scannedSkills.length === 0) {
+    throw new Error(`No skills found in ${skillDir}`);
+  }
+
+  const installedNames = new Set<string>();
+  for (const skill of scannedSkills) {
+    if (findInstalledCustomSkill(skill.name)) {
+      installedNames.add(skill.name);
+    }
+  }
+
+  const selectedSkills = await selectSkills(scannedSkills, options, installedNames);
+  if (selectedSkills.length === 0) {
+    return createInstallResult([], []);
+  }
+
+  const installedPaths: string[] = [];
+  const sourceKeys: string[] = [];
+  const allScriptFiles: string[] = [];
+
+  for (const skill of selectedSkills) {
+    const existing = findInstalledCustomSkill(skill.name);
+    const targetDir = existing ? existing.path : getCustomSkillDir(skill.name, dirName);
+    const sourceKey = getCustomSkillKey(skill.name);
+
+    const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name), options.force);
+    if (!ready) {
+      break;
+    }
+
+    copyDir(skill.path, targetDir);
+    installedPaths.push(targetDir);
+    allScriptFiles.push(...findScriptFiles(targetDir));
+
+    sourcesService.addSource(sourceKey, {
+      url: skillDir,
+      type: 'custom',
+      repoName: skill.name,
+      installMethod: 'local-copy',
+    });
+    sourceKeys.push(sourceKey);
+  }
+
+  warnScriptFiles(allScriptFiles);
+
+  if (installedPaths.length > 0) {
+    console.log(`✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} from ${dirName}`);
+  }
+
+  return {
+    ...createInstallResult(installedPaths, sourceKeys),
+    batchGroupName: dirName,
+  };
 }
 
 export async function installFromZip(source: string, options: InstallOptions, originalSource = source): Promise<InstallResult> {

@@ -57,10 +57,11 @@ export async function executeInstall(source: string, options: InstallOptions): P
   try {
     const result = await installBySourceType(source, options);
 
-    if (options.group && result.sourceKeys && result.sourceKeys.length > 0) {
+    const groupName = options.group ?? result.batchGroupName;
+    if (groupName && result.sourceKeys && result.sourceKeys.length > 0) {
       const groupsService = new GroupsService();
       for (const key of result.sourceKeys) {
-        groupsService.addSkill(options.group, key);
+        groupsService.addSkill(groupName, key);
       }
     }
   } catch (error) {

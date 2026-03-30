@@ -21,6 +21,16 @@ export function findInstalledCustomSkill(skillName: string): InstalledCustomSkil
     return { key: `custom/${skillName}`, path: directPath };
   }
 
+  for (const subdir of getDirectoriesInDir(customDir)) {
+    if (fileExists(join(subdir.path, 'SKILL.md'))) {
+      continue;
+    }
+    const nestedPath = join(subdir.path, skillName);
+    if (fileExists(join(nestedPath, 'SKILL.md'))) {
+      return { key: `custom/${skillName}`, path: nestedPath };
+    }
+  }
+
   return null;
 }
 
@@ -37,6 +47,7 @@ export interface InstallResult {
   sourceKey: string;
   installedPaths?: string[];
   sourceKeys?: string[];
+  batchGroupName?: string;
 }
 
 export function parseMdFrontmatter(content: string): Record<string, string> {
@@ -60,7 +71,10 @@ export function parseMdDescription(content: string): string {
   return parseMdFrontmatter(content).description ?? '';
 }
 
-export function getCustomSkillDir(skillName: string): string {
+export function getCustomSkillDir(skillName: string, subdirectory?: string): string {
+  if (subdirectory) {
+    return join(SKILLS_MANAGER_DIR, 'custom', subdirectory, skillName);
+  }
   return join(SKILLS_MANAGER_DIR, 'custom', skillName);
 }
 
