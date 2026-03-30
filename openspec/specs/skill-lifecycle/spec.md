@@ -178,7 +178,87 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 #### Scenario: remove name not found
 - **WHEN** name 不匹配任何已部署 skill
-- **THEN** 输出 "'name' not found in any configured tool"
+- **THEN** 输出 "'name' not found in deployed skills"
+
+### Requirement: remove 命令从必填参数改为可选
+
+remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可选). 支持通过 `-s/--skill` 指定多个 skill, 也支持 `-a/--agent` 指定目标 agent.
+
+#### Scenario: remove 使用 positional arg (向后兼容)
+- **WHEN** 用户执行 `remove my-skill`
+- **THEN** 移除 `my-skill`, 行为不变
+
+#### Scenario: remove 使用 --skill 批量移除
+- **WHEN** 用户执行 `remove -s skill1 -s skill2`
+- **THEN** 移除 `skill1` 和 `skill2`
+
+#### Scenario: remove 混合使用 positional 和 --skill
+- **WHEN** 用户执行 `remove my-skill -s other-skill`
+- **THEN** 移除 `my-skill` 和 `other-skill`
+
+#### Scenario: remove 指定 --agent
+- **WHEN** 用户执行 `remove my-skill -a claude-code`
+- **THEN** 仅从 claude-code 移除 `my-skill`
+
+#### Scenario: remove 无任何参数
+- **WHEN** 用户执行 `remove` (无 positional arg, 无 --skill)
+- **THEN** 输出错误提示并 exit(1)
+
+#### Scenario: remove name not found
+- **WHEN** name 不匹配任何已部署 skill
+- **THEN** 输出 "'name' not found in deployed skills"
+
+### Requirement: remove 支持 owner/repo 格式批量移除
+
+`remove` 命令 SHALL 支持 `owner/repo` 格式参数, 检测到该格式时通过中央仓库查找该 source 下的所有 skills, 过滤出已部署到当前项目的, 批量移除.
+
+格式检测规则: 参数含 `/` 且不含 `://` 时视为 `owner/repo` 格式.
+
+匹配逻辑:
+1. 通过 `findRepoInCentralRepository(ownerRepo)` 在中央仓库查找匹配的 skills
+2. 获取当前项目已部署的 skills
+3. 交叉匹配: 只移除既在中央仓库该 source 下、又在项目已部署中的 skills
+4. 逐个移除并输出 `✓ Removed <name>`
+
+#### Scenario: owner/repo 格式移除已部署的 skills
+- **WHEN** 用户执行 `skillsmgr remove mattpocock/skills`
+- **AND** 中央仓库 `community/mattpocock/skills` 下有 skill-a, skill-b, skill-c
+- **AND** 项目中已部署 skill-a 和 skill-b
+- **THEN** 移除 skill-a 和 skill-b 的部署
+- **AND** 输出 `✓ Removed skill-a` 和 `✓ Removed skill-b`
+- **AND** skill-c 不受影响 (未部署)
+
+#### Scenario: owner/repo 格式匹配 official provider
+- **WHEN** 用户执行 `skillsmgr remove anthropics/skills`
+- **AND** 中央仓库 `official/anthropic/skills` 下有 commit, code-review
+- **AND** 项目中已部署 commit
+- **THEN** 移除 commit 的部署
+
+#### Scenario: owner/repo 无已部署 skill
+- **WHEN** 用户执行 `skillsmgr remove mattpocock/skills`
+- **AND** 中央仓库存在该 source 但项目中没有部署任何对应 skill
+- **THEN** 输出 "No deployed skills found from 'mattpocock/skills'"
+- **AND** 以退出码 1 退出
+
+#### Scenario: owner/repo 在中央仓库中不存在
+- **WHEN** 用户执行 `skillsmgr remove unknown/repo`
+- **AND** 中央仓库中不存在匹配的 source
+- **THEN** 输出 "'unknown/repo' not found in central repository"
+- **AND** 以退出码 1 退出
+
+#### Scenario: owner/repo 不影响其他 source 的同名 skill
+- **WHEN** 项目中部署了来自 `community/mattpocock/skills` 的 skill-a 和来自 `official/anthropic/skills` 的 skill-a (同名)
+- **AND** 用户执行 `skillsmgr remove mattpocock/skills`
+- **THEN** 只移除来自 `community/mattpocock/skills` 的 skill-a
+- **AND** 来自 `official/anthropic/skills` 的 skill-a 保持不变
+
+#### Scenario: owner/repo 与 --global 模式组合
+- **WHEN** 用户执行 `skillsmgr remove mattpocock/skills -g`
+- **THEN** 在全局 agent 目录中查找并移除该 source 下的 skills
+
+#### Scenario: 纯 skill name 行为不变
+- **WHEN** 用户执行 `skillsmgr remove commit`
+- **THEN** 行为与现有逻辑完全一致, 按名称精确匹配已部署 skill
 
 **通过 `init` 命令的增量逻辑**:
 - 取消选择的 skill 会被移除, 使用 `deployer.removeSkill()` 处理
@@ -217,6 +297,11 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - `--all` 选项: 不触发交互式选择, 不涉及预选
 - `--skill` 选项: 直接过滤, 不触发交互式选择
 - `uninstall` 命令: 默认全部不勾选, 不使用预选
+
+#### Scenario: 全部 skill 已安装时跳过交互式选择
+
+- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库中所有 skill 均已安装
+- **THEN** 系统 SHALL 输出 "All N skills already installed.", 不显示交互式选择列表, 直接返回
 
 #### Scenario: 部分 skill 已安装时的交互式选择
 
@@ -312,6 +397,33 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - **AND** 用户执行 `skillsmgr uninstall skill-a -f`
 - **THEN** skill-a 被从中央仓库删除
 - **AND** skill-b 保持不变
+
+### Requirement: uninstall -y 作为 --all --force 的快捷方式
+
+`uninstall` 命令 SHALL 支持 `-y` flag, 语义等同于 `--all --force`.  传入 `-y` 时跳过选择提示和确认提示, 直接卸载所有匹配 skills.
+
+#### Scenario: uninstall owner/repo -y 卸载所有关联 skills
+- **WHEN** 中央仓库中 official/anthropic/skills/ 下有 skill-a, skill-b, skill-c
+- **AND** 用户执行 `skillsmgr uninstall anthropics/skills -y`
+- **THEN** skill-a, skill-b, skill-c 全部被删除
+- **AND** 输出包含 "Uninstalled 3 skills from anthropics/skills"
+- **AND** 不出现任何交互式提示
+
+#### Scenario: uninstall owner/repo -y 不影响其他来源的 skills
+- **WHEN** 中央仓库中有 official/anthropic/skills/ 下的 skills 和 custom/my-skill
+- **AND** 用户执行 `skillsmgr uninstall anthropics/skills -y`
+- **THEN** official/anthropic/skills/ 下的 skills 全部被删除
+- **AND** custom/my-skill 保持不变
+
+#### Scenario: uninstall skill-name -y 跳过确认
+- **WHEN** 中央仓库中有名为 "pdf" 的 skill
+- **AND** 用户执行 `skillsmgr uninstall pdf -y`
+- **THEN** pdf skill 被删除
+- **AND** 不出现确认提示
+
+#### Scenario: -y 与 --all 和 -f 可自由组合
+- **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills -y --all -f`
+- **THEN** 行为与单独使用 `-y` 完全相同, 不报错
 
 ## 前置条件
 

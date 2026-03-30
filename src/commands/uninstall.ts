@@ -13,6 +13,7 @@ import { SkillInfo, collect } from '../types.js';
 interface UninstallOptions {
   all?: boolean;
   force?: boolean;
+  yes?: boolean;
   skill?: string[];
 }
 
@@ -223,6 +224,11 @@ export async function executeUninstall(
   identifier: string | undefined,
   options: UninstallOptions
 ): Promise<void> {
+  if (options.yes) {
+    options.all = true;
+    options.force = true;
+  }
+
   if (!fileExists(SKILLS_MANAGER_DIR)) {
     console.log('Skills manager not set up. Run: skillsmgr setup');
     process.exit(1);
@@ -254,6 +260,7 @@ export const uninstallCommand = new Command('uninstall')
   .argument('[identifier]', 'owner/repo or skill name')
   .option('--all', 'Skip selection prompt and uninstall all matching skills')
   .option('-f, --force', 'Skip confirmation prompt')
+  .option('-y, --yes', 'Skip all prompts (equivalent to --all --force)')
   .option('-s, --skill <name>', 'Specific skill to uninstall (repeatable)', collect, [])
   .action(async (identifier: string | undefined, options: UninstallOptions) => {
     await executeUninstall(identifier, options);

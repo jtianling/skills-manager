@@ -11,14 +11,14 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | 命令 | 别名 | 参数 | 选项 | 说明 |
 |------|------|------|------|------|
 | setup | - | - | - | 初始化 ~/.skills-manager/ |
-| install | i | \<source\> (必填) | --all, --custom | Download skills from a repository |
+| install | i | \<source\> (必填) | --all, --custom, -f/--force, -g/--group, -s/--skill, -a/--agent | Install skills from a repository |
 | custom-install | ci | \<name\> (必填) | -f, --force | Install a local skill to custom directory |
 | update | - | [source] (可选) | - | Update installed skills to latest version |
 | list | - | - | --deployed | List available or deployed skills |
 | init | - | - | --copy | Deploy skills to current project |
-| add | - | [arg] (可选) | --copy, -a/--agent, -s/--same-agents | Add a skill to the project |
-| remove | - | \<name\> (必填) | - | Remove a skill from the project |
-| uninstall | - | [identifier] (可选) | -f, --force | Remove skills from ~/.skills-manager/ |
+| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group | Add a skill to the project |
+| remove | - | [name] (可选) | -s/--skill, -a/--agent | Remove a skill from the project |
+| uninstall | - | [identifier] (可选) | -f, --force, --all, -s/--skill | Remove skills from ~/.skills-manager/ |
 
 #### Scenario: CLI help shows skills-only descriptions
 - **WHEN** 用户执行 `skillsmgr --help`
@@ -42,41 +42,67 @@ The `custom-install` command SHALL have alias `ci`.
 ### Requirement: Command alias for install
 The `install` command SHALL have alias `i`.
 
+| 命令 | 别名 | 参数 | 选项 | 说明 |
+|------|------|------|------|------|
+| install | i | \<source\> (必填) | --all, --custom, -f/--force, -g/--group, -s/--skill, -a/--agent | Install skills from a repository |
+| uninstall | - | [identifier] (可选) | -f, --force, --all, -s/--skill | Remove skills from ~/.skills-manager/ |
+| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group | Add a skill to the project |
+| remove | - | [name] (可选) | -s/--skill, -a/--agent | Remove a skill from the project |
+
 #### Scenario: Alias i works
 - **WHEN** user runs `skillsmgr i anthropic`
 - **THEN** the system behaves identically to `skillsmgr install anthropic`
+
+#### Scenario: CLI help shows install options including --skill and --agent
+- **WHEN** 用户执行 `skillsmgr install --help`
+- **THEN** 输出包含 `-s, --skill <name>` 和 `-a, --agent <name>` 选项
+
+#### Scenario: CLI help shows add options with -s as --skill
+- **WHEN** 用户执行 `skillsmgr add --help`
+- **THEN** `-s` 对应 `--skill`, 不再对应 `--same-agents`
+- **AND** `--same-agents` 无短参数
+
+#### Scenario: CLI help shows remove with optional name
+- **WHEN** 用户执行 `skillsmgr remove --help`
+- **THEN** name 参数显示为 `[name]` (可选), 而非 `<name>` (必填)
+- **AND** 输出包含 `-s, --skill <name>` 和 `-a, --agent <name>` 选项
+
+#### Scenario: CLI help shows uninstall with --skill
+- **WHEN** 用户执行 `skillsmgr uninstall --help`
+- **THEN** 输出包含 `-s, --skill <name>` 选项
+- **AND** 不包含 `-a, --agent` 选项
+
+#### Scenario: uninstall 命令支持 --all 参数
+- **WHEN** 用户执行 `skillsmgr uninstall --help`
+- **THEN** 输出中包含 `--all` 选项, 描述为跳过交互直接删除所有 skills
 
 #### Scenario: add 命令参数可选
 - **WHEN** 用户执行 `skillsmgr add` (无参数)
 - **THEN** 命令正常执行, 进入 init 流程
 
 #### Scenario: add 命令接受 --agent 选项
-- **WHEN** 用户执行 `skillsmgr add code-review --agent claude-code`
-- **THEN** 使用 claude-code 作为目标 agent
-
-#### Scenario: add 命令接受 -a 短标志
 - **WHEN** 用户执行 `skillsmgr add code-review -a claude-code`
-- **THEN** 与 `--agent` 行为一致
+- **THEN** `-a` 接受单个 agent 名称 (不再是逗号分隔)
 
 #### Scenario: add 命令接受 --same-agents 选项
 - **WHEN** 用户执行 `skillsmgr add code-review --same-agents`
 - **THEN** 使用项目已配置的 agents
 
-#### Scenario: add 命令接受 -s 短标志
-- **WHEN** 用户执行 `skillsmgr add code-review -s`
-- **THEN** 与 `--same-agents` 行为一致
-
 ### Requirement: uninstall 命令参数可选
 
-原命令表中 `uninstall` 的 `<identifier>` 参数从必选改为可选.  无参数时进入交互式卸载模式, 有参数时行为不变.
+原命令表中 `uninstall` 的 `<identifier>` 参数为可选.  无参数时进入交互式卸载模式 (全部 skills), `owner/repo` 参数进入 scoped 交互模式, 裸词参数按 skill name 查找.
 
 #### Scenario: 无参数进入交互模式
 - **WHEN** 用户执行 `skillsmgr uninstall`
-- **THEN** 进入交互式卸载模式
+- **THEN** 进入交互式卸载模式, 展示所有已安装 skills
 
-#### Scenario: 有参数执行直接卸载
-- **WHEN** 用户执行 `skillsmgr uninstall anthropic`
-- **THEN** 按现有逻辑直接卸载 anthropic provider 下的所有 skill
+#### Scenario: owner/repo 参数进入 scoped 交互
+- **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills`
+- **THEN** 进入 scoped 交互模式, 展示该 source 下的 skills
+
+#### Scenario: 裸词参数按 skill name 查找
+- **WHEN** 用户执行 `skillsmgr uninstall commit`
+- **THEN** 按 skill name 查找并卸载
 
 #### Scenario: --force 仅对有参数模式生效
 - **WHEN** 用户执行 `skillsmgr uninstall` (无参数)
@@ -719,8 +745,8 @@ Downloading 3 skills...
 | add (无参数) | 同 init 的前置条件 | 同 init |
 | add (skill name) | name 未找到 | exit(1), 提示 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote." |
 | add (-a 指定无效 agent) | agent 名称不合法 | exit(1), 提示 "Unknown agent: 'xxx'. Available agents: ..." |
-| add (-s 无已配置 agent) | 无已配置 agent | exit(1), 提示 "No agents configured. Run 'skillsmgr init' or omit -s flag." |
-| add (-a 和 -s 同时使用) | 互斥 | exit(1), 提示 "Cannot use --agent and --same-agents together." |
+| add (--same-agents 无已配置 agent) | 无已配置 agent | exit(1), 提示 "No agents configured. Run 'skillsmgr init' or omit --same-agents flag." |
+| add (-a 和 --same-agents 同时使用) | 互斥 | exit(1), 提示 "Cannot use --agent and --same-agents together." |
 | remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
 | remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
 

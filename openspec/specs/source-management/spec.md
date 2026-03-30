@@ -357,9 +357,12 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 对每个 source:
 
-1. 解析 GitHub URL (不支持非 GitHub 的 source 更新, parseGitHubUrl 返回 null 时跳过)
+1. 检查 source 的 installMethod:
+   - `'local-copy'`: 从 sources.json 中记录的 `url` (原始路径) 读取最新内容并对比, 执行路径对比更新 (详见 local-update spec)
+   - `'zip'`: 跳过 (zip 来源不支持更新)
+   - 其他: 解析 GitHub URL, parseGitHubUrl 返回 null 时跳过
 2. 确定本地目标目录 (根据 type: official/community/custom)
-3. 获取 default branch
+3. 对 git 来源获取 default branch
 
 **更新 Skills**:
 1. 扫描本地已安装的 skill 目录 (`getDirectoriesInDir(targetBase)`)
@@ -401,6 +404,16 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 - **WHEN** 本地有 skill "deep-research" 安装于 `community/repo/deep-research/`, 远程仓库无 `skills/`, `.`, `src/skills/` 下的子目录, 但根目录有 SKILL.md
 - **THEN** 系统使用根目录路径 `SKILL.md` (而非 `skills/deep-research/SKILL.md`) 进行远程比对
 
+#### Scenario: 全量更新包含 local-copy source
+- **WHEN** 用户执行 `skillsmgr update` (无参数)
+- **THEN** 系统遍历所有 source, 对 local-copy 来源执行路径对比更新
+- **THEN** 对 zip 来源仍跳过
+- **THEN** 对 git 来源仍走 GitHub 更新
+
+#### Scenario: 按名称更新 local-copy source
+- **WHEN** 用户执行 `skillsmgr update my-skill` 且匹配到 local-copy source
+- **THEN** 系统执行路径对比更新, 不再跳过
+
 ### 更新结果统计
 
 | 状态 | 含义 |
@@ -413,7 +426,7 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 ### 局限性
 
-- 更新流程仍通过 GitHub API 检查远程变更, 不支持非 GitHub source 的更新 (如果 parseGitHubUrl 返回 null, 该 source 被跳过并显示警告)
+- 更新流程对 git 来源通过 GitHub API 检查远程变更, 对 local-copy 来源通过原始路径对比更新, zip 来源不支持更新 (跳过)
 - 仅更新已安装的 skill, 不发现和安装新增内容
 - skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
 - 没有版本号或 hash 比较, 依赖文本内容全文对比

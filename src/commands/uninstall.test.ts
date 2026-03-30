@@ -408,6 +408,67 @@ describe('uninstall command', () => {
     });
   });
 
+  describe('-y flag', () => {
+    it('maps -y to --all + --force, skipping all prompts', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-a');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-b');
+      createSkillDir(skill1);
+      createSkillDir(skill2);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', { yes: true });
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(existsSync(skill1)).toBe(false);
+      expect(existsSync(skill2)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('-y with explicit --all and -f does not conflict', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-a');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', { yes: true, all: true, force: true });
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(existsSync(skill)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('-y with skill name skips confirmation', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'community', 'someorg', 'somerepo', 'my-tool');
+      createSkillDir(skillDir);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('my-tool', { yes: true });
+
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(existsSync(skillDir)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('-y does not affect other source skills (no side effects)', async () => {
+      const targetSkill = join(SKILLS_MANAGER_DIR, 'official', 'anthropics', 'skills', 'commit');
+      const otherSkill = join(SKILLS_MANAGER_DIR, 'custom', 'my-custom');
+      createSkillDir(targetSkill);
+      createSkillDir(otherSkill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('anthropics/skills', { yes: true });
+
+      expect(existsSync(targetSkill)).toBe(false);
+      expect(existsSync(otherSkill)).toBe(true);
+
+      logSpy.mockRestore();
+    });
+  });
+
   describe('sources.json cleanup', () => {
     it('removes source record when all skills are deleted', async () => {
       const skillDir = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'only-skill');
