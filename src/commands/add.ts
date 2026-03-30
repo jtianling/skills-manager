@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
+import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
@@ -13,45 +13,7 @@ import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.j
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { executeSetup } from './setup.js';
 import { executeInit } from './init.js';
-import { detectSourceType } from '../utils/source-detection.js';
-
-function detectArgFormat(arg: string): 'owner-repo' | 'skill-name' | 'install-source' {
-  const sourceType = detectSourceType(arg);
-
-  if (sourceType === 'owner-repo') {
-    return 'owner-repo';
-  }
-
-  if (sourceType === 'unknown') {
-    return 'skill-name';
-  }
-
-  return 'install-source';
-}
-
-function findRepoInCentralRepository(
-  ownerRepo: string,
-  skillsService: SkillsService,
-): SkillInfo[] | null {
-  const [inputOwner, inputRepo] = ownerRepo.split('/');
-
-  const allSkills = skillsService.getAllSkills();
-
-  // Match official: source = "official/{providerKey}/{repoName}"
-  const providerKey = findOfficialProvider(inputOwner);
-  if (providerKey) {
-    const prefix = `official/${providerKey}/${inputRepo}`;
-    const matched = allSkills.filter((s) => s.source === prefix);
-    if (matched.length > 0) return matched;
-  }
-
-  // Match community: source = "community/{owner}/{repo}"
-  const communityPrefix = `community/${inputOwner}/${inputRepo}`;
-  const communityMatched = allSkills.filter((s) => s.source === communityPrefix);
-  if (communityMatched.length > 0) return communityMatched;
-
-  return null;
-}
+import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
 
 async function promptSkillsFromRepo(
   repoSkills: SkillInfo[],

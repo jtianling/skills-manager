@@ -8,10 +8,6 @@ vi.mock('../constants.js', async () => {
   const testDir = join(tmpdir(), `skillsmgr-test-${process.pid}-${Date.now()}`);
   return {
     SKILLS_MANAGER_DIR: testDir,
-    OFFICIAL_OWNERS: {
-      'anthropic': 'anthropics',
-      'vercel-labs': 'vercel-labs',
-    },
     SKILL_SOURCES: ['official', 'community', 'custom'] as const,
     findOfficialProvider: () => null,
   };
@@ -41,7 +37,10 @@ function createSkillDir(path: string, name?: string): void {
 
 describe('uninstall command', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.mocked(promptConfirm).mockReset();
+    vi.mocked(promptSkillsToUninstall).mockReset();
+    vi.mocked(interactiveCheckbox).mockReset();
     vi.mocked(promptConfirm).mockResolvedValue(true);
     vi.mocked(promptSkillsToUninstall).mockResolvedValue([]);
     vi.mocked(interactiveCheckbox).mockResolvedValue([]);
@@ -92,7 +91,9 @@ describe('uninstall command', () => {
 
     it('does nothing when user selects nothing from checkbox', async () => {
       const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-a');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-b');
       createSkillDir(skill1);
+      createSkillDir(skill2);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([]);
@@ -100,38 +101,44 @@ describe('uninstall command', () => {
       await executeUninstall('myorg/myrepo', {});
 
       expect(existsSync(skill1)).toBe(true);
+      expect(existsSync(skill2)).toBe(true);
       expect(logSpy).toHaveBeenCalledWith('No skills selected.');
 
       logSpy.mockRestore();
     });
 
     it('prioritizes official over community for same owner/repo', async () => {
-      const officialSkill = join(SKILLS_MANAGER_DIR, 'official', 'foo', 'bar', 'skill-x');
+      const officialSkill1 = join(SKILLS_MANAGER_DIR, 'official', 'foo', 'bar', 'skill-x');
+      const officialSkill2 = join(SKILLS_MANAGER_DIR, 'official', 'foo', 'bar', 'skill-z');
       const communitySkill = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-y');
-      createSkillDir(officialSkill);
+      createSkillDir(officialSkill1);
+      createSkillDir(officialSkill2);
       createSkillDir(communitySkill);
 
-      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([officialSkill]);
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([officialSkill1]);
 
       await executeUninstall('foo/bar', {});
 
       const passedSkills = vi.mocked(promptSkillsToUninstall).mock.calls[0][0];
-      const passedNames = passedSkills.map((s: { name: string }) => s.name);
-      expect(passedNames).toEqual(['skill-x']);
+      const passedNames = passedSkills.map((s: { name: string }) => s.name).sort();
+      expect(passedNames).toEqual(['skill-x', 'skill-z']);
       expect(existsSync(communitySkill)).toBe(true);
     });
 
     it('falls back to community when official does not exist', async () => {
-      const communitySkill = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-y');
-      createSkillDir(communitySkill);
+      const communitySkill1 = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-y');
+      const communitySkill2 = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-z');
+      createSkillDir(communitySkill1);
+      createSkillDir(communitySkill2);
 
-      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([communitySkill]);
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([communitySkill1]);
 
       await executeUninstall('foo/bar', {});
 
       expect(promptSkillsToUninstall).toHaveBeenCalledTimes(1);
       const passedSkills = vi.mocked(promptSkillsToUninstall).mock.calls[0][0];
-      expect(passedSkills.map((s: { name: string }) => s.name)).toEqual(['skill-y']);
+      const passedNames = passedSkills.map((s: { name: string }) => s.name).sort();
+      expect(passedNames).toEqual(['skill-y', 'skill-z']);
     });
 
     it('exits with error when owner/repo not found in official or community', async () => {

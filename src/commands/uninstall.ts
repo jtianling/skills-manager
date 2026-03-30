@@ -1,36 +1,19 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { readdirSync } from 'fs';
-import { SKILLS_MANAGER_DIR, OFFICIAL_OWNERS } from '../constants.js';
+import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
-import { collect } from '../types.js';
+import { SkillInfo, collect } from '../types.js';
 
 interface UninstallOptions {
+  all?: boolean;
   force?: boolean;
   skill?: string[];
-}
-
-function scanSkillNames(dir: string, maxDepth: number): string[] {
-  if (!fileExists(dir) || maxDepth <= 0) return [];
-  const skills: string[] = [];
-  const entries = getDirectoriesInDir(dir);
-  for (const entry of entries) {
-    if (fileExists(join(entry.path, 'SKILL.md'))) {
-      skills.push(entry.name);
-    } else {
-      skills.push(...scanSkillNames(entry.path, maxDepth - 1));
-    }
-  }
-  return skills;
-}
-
-function listSkillNames(dir: string): string[] {
-  return scanSkillNames(dir, 3);
 }
 
 function cleanEmptyParents(dir: string, stopAt: string): void {
@@ -79,70 +62,72 @@ async function confirmUninstall(skillNames: string[], force: boolean): Promise<b
   return promptConfirm('Confirm uninstall?', false);
 }
 
-async function uninstallProvider(providerKey: string, options: UninstallOptions): Promise<void> {
-  const sourcesService = new SourcesService();
-  const providerDir = join(SKILLS_MANAGER_DIR, 'official', providerKey);
-  if (!fileExists(providerDir)) {
-    console.error(`Error: No installed skills found for provider '${providerKey}'`);
-    process.exit(1);
+function removeSkills(
+  skills: SkillInfo[],
+  sourcesService: SourcesService,
+  groupsService: GroupsService
+): void {
+  for (const skill of skills) {
+    removeDir(skill.path);
+
+    const skillParent = join(skill.path, '..');
+    const sourceParts = skill.source.split('/');
+    const categoryDir = join(SKILLS_MANAGER_DIR, sourceParts[0]);
+
+    cleanEmptyParents(skillParent, categoryDir);
+    cleanSourcesForDir(skill.source, sourcesService);
+    groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
+    console.log(`Removed: ${skill.name}`);
   }
-
-  const skillNames = listSkillNames(providerDir);
-  if (skillNames.length === 0) {
-    console.error(`Error: No skills found under '${providerKey}'`);
-    process.exit(1);
-  }
-
-  const confirmed = await confirmUninstall(skillNames, options.force ?? false);
-  if (!confirmed) {
-    console.log('Cancelled.');
-    return;
-  }
-
-  const groupsService = new GroupsService();
-  for (const name of skillNames) {
-    groupsService.removeSkillFromAll(`official/${providerKey}/${name}`);
-  }
-
-  removeDir(providerDir);
-  cleanSourcesForDir(`official/${providerKey}`, sourcesService);
-  cleanEmptyParents(join(SKILLS_MANAGER_DIR, 'official', providerKey), join(SKILLS_MANAGER_DIR, 'official'));
-
-  const s = skillNames.length === 1 ? '' : 's';
-  console.log(`Uninstalled ${skillNames.length} skill${s} from ${providerKey}`);
 }
 
-async function uninstallCommunitySource(owner: string, repo: string, options: UninstallOptions): Promise<void> {
+async function uninstallSource(owner: string, repo: string, options: UninstallOptions): Promise<void> {
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const sourcesService = new SourcesService();
-  const sourceDir = join(SKILLS_MANAGER_DIR, 'community', owner, repo);
-  if (!fileExists(sourceDir)) {
+  const sourceKey = ['official', 'community']
+    .map((source) => `${source}/${owner}/${repo}`)
+    .find((source) => fileExists(join(SKILLS_MANAGER_DIR, source)));
+
+  if (!sourceKey) {
     console.error(`Error: No installed skills found for '${owner}/${repo}'`);
     process.exit(1);
   }
 
-  const skillNames = listSkillNames(sourceDir);
-  if (skillNames.length === 0) {
+  const sourceSkills = skillsService
+    .getAllSkills()
+    .filter((skill) => skill.source === sourceKey);
+
+  if (sourceSkills.length === 0) {
     console.error(`Error: No skills found under '${owner}/${repo}'`);
     process.exit(1);
   }
 
-  const confirmed = await confirmUninstall(skillNames, options.force ?? false);
+  let selectedSkills = sourceSkills;
+  if (!options.all && sourceSkills.length > 1) {
+    const selectedPaths = await promptSkillsToUninstall(sourceSkills);
+    if (selectedPaths.length === 0) {
+      console.log('No skills selected.');
+      return;
+    }
+
+    const selectedPathSet = new Set(selectedPaths);
+    selectedSkills = sourceSkills.filter((skill) => selectedPathSet.has(skill.path));
+  }
+
+  const confirmed = await confirmUninstall(
+    selectedSkills.map((skill) => skill.name),
+    options.force ?? false
+  );
   if (!confirmed) {
     console.log('Cancelled.');
     return;
   }
 
   const groupsService = new GroupsService();
-  for (const name of skillNames) {
-    groupsService.removeSkillFromAll(`community/${owner}/${repo}/${name}`);
-  }
+  removeSkills(selectedSkills, sourcesService, groupsService);
 
-  removeDir(sourceDir);
-  cleanSourcesForDir(`community/${owner}/${repo}`, sourcesService);
-  cleanEmptyParents(join(SKILLS_MANAGER_DIR, 'community', owner), join(SKILLS_MANAGER_DIR, 'community'));
-
-  const s = skillNames.length === 1 ? '' : 's';
-  console.log(`Uninstalled ${skillNames.length} skill${s} from ${owner}/${repo}`);
+  const s = selectedSkills.length === 1 ? '' : 's';
+  console.log(`Uninstalled ${selectedSkills.length} skill${s} from ${owner}/${repo}`);
 }
 
 async function uninstallByName(name: string, options: UninstallOptions): Promise<void> {
@@ -229,19 +214,7 @@ async function interactiveUninstall(): Promise<void> {
   }
 
   const groupsService = new GroupsService();
-
-  for (const skill of selectedSkills) {
-    removeDir(skill.path);
-
-    const skillParent = join(skill.path, '..');
-    const sourceParts = skill.source.split('/');
-    const categoryDir = join(SKILLS_MANAGER_DIR, sourceParts[0]);
-
-    cleanEmptyParents(skillParent, categoryDir);
-    cleanSourcesForDir(skill.source, sourcesService);
-    groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
-    console.log(`Removed: ${skill.name}`);
-  }
+  removeSkills(selectedSkills, sourcesService, groupsService);
 
   console.log(`Uninstalled ${selectedSkills.length} skills.`);
 }
@@ -267,14 +240,9 @@ export async function executeUninstall(
     return;
   }
 
-  if (OFFICIAL_OWNERS[identifier]) {
-    await uninstallProvider(identifier, options);
-    return;
-  }
-
   if (/^[^/]+\/[^/]+$/.test(identifier)) {
     const [owner, repo] = identifier.split('/');
-    await uninstallCommunitySource(owner, repo, options);
+    await uninstallSource(owner, repo, options);
     return;
   }
 
@@ -283,7 +251,8 @@ export async function executeUninstall(
 
 export const uninstallCommand = new Command('uninstall')
   .description('Remove skills from ~/.skills-manager/')
-  .argument('[identifier]', 'Provider name, owner/repo, or skill name')
+  .argument('[identifier]', 'owner/repo or skill name')
+  .option('--all', 'Skip selection prompt and uninstall all matching skills')
   .option('-f, --force', 'Skip confirmation prompt')
   .option('-s, --skill <name>', 'Specific skill to uninstall (repeatable)', collect, [])
   .action(async (identifier: string | undefined, options: UninstallOptions) => {
