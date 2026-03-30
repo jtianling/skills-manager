@@ -7,6 +7,7 @@ import { fileExists, readSymlinkTarget } from '../utils/fs.js';
 import { resolveTargetAgents } from '../utils/prompts.js';
 import { type RemoveOptions, type ToolName, collect } from '../types.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
+import { extractOwnerRepo } from '../utils/source-detection.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 
 function resolveSkillNames(
@@ -177,7 +178,9 @@ export async function executeRemove(
     process.exit(1);
   }
 
-  const ownerRepos = skillNames.filter((skillName) => detectArgFormat(skillName) === 'owner-repo');
+  const ownerRepos = skillNames
+    .filter((skillName) => detectArgFormat(skillName) === 'owner-repo')
+    .map((skillName) => extractOwnerRepo(skillName) ?? skillName);
   let plainSkillNames = skillNames.filter((skillName) => detectArgFormat(skillName) !== 'owner-repo');
 
   for (const ownerRepo of ownerRepos) {

@@ -6,6 +6,7 @@ import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
+import { extractOwnerRepo } from '../utils/source-detection.js';
 import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { SkillInfo, collect } from '../types.js';
@@ -246,8 +247,9 @@ export async function executeUninstall(
     return;
   }
 
-  if (/^[^/]+\/[^/]+$/.test(identifier)) {
-    const [owner, repo] = identifier.split('/');
+  const ownerRepo = extractOwnerRepo(identifier);
+  if (ownerRepo) {
+    const [owner, repo] = ownerRepo.split('/');
     await uninstallSource(owner, repo, options);
     return;
   }

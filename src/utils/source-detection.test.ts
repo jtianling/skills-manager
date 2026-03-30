@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension } from './source-detection.js';
+import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo } from './source-detection.js';
 
 describe('detectSourceType', () => {
   it('returns unknown for bare words', () => {
@@ -53,5 +53,47 @@ describe('detectSourceType', () => {
   it('detects owner/repo shorthand', () => {
     expect(detectSourceType('owner/repo')).toBe('owner-repo');
     expect(detectSourceType('owner/repo/')).toBe('owner-repo');
+  });
+});
+
+describe('extractOwnerRepo', () => {
+  it('extracts from HTTPS URL (GitHub)', () => {
+    expect(extractOwnerRepo('https://github.com/openai/skills')).toBe('openai/skills');
+  });
+
+  it('extracts from HTTPS URL (GitLab)', () => {
+    expect(extractOwnerRepo('https://gitlab.com/foo/bar')).toBe('foo/bar');
+  });
+
+  it('handles HTTPS URL with trailing slash', () => {
+    expect(extractOwnerRepo('https://github.com/openai/skills/')).toBe('openai/skills');
+  });
+
+  it('handles HTTPS URL with .git suffix', () => {
+    expect(extractOwnerRepo('https://github.com/openai/skills.git')).toBe('openai/skills');
+  });
+
+  it('extracts from SSH URL', () => {
+    expect(extractOwnerRepo('git@github.com:openai/skills.git')).toBe('openai/skills');
+  });
+
+  it('extracts from SSH URL without .git suffix', () => {
+    expect(extractOwnerRepo('git@gitlab.com:foo/bar')).toBe('foo/bar');
+  });
+
+  it('returns owner/repo as-is', () => {
+    expect(extractOwnerRepo('openai/skills')).toBe('openai/skills');
+  });
+
+  it('handles owner/repo with trailing slash', () => {
+    expect(extractOwnerRepo('openai/skills/')).toBe('openai/skills');
+  });
+
+  it('returns null for plain skill name', () => {
+    expect(extractOwnerRepo('commit')).toBeNull();
+  });
+
+  it('returns null for URL with insufficient path segments', () => {
+    expect(extractOwnerRepo('https://example.com/')).toBeNull();
   });
 });

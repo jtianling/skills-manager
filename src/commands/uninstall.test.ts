@@ -469,6 +469,51 @@ describe('uninstall command', () => {
     });
   });
 
+  describe('URL input support', () => {
+    it('uninstalls via HTTPS URL by extracting owner/repo', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'openai', 'skills', 'my-skill');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('https://github.com/openai/skills', { force: true });
+
+      expect(existsSync(skill)).toBe(false);
+      logSpy.mockRestore();
+    });
+
+    it('uninstalls via GitLab HTTPS URL', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'my-skill');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('https://gitlab.com/foo/bar', { force: true });
+
+      expect(existsSync(skill)).toBe(false);
+      logSpy.mockRestore();
+    });
+
+    it('uninstalls via SSH URL', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'openai', 'skills', 'my-skill');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('git@github.com:openai/skills.git', { force: true });
+
+      expect(existsSync(skill)).toBe(false);
+      logSpy.mockRestore();
+    });
+
+    it('falls back to skill name lookup for non-extractable URL', async () => {
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+
+      await expect(executeUninstall('https://example.com/', {})).rejects.toThrow('process.exit');
+      expect(mockExit).toHaveBeenCalledWith(1);
+      mockExit.mockRestore();
+    });
+  });
+
   describe('sources.json cleanup', () => {
     it('removes source record when all skills are deleted', async () => {
       const skillDir = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'only-skill');

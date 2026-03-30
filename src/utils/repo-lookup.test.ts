@@ -41,7 +41,19 @@ describe('repo lookup utils', () => {
   it('detects skill-name, owner/repo and install-source inputs', () => {
     expect(detectArgFormat('commit')).toBe('skill-name');
     expect(detectArgFormat('mattpocock/skills')).toBe('owner-repo');
-    expect(detectArgFormat('https://github.com/mattpocock/skills')).toBe('install-source');
+  });
+
+  it('returns owner-repo for HTTPS URL with extractable owner/repo', () => {
+    expect(detectArgFormat('https://github.com/openai/skills')).toBe('owner-repo');
+    expect(detectArgFormat('https://gitlab.com/foo/bar')).toBe('owner-repo');
+  });
+
+  it('returns owner-repo for SSH URL with extractable owner/repo', () => {
+    expect(detectArgFormat('git@github.com:openai/skills.git')).toBe('owner-repo');
+  });
+
+  it('returns install-source for URL without extractable owner/repo', () => {
+    expect(detectArgFormat('https://example.com/')).toBe('install-source');
   });
 
   it('finds community repo skills from the central repository', () => {

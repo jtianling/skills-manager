@@ -205,4 +205,40 @@ describe('remove command - owner/repo format', () => {
     expect(existsSync(deployedPath)).toBe(false);
     expect(console.log).toHaveBeenCalledWith('  ✓ Removed commit');
   });
+
+  it('removes via HTTPS URL by extracting owner/repo', async () => {
+    const sourceA = createSkillInManager(testManagerDir, 'community/mattpocock/skills', 'skill-a');
+    const deployedA = deploySkillAsLink(testProjectDir, 'skill-a', sourceA);
+
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['skill-a']);
+
+    await executeRemove('https://github.com/mattpocock/skills', {});
+
+    expect(existsSync(deployedA)).toBe(false);
+    expect(console.log).toHaveBeenCalledWith('  ✓ Removed skill-a');
+  });
+
+  it('removes via GitLab URL', async () => {
+    const sourceA = createSkillInManager(testManagerDir, 'community/foo/bar', 'skill-a');
+    const deployedA = deploySkillAsLink(testProjectDir, 'skill-a', sourceA);
+
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['skill-a']);
+
+    await executeRemove('https://gitlab.com/foo/bar', {});
+
+    expect(existsSync(deployedA)).toBe(false);
+    expect(console.log).toHaveBeenCalledWith('  ✓ Removed skill-a');
+  });
+
+  it('removes via SSH URL', async () => {
+    const sourceA = createSkillInManager(testManagerDir, 'community/mattpocock/skills', 'skill-a');
+    const deployedA = deploySkillAsLink(testProjectDir, 'skill-a', sourceA);
+
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['skill-a']);
+
+    await executeRemove('git@github.com:mattpocock/skills.git', {});
+
+    expect(existsSync(deployedA)).toBe(false);
+    expect(console.log).toHaveBeenCalledWith('  ✓ Removed skill-a');
+  });
 });
