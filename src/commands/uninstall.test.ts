@@ -54,52 +54,220 @@ describe('uninstall command', () => {
     }
   });
 
-  describe('provider-level uninstall', () => {
-    it('removes all skills under a provider', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic', 'skills', 'code-review');
-      createSkillDir(skillDir);
+  describe('scoped interactive uninstall (owner/repo)', () => {
+    it('shows checkbox with scoped skills for owner/repo', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-a');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-b');
+      const otherSkill = join(SKILLS_MANAGER_DIR, 'community', 'other', 'repo', 'skill-c');
+      createSkillDir(skill1);
+      createSkillDir(skill2);
+      createSkillDir(otherSkill);
 
-      const sourcesService = new SourcesService();
-      sourcesService.addSource('official/anthropic/skills', {
-        url: 'https://github.com/anthropics/skills',
-        type: 'official',
-        repoName: 'skills',
-      });
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skill1]);
 
-      await executeUninstall('anthropic', { force: true });
+      await executeUninstall('myorg/myrepo', {});
 
-      expect(existsSync(join(SKILLS_MANAGER_DIR, 'official', 'anthropic'))).toBe(false);
-      expect(sourcesService.getSource('official/anthropic/skills')).toBeUndefined();
+      expect(promptSkillsToUninstall).toHaveBeenCalledTimes(1);
+      const passedSkills = vi.mocked(promptSkillsToUninstall).mock.calls[0][0];
+      const passedNames = passedSkills.map((s: { name: string }) => s.name).sort();
+      expect(passedNames).toEqual(['skill-a', 'skill-b']);
     });
 
-    it('exits when provider has no installed skills', async () => {
+    it('removes only selected skills from checkbox', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-a');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-b');
+      createSkillDir(skill1);
+      createSkillDir(skill2);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skill1]);
+
+      await executeUninstall('myorg/myrepo', {});
+
+      expect(existsSync(skill1)).toBe(false);
+      expect(existsSync(skill2)).toBe(true);
+
+      logSpy.mockRestore();
+    });
+
+    it('does nothing when user selects nothing from checkbox', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'skill-a');
+      createSkillDir(skill1);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([]);
+
+      await executeUninstall('myorg/myrepo', {});
+
+      expect(existsSync(skill1)).toBe(true);
+      expect(logSpy).toHaveBeenCalledWith('No skills selected.');
+
+      logSpy.mockRestore();
+    });
+
+    it('prioritizes official over community for same owner/repo', async () => {
+      const officialSkill = join(SKILLS_MANAGER_DIR, 'official', 'foo', 'bar', 'skill-x');
+      const communitySkill = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-y');
+      createSkillDir(officialSkill);
+      createSkillDir(communitySkill);
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([officialSkill]);
+
+      await executeUninstall('foo/bar', {});
+
+      const passedSkills = vi.mocked(promptSkillsToUninstall).mock.calls[0][0];
+      const passedNames = passedSkills.map((s: { name: string }) => s.name);
+      expect(passedNames).toEqual(['skill-x']);
+      expect(existsSync(communitySkill)).toBe(true);
+    });
+
+    it('falls back to community when official does not exist', async () => {
+      const communitySkill = join(SKILLS_MANAGER_DIR, 'community', 'foo', 'bar', 'skill-y');
+      createSkillDir(communitySkill);
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([communitySkill]);
+
+      await executeUninstall('foo/bar', {});
+
+      expect(promptSkillsToUninstall).toHaveBeenCalledTimes(1);
+      const passedSkills = vi.mocked(promptSkillsToUninstall).mock.calls[0][0];
+      expect(passedSkills.map((s: { name: string }) => s.name)).toEqual(['skill-y']);
+    });
+
+    it('exits with error when owner/repo not found in official or community', async () => {
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+
+      await expect(executeUninstall('unknown/repo', {})).rejects.toThrow('process.exit');
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+
+      mockExit.mockRestore();
+    });
+
+    it('cleans empty parent dirs and sources after scoped uninstall', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'only-skill');
+      createSkillDir(skill1);
+
+      const sourcesService = new SourcesService();
+      sourcesService.addSource('community/org/repo', {
+        url: 'https://github.com/org/repo',
+        type: 'community',
+        repoName: 'repo',
+      });
+
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skill1]);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', {});
+
+      expect(existsSync(join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo'))).toBe(false);
+      expect(existsSync(join(SKILLS_MANAGER_DIR, 'community', 'org'))).toBe(false);
+      expect(sourcesService.getSource('community/org/repo')).toBeUndefined();
+
+      logSpy.mockRestore();
+    });
+  });
+
+  describe('--all flag', () => {
+    it('skips checkbox and goes straight to confirm', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-a');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-b');
+      createSkillDir(skill1);
+      createSkillDir(skill2);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', { all: true });
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).toHaveBeenCalled();
+      expect(existsSync(skill1)).toBe(false);
+      expect(existsSync(skill2)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('--all with --force skips both checkbox and confirm', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'skill-a');
+      createSkillDir(skill1);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', { all: true, force: true });
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(existsSync(skill1)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('--all removes all skills under official source', async () => {
+      const skill1 = join(SKILLS_MANAGER_DIR, 'official', 'anthropics', 'skills', 'commit');
+      const skill2 = join(SKILLS_MANAGER_DIR, 'official', 'anthropics', 'skills', 'code-review');
+      createSkillDir(skill1);
+      createSkillDir(skill2);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('anthropics/skills', { all: true, force: true });
+
+      expect(existsSync(skill1)).toBe(false);
+      expect(existsSync(skill2)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+  });
+
+  describe('single skill skips checkbox', () => {
+    it('skips checkbox when source has only one skill', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'only-skill');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', {});
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).toHaveBeenCalled();
+      expect(existsSync(skill)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+
+    it('single skill respects --force to skip confirm', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'only-skill');
+      createSkillDir(skill);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall('org/repo', { force: true });
+
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(existsSync(skill)).toBe(false);
+
+      logSpy.mockRestore();
+    });
+  });
+
+  describe('bare word goes to uninstallByName (no provider shorthand)', () => {
+    it('treats former provider name as skill name lookup', async () => {
       const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
         throw new Error('process.exit');
       }) as never);
 
       await expect(executeUninstall('anthropic', { force: true })).rejects.toThrow('process.exit');
       expect(mockExit).toHaveBeenCalledWith(1);
+      expect(promptSkillsToUninstall).not.toHaveBeenCalled();
+
       mockExit.mockRestore();
     });
-  });
 
-  describe('community source-level uninstall', () => {
-    it('removes all skills under owner/repo', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo', 'my-skill');
+    it('bare word finds and removes a skill by name', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'community', 'someorg', 'somerepo', 'my-tool');
       createSkillDir(skillDir);
 
-      const sourcesService = new SourcesService();
-      sourcesService.addSource('community/myorg/myrepo', {
-        url: 'https://github.com/myorg/myrepo',
-        type: 'community',
-        repoName: 'myrepo',
-      });
+      await executeUninstall('my-tool', { force: true });
 
-      await executeUninstall('myorg/myrepo', { force: true });
-
-      expect(existsSync(join(SKILLS_MANAGER_DIR, 'community', 'myorg', 'myrepo'))).toBe(false);
-      expect(existsSync(join(SKILLS_MANAGER_DIR, 'community', 'myorg'))).toBe(false);
-      expect(sourcesService.getSource('community/myorg/myrepo')).toBeUndefined();
+      expect(existsSync(skillDir)).toBe(false);
     });
   });
 
@@ -152,19 +320,23 @@ describe('uninstall command', () => {
   });
 
   describe('user cancellation', () => {
-    it('does not delete when user declines confirmation', async () => {
-      const skillDir = join(SKILLS_MANAGER_DIR, 'official', 'anthropic', 'skills', 'keep-me');
-      createSkillDir(skillDir);
+    it('does not delete when user declines confirmation for scoped uninstall', async () => {
+      const skill = join(SKILLS_MANAGER_DIR, 'community', 'org', 'repo', 'keep-me');
+      createSkillDir(skill);
 
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([skill]);
       vi.mocked(promptConfirm).mockResolvedValueOnce(false);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await executeUninstall('anthropic', {});
+      await executeUninstall('org/repo', {});
 
-      expect(existsSync(skillDir)).toBe(true);
+      expect(existsSync(skill)).toBe(true);
+
+      logSpy.mockRestore();
     });
   });
 
-  describe('interactive uninstall', () => {
+  describe('interactive uninstall (no args)', () => {
     it('prints empty state when no installed skills exist', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
