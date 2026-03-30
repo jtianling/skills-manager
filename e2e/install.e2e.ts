@@ -229,6 +229,37 @@ describe('install E2E', () => {
     expect(afterInstalled.length).toBe(2);
   });
 
+  it('install vercel-labs/agent-skills skips interactive prompt when all skills already installed', async () => {
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr setup');
+    await tmux.waitForText('Setup complete');
+    tmux.destroy();
+
+    // Install all skills first
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install vercel-labs/agent-skills --all');
+    await tmux.waitForText('Installed', 110_000);
+    tmux.destroy();
+
+    const skillsDir = join(env.homeDir, '.skills-manager', 'official', 'vercel-labs', 'agent-skills');
+    const installedBefore = getInstalledSkillNames(skillsDir);
+    expect(installedBefore.length).toBeGreaterThanOrEqual(6);
+
+    // Run interactive install again — all skills already installed, should skip prompt
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install vercel-labs/agent-skills');
+    await tmux.waitForText('Found', 90_000);
+    await tmux.waitForText('already installed', 10_000);
+
+    const pane = await tmux.capturePane();
+    // Should NOT show interactive selection
+    expect(pane).not.toContain('Select skills to install');
+
+    // No changes to installed skills
+    const installedAfter = getInstalledSkillNames(skillsDir);
+    expect(installedAfter.sort()).toEqual(installedBefore.sort());
+  });
+
   it('install GitHub tree URL for a specific skill path', async () => {
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr setup');

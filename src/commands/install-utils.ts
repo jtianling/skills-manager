@@ -185,6 +185,11 @@ export async function selectSkills(skills: InstallableSkill[], options: InstallO
     return skills;
   }
 
+  if (installedNames && skills.every((s) => installedNames.has(s.name))) {
+    console.log(`All ${skills.length} skills already installed.`);
+    return [];
+  }
+
   const newNames = await promptSkillsToInstall(skills, installedNames);
   if (newNames.length === 0) {
     console.log(installedNames?.size ? 'No new skills to install' : 'No skills selected');
