@@ -63,6 +63,24 @@ function collectPluginSkillDirs(pluginBase: string, basePath: string, skills?: s
   return dirs;
 }
 
+function resolvePluginBase(basePath: string, pluginRoot: string | undefined, source: string | undefined): string {
+  if (!source) {
+    return join(basePath, pluginRoot ?? '');
+  }
+  if (!pluginRoot) {
+    return join(basePath, source);
+  }
+
+  const normalizedRoot = pluginRoot.replace(/^\.\//, '');
+  const normalizedSource = source.replace(/^\.\//, '');
+
+  if (normalizedSource.startsWith(normalizedRoot + '/') || normalizedSource === normalizedRoot) {
+    return join(basePath, source);
+  }
+
+  return join(basePath, pluginRoot, source);
+}
+
 function parseMarketplaceManifest(basePath: string, manifest: MarketplaceManifest): string[] {
   const pluginRoot = manifest.metadata?.pluginRoot;
 
@@ -84,7 +102,7 @@ function parseMarketplaceManifest(basePath: string, manifest: MarketplaceManifes
     if (source !== undefined && !isValidRelativePath(source)) continue;
     if (source !== undefined && hasPathTraversal(source)) continue;
 
-    const pluginBase = join(basePath, pluginRoot ?? '', source ?? '');
+    const pluginBase = resolvePluginBase(basePath, pluginRoot, source);
     dirs.push(...collectPluginSkillDirs(pluginBase, basePath, plugin.skills));
   }
 

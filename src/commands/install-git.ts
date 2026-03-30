@@ -275,6 +275,13 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       throw new Error('No skills found in repository');
     }
 
+    const targetBase = computeRepoTargetBase(context);
+    const installedNames = new Set(
+      getDirectoriesInDir(targetBase)
+        .filter((d) => fileExists(join(d.path, 'SKILL.md')))
+        .map((d) => d.name),
+    );
+
     let selectedSkills: InstallableSkill[];
     if (context.options.skill?.length) {
       selectedSkills = await selectSkills(skills, context.options);
@@ -283,13 +290,12 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       console.log(`Found ${skills.length} skill${skills.length === 1 ? '' : 's'}.\n`);
       selectedSkills = context.options.all
         ? skills
-        : await selectSkills(skills, context.options);
+        : await selectSkills(skills, context.options, installedNames);
     }
     if (selectedSkills.length === 0) {
       return createInstallResult([], []);
     }
 
-    const targetBase = computeRepoTargetBase(context);
     const installedPaths: string[] = [];
     const allScriptFiles: string[] = [];
 

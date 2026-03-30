@@ -198,12 +198,15 @@ export async function promptSkillsToUninstall(skills: SkillInfo[]): Promise<stri
 }
 
 export async function promptSkillsToInstall(
-  skills: Array<{ name: string; description: string }>
+  skills: Array<{ name: string; description: string }>,
+  installedNames?: Set<string>,
 ): Promise<string[]> {
   const choices = skills.map((skill) => ({
     name: skill.name,
     description: skill.description,
     value: skill.name,
+    checked: installedNames?.has(skill.name) ?? false,
+    suffix: installedNames?.has(skill.name) ? ' (installed)' : undefined,
   }));
 
   return interactiveCheckbox({

@@ -199,6 +199,35 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - **WHEN** `~/.skills-manager/official/anthropic/` 下存在残留的 `commands/` 目录
 - **THEN** 该目录被跳过, 不报错
 
+### 5. 安装时预选已安装 skill
+
+`install` 命令进入交互式选择时, 系统 SHALL 检测目标安装目录中已存在的 skill, 在 checkbox 列表中将其预选 (`checked: true`) 并显示 `(installed)` 后缀.
+
+**检测逻辑**:
+1. 在显示选择列表前, 计算目标安装路径 (`computeRepoTargetBase`)
+2. 扫描目标路径下的子目录, 过滤出包含 `SKILL.md` 的目录
+3. 将目录名收集为 `installedNames` Set
+4. 传递给 `promptSkillsToInstall(skills, installedNames)`
+
+**UI 表现**:
+- 已安装 skill: 显示为 `◉ skill-name (installed)` (预选中, 黄色 suffix)
+- 未安装 skill: 显示为 `◯ skill-name` (未选中)
+
+**不影响的场景**:
+- `--all` 选项: 不触发交互式选择, 不涉及预选
+- `--skill` 选项: 直接过滤, 不触发交互式选择
+- `uninstall` 命令: 默认全部不勾选, 不使用预选
+
+#### Scenario: 部分 skill 已安装时的交互式选择
+
+- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库有 skill-a, skill-b, skill-c, 其中 skill-a 已安装
+- **THEN** 选择列表中 skill-a 显示为 `◉ skill-a (installed)`, skill-b 和 skill-c 显示为 `◯`
+
+#### Scenario: 首次安装时无预选
+
+- **WHEN** 用户首次执行 `install owner/repo` (无 `--all`), 目标目录不存在
+- **THEN** 所有 skill 显示为 `◯`, 无预选
+
 ## 冲突处理
 
 当多个 source 包含同名 skill 时:

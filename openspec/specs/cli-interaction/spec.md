@@ -129,6 +129,8 @@ The `install` command SHALL have alias `i`.
 类型: 自定义 readline 实现
 触发: `init` 命令的 skill 选择, `install` 命令的 skill 选择
 
+**install 命令预选**: 当用户再次 install 同一仓库时, 已安装的 skill 在列表中自动 checked 并显示 `(installed)` 后缀.  详见 skill-lifecycle spec "安装时预选已安装 skill" 章节.
+
 **核心参数**:
 - `pageSize`: 可视区域大小, 默认 15
 - `searchThreshold`: 超过此数量启用搜索, 默认 20

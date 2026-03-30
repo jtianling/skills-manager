@@ -73,6 +73,27 @@ describe('getPluginSkillPaths', () => {
       expect(paths).toContain(join(basePath, 'my-plugin', 'skills'));
     });
 
+    it('handles repo-root-relative source that overlaps pluginRoot', () => {
+      mkdirSync(join(basePath, '.claude-plugin'), { recursive: true });
+      mkdirSync(join(basePath, '.github', 'plugins', 'plugin-a', 'skills'), { recursive: true });
+      mkdirSync(join(basePath, '.github', 'plugins', 'plugin-b', 'skills'), { recursive: true });
+
+      writeFileSync(
+        join(basePath, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({
+          metadata: { pluginRoot: './.github/plugins' },
+          plugins: [
+            { name: 'plugin-a', source: './.github/plugins/plugin-a', skills: ['./skills/'] },
+            { name: 'plugin-b', source: './.github/plugins/plugin-b', skills: ['./skills/'] },
+          ],
+        }),
+      );
+
+      const paths = getPluginSkillPaths(basePath);
+      expect(paths).toContain(join(basePath, '.github', 'plugins', 'plugin-a', 'skills'));
+      expect(paths).toContain(join(basePath, '.github', 'plugins', 'plugin-b', 'skills'));
+    });
+
     it('skips remote source objects', () => {
       mkdirSync(join(basePath, '.claude-plugin'), { recursive: true });
 

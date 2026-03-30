@@ -8,14 +8,23 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 系统 SHALL 读取仓库根目录下 `.claude-plugin/marketplace.json` 文件, 解析其中的 `metadata.pluginRoot` 和 `plugins` 数组, 为每个 plugin 构造 skill 搜索路径.
 
 搜索路径构造规则:
-- 基础路径 = `basePath` + `pluginRoot` + `plugin.source`
+- 基础路径通过 `resolvePluginBase(basePath, pluginRoot, source)` 计算:
+  - 若 `source` 未定义: `basePath + pluginRoot`
+  - 若 `pluginRoot` 未定义: `basePath + source`
+  - 若 `source` (去除 `./` 前缀后) 以 `pluginRoot` (去除 `./` 前缀后) 开头: `basePath + source` (source 已包含 pluginRoot, 避免路径重复)
+  - 否则: `basePath + pluginRoot + source` (source 相对于 pluginRoot)
 - 每个 plugin 的 skills 目录 = 基础路径 + `plugin.skills`(若为字符串)
 - 若 plugin 未声明 `skills` 字段, 使用基础路径 + `skills/` 作为约定目录
 
-#### Scenario: marketplace.json 存在且包含多个 plugin
+#### Scenario: marketplace.json 存在且包含多个 plugin (pluginRoot 相对 source)
 
-- **WHEN** 仓库根目录存在 `.claude-plugin/marketplace.json`, 内容包含 `pluginRoot: "./.github/plugins"` 和 3 个 plugin 声明
+- **WHEN** 仓库根目录存在 `.claude-plugin/marketplace.json`, 内容包含 `pluginRoot: "./.github/plugins"` 和 3 个 plugin 声明, source 为 pluginRoot 相对路径 (如 `"./azure-sdk-python"`)
 - **THEN** 系统 SHALL 返回 3 个 skill 搜索路径, 每个对应一个 plugin 的 skills 目录
+
+#### Scenario: marketplace.json source 为仓库根相对路径 (与 pluginRoot 重叠)
+
+- **WHEN** 仓库根目录存在 `.claude-plugin/marketplace.json`, `pluginRoot: "./.github/plugins"`, plugin source 为 `"./.github/plugins/azure-sdk-python"` (已包含 pluginRoot 前缀)
+- **THEN** 系统 SHALL 检测到 source 包含 pluginRoot 前缀, 使用 `basePath + source` 构造路径 (而非 `basePath + pluginRoot + source`), 正确返回 skill 搜索路径
 
 #### Scenario: marketplace.json 不存在
 

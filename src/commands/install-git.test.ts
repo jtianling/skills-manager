@@ -116,7 +116,7 @@ describe('collectGitCloneSkills', () => {
     expect(names).toEqual(['curated-skill', 'exp-skill', 'sys-skill']);
   });
 
-  it('simulates microsoft/skills structure', () => {
+  it('simulates microsoft/skills structure with pluginRoot-relative source', () => {
     mkdirSync(join(repoPath, '.claude-plugin'), { recursive: true });
     writeFileSync(
       join(repoPath, '.claude-plugin', 'marketplace.json'),
@@ -135,7 +135,6 @@ describe('collectGitCloneSkills', () => {
     writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-sdk-ts', 'skills', 'azure-identity-ts'), 'azure-identity-ts', 'Identity TS');
     writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-skills', 'skills', 'azure-deploy'), 'azure-deploy', 'Deploy');
 
-    // Top-level skills (like .github/skills/ - reachable via recursive scan)
     writeSkillMd(join(repoPath, 'skills', 'top-level-skill'), 'top-level-skill', 'Top');
 
     const skills = collectGitCloneSkills(repoPath);
@@ -146,6 +145,35 @@ describe('collectGitCloneSkills', () => {
       'azure-identity-ts',
       'azure-storage-py',
       'top-level-skill',
+    ]);
+  });
+
+  it('simulates microsoft/skills structure with repo-root-relative source', () => {
+    mkdirSync(join(repoPath, '.claude-plugin'), { recursive: true });
+    writeFileSync(
+      join(repoPath, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        metadata: { pluginRoot: './.github/plugins' },
+        plugins: [
+          { name: 'azure-sdk-python', source: './.github/plugins/azure-sdk-python', skills: ['./skills/'] },
+          { name: 'azure-sdk-ts', source: './.github/plugins/azure-sdk-ts', skills: ['./skills/'] },
+          { name: 'azure-skills', source: './.github/plugins/azure-skills', skills: ['./skills/'] },
+        ],
+      }),
+    );
+
+    writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-sdk-python', 'skills', 'azure-identity-py'), 'azure-identity-py', 'Identity');
+    writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-sdk-python', 'skills', 'azure-storage-py'), 'azure-storage-py', 'Storage');
+    writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-sdk-ts', 'skills', 'azure-identity-ts'), 'azure-identity-ts', 'Identity TS');
+    writeSkillMd(join(repoPath, '.github', 'plugins', 'azure-skills', 'skills', 'azure-deploy'), 'azure-deploy', 'Deploy');
+
+    const skills = collectGitCloneSkills(repoPath);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual([
+      'azure-deploy',
+      'azure-identity-py',
+      'azure-identity-ts',
+      'azure-storage-py',
     ]);
   });
 });
