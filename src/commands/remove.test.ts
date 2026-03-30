@@ -100,16 +100,10 @@ describe('remove command', () => {
     expect(existsSync(deployedPath2)).toBe(false);
   });
 
-  it('exits when no skill specified', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit');
-    }) as never);
+  it('shows no skills message when no args and no deployed skills', async () => {
+    await executeRemove(undefined, {});
 
-    await expect(executeRemove(undefined, {})).rejects.toThrow('process.exit');
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining('No skill specified')
-    );
+    expect(console.log).toHaveBeenCalledWith('No skills deployed in current project.');
   });
 
   it('deduplicates positional arg and --skill', async () => {

@@ -238,15 +238,15 @@ describe('flags lifecycle E2E', () => {
     expect(output).toContain("Unknown agent: 'fake-agent'");
   });
 
-  it('remove with no args shows usage error', async () => {
+  it('remove with no args and no deployed skills shows message', async () => {
     env = createTestEnv();
     await setupAndInstall();
 
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr remove', env.projectDir);
-    const output = await tmux.waitForText('No skill specified', 10_000);
+    const output = await tmux.waitForText('No skills deployed', 10_000);
     tmux.destroy();
 
-    expect(output).toContain('No skill specified');
+    expect(output).toContain('No skills deployed in current project');
   });
 });

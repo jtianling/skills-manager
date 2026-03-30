@@ -209,7 +209,9 @@ async function handleRepoSkillSelection(
 
   const selectedNames = (options.skill && options.skill.length > 0)
     ? filterSkillsByFlag(repoSkills, options.skill)
-    : await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames);
+    : options.all
+      ? repoSkills.map((s) => s.name)
+      : await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));
@@ -283,7 +285,9 @@ async function handleRemoteInstallAndDeploy(
   try {
     selectedNames = (options.skill && options.skill.length > 0)
       ? filterSkillsByFlag(installedSkills, options.skill)
-      : await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames);
+      : options.all
+        ? installedSkills.map((s) => s.name)
+        : await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames);
   } catch {
     rollback();
     return;
@@ -370,7 +374,9 @@ async function handleGroupBatchDeploy(
   }
 
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
-  const selectedNames = await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames);
+  const selectedNames = options.all
+    ? groupSkills.map((s) => s.name)
+    : await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));
@@ -398,6 +404,10 @@ export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
 ): Promise<void> {
+  if (options.yes) {
+    options.all = true;
+  }
+
   if (options.group && arg) {
     console.log('Cannot use --group with a skill argument.');
     process.exit(1);
@@ -448,11 +458,13 @@ export async function executeAdd(
 export const addCommand = new Command('add')
   .description('Add a skill to the project (or globally with -g)')
   .argument('[arg]', 'Skill name, owner/repo, or URL')
+  .option('--all', 'Add all skills without prompting')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('-g, --global', 'Install globally to agent user-level directories')
   .option('--group <name>', 'Batch deploy all skills from a group')
   .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
+  .option('-y, --yes', 'Skip all prompts (equivalent to --all)')
   .option('--same-agents', 'Use currently configured agents')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);

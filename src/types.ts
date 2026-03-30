@@ -48,12 +48,16 @@ export interface AddOptions {
   skill?: string[];
   global?: boolean;
   group?: string;
+  all?: boolean;
+  yes?: boolean;
 }
 
 export interface RemoveOptions {
   skill?: string[];
   global?: boolean;
   agent?: string[];
+  all?: boolean;
+  yes?: boolean;
 }
 
 export interface ListOptions {

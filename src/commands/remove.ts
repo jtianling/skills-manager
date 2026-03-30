@@ -142,6 +142,8 @@ async function removeByOwnerRepo(
       console.log(`No matching skills from '${ownerRepo}' for: ${explicitSkillNames.join(', ')}`);
       return [];
     }
+  } else if (options.all) {
+    selectedSkillNames = matchedSkillNames;
   } else {
     const choices = matchedSkillNames.map((name) => ({
       name,
@@ -162,10 +164,41 @@ async function removeByOwnerRepo(
   return selectedSkillNames;
 }
 
+async function interactiveRemove(): Promise<void> {
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+  const deployer = new Deployer(process.cwd());
+  const deployedSkills = scanner.getDeployedSkills();
+
+  if (deployedSkills.length === 0) {
+    console.log('No skills deployed in current project.');
+    return;
+  }
+
+  const choices = deployedSkills.map((s) => ({
+    name: s.name,
+    value: s.name,
+  }));
+  const selected = await interactiveCheckbox({
+    message: 'Select skills to remove:',
+    choices,
+  });
+
+  if (selected.length === 0) {
+    console.log('No skills selected.');
+    return;
+  }
+
+  removeSkillNames(selected, deployer);
+}
+
 export async function executeRemove(
   name: string | undefined,
   options: RemoveOptions = {},
 ): Promise<void> {
+  if (options.yes) {
+    options.all = true;
+  }
+
   if (!fileExists(SKILLS_MANAGER_DIR)) {
     console.log('Skills manager not set up. Run: skillsmgr setup');
     process.exit(1);
@@ -174,8 +207,8 @@ export async function executeRemove(
   const skillNames = resolveSkillNames(name, options);
 
   if (skillNames.length === 0) {
-    console.log('No skill specified. Usage: skillsmgr remove <name|owner/repo> or skillsmgr remove -s <name|owner/repo>');
-    process.exit(1);
+    await interactiveRemove();
+    return;
   }
 
   const ownerRepos = skillNames
@@ -233,9 +266,11 @@ export async function executeRemove(
 export const removeCommand = new Command('remove')
   .description('Remove a skill from the project (or globally with -g)')
   .argument('[name]', 'Skill name to remove')
+  .option('--all', 'Remove all matching skills without prompting')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
   .option('-g, --global', 'Remove from global agent directories')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
+  .option('-y, --yes', 'Skip all prompts (equivalent to --all)')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);
   });
