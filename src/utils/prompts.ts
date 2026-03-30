@@ -1,4 +1,6 @@
 import inquirer from 'inquirer';
+import * as readline from 'readline';
+import { Writable } from 'stream';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
@@ -243,20 +245,75 @@ export async function promptSelect<T extends string>(
   message: string,
   choices: Array<{ name: string; value: T }>
 ): Promise<T> {
-  try {
-    const { selected } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'selected',
-        message,
-        choices,
-      },
-    ]);
+  return new Promise((resolve) => {
+    let cursor = 0;
+    let lastLines = 0;
 
-    return selected;
-  } catch (error) {
-    handlePromptError(error);
-  }
+    const nullOutput = new Writable({ write(_chunk, _encoding, cb) { cb(); } });
+    const rl = readline.createInterface({ input: process.stdin, output: nullOutput });
+
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    readline.emitKeypressEvents(process.stdin, rl);
+
+    const render = (initial = false) => {
+      if (!initial && lastLines > 0) {
+        process.stdout.write(`\x1b[${lastLines}A\x1b[J`);
+      }
+      const lines: string[] = [`? ${message}`];
+      choices.forEach((c, i) => {
+        const prefix = i === cursor ? '\x1b[36m❯\x1b[0m' : ' ';
+        const highlight = i === cursor ? '\x1b[36m' : '';
+        const reset = '\x1b[0m';
+        lines.push(`  ${prefix} ${highlight}${c.name}${reset}`);
+      });
+      lines.push('\x1b[2m(↑↓ move, enter select, q quit)\x1b[0m');
+      console.log(lines.join('\n'));
+      lastLines = lines.length;
+    };
+
+    const cleanup = () => {
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.removeListener('keypress', onKey);
+      rl.close();
+    };
+
+    const onKey = (_str: string | undefined, key: readline.Key) => {
+      if (!key) return;
+      if (key.name === 'c' && key.ctrl) {
+        cleanup();
+        console.log('\nCancelled.');
+        process.exit(0);
+      }
+      if (key.name === 'q') {
+        cleanup();
+        console.log('\nCancelled.');
+        process.exit(0);
+      }
+      if (key.name === 'up' || key.name === 'k') {
+        cursor = cursor > 0 ? cursor - 1 : choices.length - 1;
+        render();
+        return;
+      }
+      if (key.name === 'down' || key.name === 'j') {
+        cursor = cursor < choices.length - 1 ? cursor + 1 : 0;
+        render();
+        return;
+      }
+      if (key.name === 'return') {
+        cleanup();
+        process.stdout.write(`\x1b[${lastLines}A\x1b[J`);
+        console.log(`? ${message} \x1b[36m${choices[cursor].name}\x1b[0m`);
+        resolve(choices[cursor].value);
+      }
+    };
+
+    render(true);
+    process.stdin.on('keypress', onKey);
+  });
 }
 
 export interface ResolveAgentsOptions {

@@ -122,10 +122,15 @@ async function handleSkillName(
     console.log(`Multiple skills found with name '${name}':`);
     const choices = matchingSkills.map((s, i) => ({
       name: `${i + 1}. ${s.source}/${s.name}`,
-      value: s.source,
+      value: s.path,
     }));
-    const selectedSource = await promptSelect('Select skill:', choices);
-    skill = matchingSkills.find((s) => s.source === selectedSource)!;
+    const selectedPath = await promptSelect('Select skill:', choices);
+    const found = matchingSkills.find((s) => s.path === selectedPath);
+    if (!found) {
+      console.log('Failed to resolve skill selection.');
+      process.exit(1);
+    }
+    skill = found;
   }
 
   if (options.global) {
