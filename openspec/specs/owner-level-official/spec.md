@@ -44,13 +44,13 @@ interface OfficialMatch {
 
 #### Scenario: 未注册 repo 不走 installFromOfficial
 - **WHEN** findOfficialProvider 返回 `exactRepoMatch: false`
-- **THEN** 系统 SHALL 不调用 `installFromOfficial`, 而是走 `installFromGitHubUrl` 或 `installViaGitClone` 流程, 仅在路径和分类上使用 official
+- **THEN** 系统 SHALL 不调用 `installFromOfficial`, 而是走 `installViaGitClone` 流程, 仅在路径和分类上使用 official
 
 ### Requirement: owner/repo 简写 official 路由
 
 当用户输入 `owner/repo` 简写格式时, 系统 SHALL 使用 `findOfficialProvider` 判断:
 - `exactRepoMatch: true` → 调用 `installFromOfficial`, 仅安装该匹配的 repo
-- `exactRepoMatch: false` → 转为 GitHub URL, 走 URL 流程但归类为 official
+- `exactRepoMatch: false` → 转为 GitHub URL, 走 `installViaGitClone` 流程但归类为 official
 - `null` → 转为 GitHub URL, 走 community 流程
 
 #### Scenario: 已注册 repo 的 owner/repo 简写

@@ -64,9 +64,11 @@ export const OFFICIAL_OWNERS: Record<string, string> = {
 
 export const STANDARD_SKILL_PATHS = [
   'skills',
+  'skills/.curated',
+  'skills/.experimental',
+  'skills/.system',
   '.agents/skills',
   '.claude/skills',
-  '.github/skills',
 ] as const;
 
 export function findOfficialProvider(owner: string): string | null {

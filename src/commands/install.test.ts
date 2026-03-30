@@ -13,59 +13,6 @@ vi.mock('../utils/interactive-select.js', () => ({
   interactiveCheckbox: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock('../services/github.js', async () => {
-  const { mkdirSync, writeFileSync } = await import('fs');
-  const { join } = await import('path');
-
-  class GitHubService {
-    parseGitHubUrl(url: string) {
-      const treeMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?/);
-      if (treeMatch) {
-        return {
-          owner: treeMatch[1],
-          repo: treeMatch[2],
-          branch: treeMatch[3],
-          path: treeMatch[4],
-        };
-      }
-
-      const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-      if (!match) {
-        return null;
-      }
-
-      return {
-        owner: match[1],
-        repo: match[2],
-      };
-    }
-
-    async getDefaultBranch() {
-      return 'main';
-    }
-
-    async listSkills() {
-      return [{ name: 'remote-skill', path: 'skills/remote-skill' }];
-    }
-
-    async fetchRootFile() {
-      return null;
-    }
-
-    async downloadSkill(_owner: string, _repo: string, _path: string, targetDir: string) {
-      mkdirSync(targetDir, { recursive: true });
-      writeFileSync(join(targetDir, 'SKILL.md'), '---\nname: remote-skill\ndescription: Remote skill\n---\n');
-    }
-
-    async downloadRepoRoot(_owner: string, _repo: string, targetDir: string) {
-      mkdirSync(targetDir, { recursive: true });
-      writeFileSync(join(targetDir, 'SKILL.md'), '---\nname: remote-root\ndescription: Remote root skill\n---\n');
-    }
-  }
-
-  return { GitHubService };
-});
-
 import * as constants from '../constants.js';
 import { executeInstall } from './install.js';
 

@@ -88,6 +88,34 @@ describe('collectGitCloneSkills', () => {
     expect(skills.map((s) => s.name)).toEqual(['plain-skill']);
   });
 
+  it('discovers skills at repo root when no standard paths exist', () => {
+    writeSkillMd(join(repoPath, 'tdd'), 'tdd', 'TDD skill');
+    writeSkillMd(join(repoPath, 'qa'), 'qa', 'QA skill');
+    writeSkillMd(join(repoPath, 'write-a-skill'), 'write-a-skill', 'Write a skill');
+
+    const skills = collectGitCloneSkills(repoPath);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual(['qa', 'tdd', 'write-a-skill']);
+  });
+
+  it('prefers standard paths over root scan', () => {
+    writeSkillMd(join(repoPath, 'skills', 'standard-skill'), 'standard-skill', 'Standard');
+    writeSkillMd(join(repoPath, 'root-skill'), 'root-skill', 'Root');
+
+    const skills = collectGitCloneSkills(repoPath);
+    expect(skills.map((s) => s.name)).toEqual(['standard-skill']);
+  });
+
+  it('discovers skills in curated/experimental/system subdirectories', () => {
+    writeSkillMd(join(repoPath, 'skills', '.curated', 'curated-skill'), 'curated-skill', 'Curated');
+    writeSkillMd(join(repoPath, 'skills', '.experimental', 'exp-skill'), 'exp-skill', 'Experimental');
+    writeSkillMd(join(repoPath, 'skills', '.system', 'sys-skill'), 'sys-skill', 'System');
+
+    const skills = collectGitCloneSkills(repoPath);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual(['curated-skill', 'exp-skill', 'sys-skill']);
+  });
+
   it('simulates microsoft/skills structure', () => {
     mkdirSync(join(repoPath, '.claude-plugin'), { recursive: true });
     writeFileSync(

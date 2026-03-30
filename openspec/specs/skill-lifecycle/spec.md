@@ -189,7 +189,7 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - 仅更新本地已安装的 skill, 不安装新 skill
 - 跳过名为 `commands` 的目录 (避免将残留 commands 子目录误识别为 skill)
 - 比较本地和远程的 SKILL.md 内容 (全文对比, 不截断)
-- 内容不同时, 先 `removeDir()` 删除整个本地 skill 目录, 再通过 GitHub API 重新下载
+- 内容不同时, 先 `removeDir()` 删除整个本地 skill 目录, 再重新下载
 
 #### Scenario: update only updates skills
 - **WHEN** 用户执行 `update` 命令
@@ -216,13 +216,9 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 
 当仓库根目录存在 SKILL.md 且仓库内不存在子目录形式的 skill 时, 系统 SHALL 将整个仓库视为单个 skill.  安装后的存储结构 SHALL 为 `~/.skills-manager/{source}/{repo}/{skill-name}/SKILL.md`, 其中 `skill-name` 优先取 SKILL.md frontmatter 中的 `name` 字段, 无 name 时 fallback 为仓库名.
 
-#### Scenario: Root SKILL.md repo installed via GitHub API
-- **WHEN** 用户执行 `install https://github.com/owner/repo` 且仓库内无子目录 skill, 但根目录存在 SKILL.md (frontmatter name 为 "deep-research")
-- **THEN** 系统将整个仓库内容下载到 `~/.skills-manager/community/repo/deep-research/`, 该目录包含 SKILL.md 及仓库中所有其他文件和目录
-
 #### Scenario: Root SKILL.md repo installed via git clone
-- **WHEN** GitHub API 不可用, 回退到 git clone 安装, 仓库根目录存在 SKILL.md (frontmatter name 为 "deep-research")
-- **THEN** 克隆完成后, 系统将非 `.git` 文件移入 `{repoPath}/deep-research/` 子目录, 最终结构与 GitHub API 安装一致
+- **WHEN** 用户执行 `install https://github.com/owner/repo` 且仓库内无子目录 skill, 但根目录存在 SKILL.md (frontmatter name 为 "deep-research")
+- **THEN** 克隆完成后, 系统将仓库视为单 skill, 安装到 `~/.skills-manager/community/owner/repo/deep-research/`
 
 #### Scenario: Root SKILL.md without name in frontmatter
 - **WHEN** 根目录 SKILL.md 的 frontmatter 中没有 name 字段

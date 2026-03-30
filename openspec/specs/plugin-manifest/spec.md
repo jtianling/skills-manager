@@ -75,9 +75,11 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 系统 SHALL 在 Git clone 安装流程的 skill 发现阶段, 扫描以下标准目录 (除了 plugin manifest 发现和根目录 SKILL.md 检查):
 
 - `skills/`
+- `skills/.curated/`
+- `skills/.experimental/`
+- `skills/.system/`
 - `.agents/skills/`
 - `.claude/skills/`
-- `.github/skills/`
 
 所有来源的结果 SHALL 按 name 合并去重.
 
@@ -105,12 +107,12 @@ TBD - created by archiving change add-plugin-manifest-support. Update Purpose af
 - **WHEN** marketplace.json 中某 plugin 的 source 为 `{"source": "some-repo", "repo": "https://github.com/..."}`
 - **THEN** 系统 SHALL 跳过该 plugin, 不尝试解析其 skills 路径
 
-### Requirement: GitHub API 路径标准目录对齐
+### Requirement: 标准���录列表
 
-系统 SHALL 在 GitHub API 发现路径 (`listGitHubRepoSkills`) 中扫描与 git clone 路径相同的标准目录列表: `skills/`, `.agents/skills/`, `.claude/skills/`, `.github/skills/`.
+安��时, 系统 SHALL 在以下标准目录中扫描 skill: `skills/`, `skills/.curated/`, `skills/.experimental/`, `skills/.system/`, `.agents/skills/`, `.claude/skills/`. 这些路径由 `STANDARD_SKILL_PATHS` 常量定义.
 
-#### Scenario: GitHub API 路径发现 .claude/skills 下的 skill
+#### Scenario: 发现 .claude/skills 下的 skill
 
-- **WHEN** 通过 GitHub API 安装仓库, 仓库的 `.claude/skills/` 目录下有 skill 子目录
+- **WHEN** 安装仓库, 仓库的 `.claude/skills/` 目录下有 skill 子目录
 - **THEN** 系统 SHALL 发现并列出这些 skills
 

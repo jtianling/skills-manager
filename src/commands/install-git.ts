@@ -114,6 +114,8 @@ export function collectGitCloneSkills(repoPath: string): InstallableSkill[] {
         description: frontmatter.description ?? '',
         path: repoPath,
       }];
+    } else {
+      skills = scanForSkills(repoPath, 1);
     }
   }
 

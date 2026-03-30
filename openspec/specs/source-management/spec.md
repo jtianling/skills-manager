@@ -8,8 +8,7 @@
 |------|---------|------|
 | official | `~/.skills-manager/official/{providerKey}/{repoName}/{skillName}/` | 官方 skill, 由 OFFICIAL_PROVIDERS registry 定义或 owner 匹配 |
 | community | `~/.skills-manager/community/{owner}/{repo}/{skillName}/` | 社区仓库 |
-| custom | `~/.skills-manager/custom/{name}/` | 本地自定义无分组 skill |
-| custom (grouped) | `~/.skills-manager/custom/{groupName}/{name}/` | 本地自定义分组 skill |
+| custom | `~/.skills-manager/custom/{name}/` | 本地自定义 skill |
 
 official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供者. 同一 official owner 下的未注册仓库也归类为 official.
 
@@ -25,17 +24,13 @@ official 提供者由 `OFFICIAL_PROVIDERS` registry 定义, 支持多个提供�
 - **WHEN** 安装 community 仓库 `obra/superpowers` 的 skills
 - **THEN** 安装到 `~/.skills-manager/community/obra/superpowers/{skill-name}/`
 
-#### Scenario: Custom 无分组安装路径
-- **WHEN** 使用 `custom-install` 安装且不指定 `--group`
+#### Scenario: Custom 安装路径
+- **WHEN** 安装本地 skill
 - **THEN** 安装到 `~/.skills-manager/custom/{name}/`
 
-#### Scenario: Custom 分组安装路径
-- **WHEN** 使用 `custom-install --group my-tools` 安装
-- **THEN** 安装到 `~/.skills-manager/custom/my-tools/{name}/`
-
-#### Scenario: Custom 分组目录检测
+#### Scenario: Custom 分组目录不再识别
 - **WHEN** `~/.skills-manager/custom/` 下的子目录不含 SKILL.md
-- **THEN** 该子目录视为分组目录, 扫描其下级目录寻找 skill
+- **THEN** 该子目录 SHALL 被忽略, 不再视为分组目录
 
 ## 来源元数据
 
@@ -106,45 +101,45 @@ key 格式:
 - **WHEN** 安装 `obra/superpowers` 的 skills
 - **THEN** source key SHALL 为 `"community/obra/superpowers"`
 
+### Requirement: install --group 不影响 source key
+`install --group` 时, source key SHALL 不包含 group 信息.  source key 格式与不带 `--group` 时一致.
+
+#### Scenario: 带 --group 安装的 custom skill source key
+- **WHEN** 用户执行 `skillsmgr install ./my-linter --group python`
+- **THEN** source key SHALL 为 `"custom/my-linter"`, 不含 group 信息
+
 ## 安装流程
 
 ### 输入解析
 
-`install` 命令接受 `<source>` 参数, 按以下优先级解析:
+`install` 命令接受 `<source>` 参数, 使用 `detectSourceType()` 按以下优先级路由:
 
-1. **official 快捷名**: 查询 `OFFICIAL_PROVIDERS[source]`, 匹配则调用 `installFromOfficial(source)`
-2. **别名**: 查询所有 provider 的 aliases, 匹配则调用 `installFromOfficial(resolvedKey)`
-3. **`owner/repo` 简写** (如 `vercel-labs/agent-skills`):
-   - 调用 `findOfficialProvider(owner, repo)`:
-     - `exactRepoMatch: true` → 调用 `installFromOfficial(providerKey, repo)` 仅安装该 repo
-     - `exactRepoMatch: false` → 转为 GitHub URL, 走 URL 流程但归类为 official
-     - `null` → 转为 GitHub URL, 走 community 流程
-4. **GitHub URL** (含 `github.com`): 解析 owner/repo, 用 `findOfficialProvider` 判断分类
-5. **其他 URL**: 直接使用 git clone
+| 源类型 | 匹配条件 | 处理 |
+|--------|---------|------|
+| remote-zip | URL + .zip/.skill 扩展名 | `installFromRemoteZip()` |
+| local-zip | 本地路径 + .zip/.skill 扩展名 | `installFromZip()` |
+| owner-repo | `owner/repo` 格式 | 构建 `https://github.com/{owner}/{repo}`, 走 `installViaGitClone()` |
+| remote-url | `http(s)://` 或 `git@` 开头 | `installViaGitClone()` |
+| local-path | `/`, `./`, `../`, `~` 前缀 | `installFromLocalDir()` |
+| unknown | 其他 | 报错 "Unknown source format" |
 
-#### Scenario: anthropic 关键字安装
-- **WHEN** 用户执行 `skillsmgr install anthropic`
-- **THEN** 匹配 `OFFICIAL_PROVIDERS['anthropic']`, 遍历其 repos, 安装到 `official/anthropic/{repoName}/`
-
-#### Scenario: 别名安装
-- **WHEN** 用户执行 `skillsmgr install vercel`
-- **THEN** 解析别名为 vercel-labs, 调用 `installFromOfficial('vercel-labs')`
-
-#### Scenario: owner/repo 简写, 已注册 repo
-- **WHEN** 用户执行 `skillsmgr install vercel-labs/agent-skills`
-- **THEN** findOfficialProvider 返回 exactRepoMatch=true, 调用 `installFromOfficial('vercel-labs', 'agent-skills')`
-
-#### Scenario: owner/repo 简写, 未注册 repo
-- **WHEN** 用户执行 `skillsmgr install vercel-labs/new-repo`
-- **THEN** findOfficialProvider 返回 exactRepoMatch=false, 转为 GitHub URL, 安装到 `official/vercel-labs/new-repo/`
+official/community 分类在 git clone 完成后由 `findOfficialProvider(owner)` 决定.
 
 #### Scenario: owner/repo 简写识别为 community
 - **WHEN** 用户执行 `skillsmgr install obra/superpowers`
-- **THEN** 解析 owner=obra, repo=superpowers, 反查 registry 无匹配, 安装到 `community/obra/superpowers/`
+- **THEN** 构建 URL `https://github.com/obra/superpowers`, git clone, 安装到 `community/obra/superpowers/`
 
-#### Scenario: GitHub URL 识别为 official
+#### Scenario: owner/repo 简写识别为 official
+- **WHEN** 用户执行 `skillsmgr install vercel-labs/agent-skills`
+- **THEN** 构建 URL `https://github.com/vercel-labs/agent-skills`, git clone, 反查 registry 匹配, 安装到 `official/vercel-labs/agent-skills/`
+
+#### Scenario: GitHub URL 安装
 - **WHEN** 用户执行 `skillsmgr install https://github.com/vercel-labs/agent-skills`
-- **THEN** 解析 owner=vercel-labs, repo=agent-skills, 反查 registry 匹配, 安装到 `official/vercel-labs/agent-skills/`
+- **THEN** 直接走 `installViaGitClone()`, 安装到 `official/vercel-labs/agent-skills/`
+
+#### Scenario: 裸词报错
+- **WHEN** 用户执行 `skillsmgr install local-skill` (无路径前缀)
+- **THEN** 报错 "Unknown source format"
 
 ### Requirement: zip 包来源识别 (.zip / .skill)
 
@@ -178,104 +173,9 @@ key 格式:
 | `--custom` | boolean | 安装到 custom/ 而非 community/ |
 | `-s, --skill <name>` | string[] | 仅安装指定的 skill (可重复), 跳过选择提示 |
 
-### GitHub API 下载流程 (优先路径)
+### Git Clone 安装流程
 
-#### installFromOfficial(providerKey)
-
-通用 official 安装路径, 适用于所有 `OFFICIAL_PROVIDERS` 中的提供者:
-
-1. 从 `OFFICIAL_PROVIDERS[providerKey]` 获取 `owner`, `repo`, `skillsPath`
-2. 如有 `skillsPath`, 直接调用 `listSkills(owner, repo, skillsPath)`; 否则依次在 `['skills', '.', 'src/skills']` 搜索
-3. 获取 default branch
-4. 如果没有 skill → `process.exit(1)` 并报错 "No skills found in repository"
-5. 有 skill 时:
-   - 使用 ProgressBar 逐个获取 SKILL.md 描述 (通过 raw.githubusercontent.com)
-   - 获取失败时 description 为空, 不中断流程
-   - 提示用户选择 (除非 `--all` 或 `--skill` 已指定)
-   - 用户不选择任何 skill 时输出 "No skills selected" 并返回 (不 exit)
-   - 下载选中的 skill
-6. 保存 source 元数据, key 为 `"official/{providerKey}"`, URL 为 `"https://github.com/{owner}/{repo}"`
-
-#### Scenario: Install official skills only
-- **WHEN** 用户执行 `install anthropic` 或 `install openai`
-- **THEN** 只下载和安装 skill, 不查找或安装 commands
-
-#### Scenario: No skills found in official repo
-- **WHEN** official 仓库中没有 skill
-- **THEN** 输出 "No skills found in repository" 并 exit(1), 不再尝试安装 commands
-
-#### installFromGitHubUrl()
-
-通用 GitHub URL 处理, 返回 boolean 表示是否成功:
-
-1. 调用 `githubService.parseGitHubUrl()` 解析 URL
-2. 解析失败 → 返回 false (会回退到 git clone)
-
-**特定 skill URL (有 path)**:
-- 从 path 提取 skill 名称 (最后一段)
-- 直接下载该 skill, 不提示选择
-- 返回 true
-
-**仓库 URL (无 path)**:
-1. 依次在 `['skills', '.', 'src/skills']` 路径下搜索 skill 目录
-2. 对每个路径调用 `listSkills()`, 有结果就停止搜索
-3. 有 skill 时正常流程 (提示选择, 下载)
-4. **没有子目录 skill 时, 检查根目录 SKILL.md**:
-   - 通过 `raw.githubusercontent.com/{owner}/{repo}/{branch}/SKILL.md` 获取根目录 SKILL.md
-   - 如果存在 (HTTP 200): 解析 frontmatter 获取 name 和 description, name 为空时 fallback 为 repo 名
-   - 将整个仓库根目录内容下载到 `{targetBase}/{skillName}/`
-   - 直接安装, 不提示用户选择 (单 skill 仓库)
-   - 保存 source 元数据
-   - 返回 true
-5. 根目录也没有 SKILL.md 时 → 返回 false
-6. 有 skill 时 (子目录形式):
-   - 逐个获取 SKILL.md 描述, **没有 SKILL.md 的目录 SHALL 作为分组目录处理**: 再调用一次 `listSkills()` 获取其子目录, 对每个子目录检查 SKILL.md. 发现的 skill 使用其完整路径 (如 `skills/research-en/research`) 作为 path, 但 name 仅为最后一段目录名.
-   - 分组目录探测限制为一层 — 不做无限递归
-   - 过滤后无 skill → 返回 false
-   - 提示选择 (除非 `--all` 或 `--skill` 已指定), 单个 skill 时直接安装不提示
-   - 用户不选择任何 skill 时输出 "No skills selected" 并返回 true (视为成功, 不回退到 git clone)
-   - 下载选中的 skill
-7. 确定 source key:
-   - 反查 `OFFICIAL_PROVIDERS` 匹配 → `"official/{providerKey}"`
-   - `--custom` → `"custom/{repo}"`
-   - 默认 → `"community/{owner}/{repo}"`
-8. 返回 true
-
-#### Scenario: GitHub URL install skills only
-- **WHEN** 用户安装 GitHub 仓库
-- **THEN** 只搜索, 提示选择, 和下载 skill, 不处理 commands
-
-#### Scenario: Repo with no skills
-- **WHEN** 仓库中既无子目录 skill 也无根目录 SKILL.md
-- **THEN** 返回 false (回退到 git clone), 不再因存在 commands 而返回 true
-
-#### Scenario: Root SKILL.md detected after subdirectory search fails
-- **WHEN** 仓库 URL 安装时, `listSkills()` 对所有路径都未找到子目录 skill, 但根目录存在 SKILL.md
-- **THEN** 系统获取根目录 SKILL.md, 解析 frontmatter, 将仓库内容下载到 `{targetBase}/{skillName}/`, 返回 true
-
-#### Scenario: Root SKILL.md not found either
-- **WHEN** 仓库既无子目录 skill, 根目录也无 SKILL.md
-- **THEN** 返回 false
-
-#### Scenario: 扁平仓库结构正常识别
-- **WHEN** 仓库 `skills/` 下的子目录都直接包含 SKILL.md (如 `skills/code-review/SKILL.md`)
-- **THEN** 行为不变, 每个子目录被识别为 skill
-
-#### Scenario: 分组嵌套结构识别
-- **WHEN** 仓库 `skills/` 下的子目录不包含 SKILL.md, 但其子目录包含 SKILL.md (如 `skills/research-en/research/SKILL.md`)
-- **THEN** 系统 SHALL 将分组目录展开, 识别嵌套的 skill, skill name 为最内层目录名 (如 `research`)
-
-#### Scenario: 混合结构 — 扁平和嵌套共存
-- **WHEN** 仓库 `skills/` 下部分子目录直接有 SKILL.md, 部分子目录为分组目录
-- **THEN** 系统 SHALL 同时识别两种结构中的 skill
-
-#### Scenario: 分组目录无 skill
-- **WHEN** 仓库 `skills/` 下的子目录无 SKILL.md, 且其子目录也无 SKILL.md
-- **THEN** 该子目录被忽略, 不作为 skill 或分组处理
-
-### Git Clone 回退
-
-当 GitHub API 不可用或返回 false 时:
+所有远程仓库安装统一使用 git clone, 不使用 GitHub API:
 
 #### 特定 skill URL
 
@@ -293,71 +193,73 @@ key 格式:
 
 #### installViaGitClone() - 仓库 URL
 
-当 GitHub API 不可用或返回 false 时使用 git clone:
-
-git clone 回退路径中的目标目录和 source key SHALL 使用与 GitHub API 路径相同的规则:
+目标目录和 source key 规则:
 - official (反查 registry 匹配): `official/{providerKey}/`
 - community: `community/{owner}/{repo}/`
 - custom: `custom/{repo}/`
 
-1. 克隆仓库到目标目录
-2. **检查 `skills/` 子目录**: 对所有仓库 (不限于 anthropic), 如果 `{repoPath}/skills/` 存在, 则将 skillsRoot 设为该目录
-3. 递归扫描子目录查找包含 SKILL.md 的目录, 最大深度为 2 层:
-   - 如果子目录包含 SKILL.md → 识别为 skill
-   - 如果子目录不包含 SKILL.md 且深度未超限 → 继续扫描其子目录
-4. **发现嵌套 skill 后, 将其移动到 `{repoPath}/{skill-name}/` 扁平路径** (如果 skill 不在 repoPath 直接子目录下). 移动完成后清理空的分组目录.
-5. **如果未找到子目录 skill, 检查克隆目录根的 SKILL.md**:
-   - 使用 `fileExists(join(repoPath, 'SKILL.md'))` 检查
-   - 如果存在: 解析 frontmatter 获取 name (fallback 为仓库名)
-   - 创建 `{repoPath}/{skillName}/` 子目录
-   - 将根目录下所有非 `.git` 文件和目录移入该子目录
-   - 删除 `.git` 目录 (不再需要, 已安装完成)
-   - 作为单 skill 安装, 不提示选择
-6. 无 skill → `process.exit(1)` 并输出 "No skills found in repository"
-7. 有 skill 时选择逻辑:
+1. 克隆仓库到临时目录 (`git clone --depth 1`)
+2. **Skill 发现** (`collectGitCloneSkills`), 按以下优先级搜索:
+   a. **Plugin manifest**: 检查 `.claude-plugin/marketplace.json` 和 `.claude-plugin/plugin.json`, 解析 `metadata.pluginRoot` + `plugins[].source` + `plugins[].skills` 构造搜索路径 (详见 plugin-manifest spec)
+   b. **标准路径** (`STANDARD_SKILL_PATHS`): 依次扫描以下目录, 递归查找包含 SKILL.md 的子目录 (最大深度 3):
+      - `skills/`
+      - `skills/.curated/`
+      - `skills/.experimental/`
+      - `skills/.system/`
+      - `.agents/skills/`
+      - `.claude/skills/`
+   c. **根目录 SKILL.md** (单 skill 仓库): 如果上述路径都未找到 skill, 检查克隆目录根的 SKILL.md. 存在时解析 frontmatter 获取 name (fallback 为仓库名), 作为单 skill 处理
+   d. **根目录子文件夹扫描**: 如果根目录也没有 SKILL.md, 扫描根目录的直接子文件夹 (深度 1) 查找包含 SKILL.md 的目录
+3. manifest 和标准路径的结果会合并去重 (按 name 去重, 先发现的优先)
+4. 无 skill → 抛出 "No skills found in repository" 错误
+5. 有 skill 时选择逻辑:
    - `--skill` 指定了 skill 名称 → 仅安装指定的 skill, 跳过选择提示
    - `--all` 且无 `--skill` → 安装所有 skill, 跳过选择提示
-   - 其他 → 提示选择 (单个 skill 时直接安装不提示)
-8. "Found N skills." 输出: 有 `--skill` 过滤时反映过滤后的数量, 无过滤时反映仓库总数
-9. **未选中的 skill 被物理删除** (`removeDir(skill.path)`)
-10. 用户不选择任何 skill 时, **整个仓库目录被删除** (`removeDir(repoPath)`)
-10. 保存 source 元数据
+   - 其他 → 提示选择
+6. "Found N skills." 输出: 有 `--skill` 过滤时反映过滤后的数量, 无过滤时反映仓库总数
+7. 将选中的 skill 复制到目标目录
+8. 清理临时克隆目录
+9. 保存 source 元数据
 
-#### Scenario: Git clone install skills only
+#### Scenario: Install skills only
 - **WHEN** 通过 git clone 安装仓库
-- **THEN** 只查找和安装 skill, 不统计或提及 commands
+- **THEN** 只查找和安装 skill
 
-#### Scenario: Git clone repo with no skills
+#### Scenario: Repo with no skills
 - **WHEN** 克隆的仓库中没有 skill
-- **THEN** 输出 "No skills found in repository" 并 exit(1)
+- **THEN** 抛出 "No skills found in repository" 错误
 
-#### Scenario: Git clone detects root SKILL.md
-- **WHEN** GitHub API 失败后 git clone 仓库, 克隆目录根有 SKILL.md 但无子目录 skill
-- **THEN** 系统将文件重组到 `{repoPath}/{skillName}/` 子目录, 直接安装
+#### Scenario: Root SKILL.md 单 skill 仓库
+- **WHEN** git clone 仓库, 克隆目录根有 SKILL.md 但无子目录 skill
+- **THEN** 系统将整个仓库视为单个 skill, 解析 frontmatter 获取 name, 直接安装
 
-#### Scenario: Git clone root skill with no frontmatter name
+#### Scenario: Root SKILL.md 无 name 字段
 - **WHEN** 根目录 SKILL.md 无 frontmatter name 字段
 - **THEN** 使用仓库名作为 skill name
 
-#### Scenario: Git clone 扁平仓库不受影响
-- **WHEN** git clone 仓库, 根目录或 skills/ 下的子目录直接包含 SKILL.md
+#### Scenario: 根目录子文件夹扫描
+- **WHEN** 仓库无标准路径 skill 且无根 SKILL.md, 但根目录子文件夹包含 SKILL.md (如 `tdd/SKILL.md`, `qa/SKILL.md`)
+- **THEN** 系统 SHALL 扫描根目录子文件夹, 发现并列出所有 skill
+
+#### Scenario: 标准路径优先于根目录扫描
+- **WHEN** 仓库 `skills/` 下有 skill, 且根目录子文件夹也有 SKILL.md
+- **THEN** 系统 SHALL 只返回 `skills/` 下的 skill, 不扫描根目录
+
+#### Scenario: Skills in curated/experimental/system subdirectories
+- **WHEN** 仓库有 `skills/.curated/curated-skill/SKILL.md` 和 `skills/.experimental/exp-skill/SKILL.md`
+- **THEN** 系统 SHALL 发现这些 skill
+
+#### Scenario: 扁平仓库结构正常识别
+- **WHEN** git clone 仓库, `skills/` 下的子目录直接包含 SKILL.md
 - **THEN** 行为不变, 正常识别和安装
 
-#### Scenario: Git clone 识别 skills/ 子目录
-- **WHEN** git clone 仓库, 仓库根目录有 `skills/` 子目录
-- **THEN** 系统 SHALL 在 `skills/` 下搜索 skill, 而非仅在仓库根目录
+#### Scenario: Community 安装路径
+- **WHEN** 安装 `obra/superpowers`
+- **THEN** 克隆到临时目录, 复制到 `~/.skills-manager/community/obra/superpowers/`
 
-#### Scenario: Git clone 识别嵌套 skill 并扁平化
-- **WHEN** git clone 仓库, `skills/research-en/research/SKILL.md` 存在
-- **THEN** 系统 SHALL 识别 `research` 为 skill, 安装后存储为 `{repoPath}/research/` (扁平化)
-
-#### Scenario: Git clone community 目录
-- **WHEN** GitHub API 失败, 回退 git clone 安装 `obra/superpowers`
-- **THEN** 克隆到 `~/.skills-manager/community/obra/superpowers/`
-
-#### Scenario: Git clone official 目录
-- **WHEN** GitHub API 失败, 回退 git clone 安装 `openai/skills`
-- **THEN** 反查 registry 匹配 openai, 克隆到 `~/.skills-manager/official/openai/`
+#### Scenario: Official 安装路径
+- **WHEN** 安装 `openai/skills`
+- **THEN** 反查 registry 匹配 openai, 复制到 `~/.skills-manager/official/openai/skills/`
 
 ### 安装目标路径
 
@@ -388,8 +290,8 @@ git clone 回退路径中的目标目录和 source key SHALL 使用与 GitHub AP
 ### 错误处理
 
 - `~/.skills-manager/` 不存在 → `process.exit(1)` 并提示 setup
-- GitHub API 失败 → 输出 "GitHub API failed, falling back to git clone..." 并尝试 git clone
-- 仓库中无 skill → `process.exit(1)` 并报错 "No skills found in repository"
+- 仓库中无 skill → 抛出 "No skills found in repository" 错误
+- git clone 失败 → 捕获 Error, 输出 `error.message` 并 `process.exit(1)`
 - 网络错误 → 捕获 Error, 输出 `error.message` 并 `process.exit(1)`
 
 ## 更新流程
@@ -463,7 +365,7 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 1. 扫描本地已安装的 skill 目录 (`getDirectoriesInDir(targetBase)`)
 2. 跳过名为 `commands` 的目录 (避免误识别为 skill)
 3. 跳过没有 SKILL.md 的目录
-4. 探测远程 skill 目录位置: 依次尝试 `skills/`, `.`, `src/skills/`
+4. 探测远程 skill 目录位置: 依次尝试 `skills/`, `.`
 5. **如果远程无子目录 skill, 额外检查根目录 SKILL.md**:
    - 获取 `raw.githubusercontent.com/{owner}/{repo}/{branch}/SKILL.md`
    - 如果存在 (HTTP 200), 标记该仓库为根目录 skill 仓库
@@ -511,12 +413,12 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 ### 局限性
 
-- 仅通过 GitHub API 更新, 不支持 git clone 方式的 source 更新 (如果 parseGitHubUrl 返回 null, 该 source 被跳过并显示警告)
+- 更新流程仍通过 GitHub API 检查远程变更, 不支持非 GitHub source 的更新 (如果 parseGitHubUrl 返回 null, 该 source 被跳过并显示警告)
 - 仅更新已安装的 skill, 不发现和安装新增内容
 - skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
 - 没有版本号或 hash 比较, 依赖文本内容全文对比
 
-## GitHub Service 详解
+## GitHub Service 详解 (仅用于 update 流程)
 
 ### API 请求
 
@@ -603,35 +505,26 @@ Sparse checkout 流程:
 
 ### 输入解析
 
-- test_install_officialShorthand_usesOfficialPath: official 快捷名安装到 official/{providerKey}/
-- test_install_ownerRepoShorthand_resolvesToGitHubUrl: "user/repo" 格式正确解析为 GitHub URL
+- test_install_ownerRepoShorthand_resolvesToGitClone: "user/repo" 格式构建 GitHub URL 后走 git clone
 - test_install_ownerRepoWithTrailingSlash_trimmed: "user/repo/" 末尾斜杠被去掉
-- test_install_ownerRepoWithProtocol_notResolvedAsShorthand: "https://user/repo" 不被视为简写 (包含 ://)
-- test_install_ownerRepoThreeSegments_notResolvedAsShorthand: "a/b/c" 不匹配 (多于两段)
-- test_install_githubUrl_usesGitHubApi: 包含 github.com 的 URL 尝试 GitHub API
-- test_install_nonGithubUrl_usesGitClone: 非 GitHub URL 直接 git clone
+- test_install_remoteUrl_usesGitClone: 远程 URL (包括 GitHub URL) 统一走 git clone
+- test_install_bareWord_throwsUnknownFormat: 裸单词抛出 "Unknown source format" 错误
 
-### GitHub API 安装
+### Git Clone 安装
 
-- test_installFromOfficial_noSkills_exits: 仓库无 skill 时 process.exit(1)
-- test_installFromOfficial_allOption_skipsPrompt: --all 选项跳过选择提示
-- test_installFromOfficial_noSelection_returnsNoExit: 用户不选择时输出 "No skills selected" 但不 exit
-- test_installFromOfficial_fetchSkillMdFails_emptyDescription: 获取 SKILL.md 失败时 description 为空, 不中断
-- test_installFromOfficial_customSkillsPath_usesDirectPath: 有 skillsPath 时直接使用该路径
-- test_installFromOfficial_noSkillsPath_scansDefaults: 无 skillsPath 时依次扫描默认路径
-- test_installFromGitHubUrl_specificSkill_directDownload: tree URL 直接下载指定 skill, 无提示
-- test_installFromGitHubUrl_repoUrl_searchesMultiplePaths: 仓库 URL 时依次搜索 skills/, ., src/skills/
-- test_installFromGitHubUrl_parseFails_returnsFalse: URL 解析失败返回 false
-- test_installFromGitHubUrl_customOption_installsToCustomDir: --custom 选项安装到 custom/ 目录
-
-### Git Clone 回退
-
-- test_gitClone_githubApiFails_fallsToClone: GitHub API 失败后回退到 git clone
 - test_gitClone_specificSkillUrl_usesSparseCheckout: tree URL 使用 sparse checkout
-- test_gitClone_existingRepo_pullsInsteadOfClone: 已存在的仓库使用 git pull
 - test_gitClone_shallowClone_depthOne: 新 clone 使用 --depth 1
-- test_gitClone_noSelectionOnPrompt_removesRepo: 用户不选择时删除整个 clone 目录
-- test_gitClone_partialSelection_removesUnselected: 部分选择时删除未选中的 skill 目录
+
+### Skill 发现 (collectGitCloneSkills)
+
+- test_collectSkills_manifestPlugins_discoversFromManifest: 从 marketplace.json 发现 skills
+- test_collectSkills_mergesManifestAndStandardPaths: manifest 和标准路径结果合并去重
+- test_collectSkills_deduplicatesByName: 同名 skill 只保留先发现的
+- test_collectSkills_standardPathsOnly_discoversSkills: 无 manifest 时从标准路径发现 skills
+- test_collectSkills_rootSkillMd_singleSkillRepo: 根目录 SKILL.md 识别为单 skill 仓库
+- test_collectSkills_rootSubdirScan_discoversSkillsAtRoot: 根目录子文件夹包含 SKILL.md 时发现 skills
+- test_collectSkills_standardPathsPriority_overRootScan: 标准路径有结果时不扫描根目录
+- test_collectSkills_curatedExperimentalSystem_discovered: skills/.curated, .experimental, .system 下的 skill 被发现
 
 ### Source 元数据
 

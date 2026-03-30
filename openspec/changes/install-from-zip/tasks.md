@@ -39,6 +39,5 @@
 
 ## 7. --group 参数全局支持
 
-- [ ] 7.1 `installFromOfficial` 和 `installFromGitHubUrl` 支持 `--group` 参数: 有 group 时安装到 `custom/{group}/{skill}/`
-- [ ] 7.2 `installViaGitClone` 支持 `--group` 参数
+- [ ] 7.1 `installViaGitClone` 支持 `--group` 参数: 有 group 时安装到 `custom/{group}/{skill}/`
 - [ ] 7.3 编写 group 参数的集成测试(本地 + 远程)

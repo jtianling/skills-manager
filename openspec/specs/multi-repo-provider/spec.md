@@ -37,7 +37,7 @@
 - **THEN** 行为与多 repo 时一致, 只是 subGroup 只有一个
 
 #### Scenario: 某个 repo 拉取失败
-- **WHEN** 多 repo 遍历中某个 repo 的 GitHub API 调用失败
+- **WHEN** 多 repo 遍历中某个 repo 的安装失败
 - **THEN** 系统 SHALL 输出警告, 继续处理其余 repo; 如果所有 repo 都失败则报错退出
 
 ### Requirement: 多 repo 落盘路径
