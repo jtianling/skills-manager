@@ -165,7 +165,7 @@ describe('install directory as group E2E', () => {
     await tmux.waitForText(/Added|added/i, 15_000);
 
     const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['another-group']).toContain('custom/tl-skill');
+    expect(groups['another-group']).toContain('custom/two-layer/tl-skill');
   });
 
   it('uninstall cleans up empty parent directory after removing last skill', async () => {

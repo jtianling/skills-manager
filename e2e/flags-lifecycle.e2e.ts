@@ -67,7 +67,7 @@ describe('flags lifecycle E2E', () => {
 
     // Uninstall all, then reinstall with --skill filter
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Uninstalled/, 10_000);
     tmux.destroy();
 

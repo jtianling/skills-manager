@@ -277,7 +277,7 @@ describe('install E2E', () => {
     const targetSkill = installedSkills[0];
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Removed|Uninstalled/, 15_000);
     tmux.destroy();
 

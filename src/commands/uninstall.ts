@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { readdirSync } from 'fs';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
@@ -86,8 +86,10 @@ function removeSkills(
 async function uninstallSource(owner: string, repo: string, options: UninstallOptions): Promise<void> {
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const sourcesService = new SourcesService();
+  const providerKey = findOfficialProvider(owner);
+  const resolvedOwner = providerKey ?? owner;
   const sourceKey = ['official', 'community']
-    .map((source) => `${source}/${owner}/${repo}`)
+    .map((source) => `${source}/${resolvedOwner}/${repo}`)
     .find((source) => fileExists(join(SKILLS_MANAGER_DIR, source)));
 
   if (!sourceKey) {

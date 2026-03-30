@@ -39,7 +39,7 @@ describe('update E2E', () => {
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 
@@ -54,7 +54,7 @@ describe('update E2E', () => {
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 
@@ -79,7 +79,7 @@ describe('update E2E', () => {
     tmux.destroy();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 

@@ -70,7 +70,7 @@ describe('add -s skill filter E2E', () => {
 
     // 3. Uninstall all
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr uninstall anthropic -f');
+    await tmux.start('skillsmgr uninstall anthropics/skills -y');
     await tmux.waitForText(/Uninstalled/, 10_000);
     tmux.destroy();
 
