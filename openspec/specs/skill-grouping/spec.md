@@ -112,7 +112,7 @@ Ctrl+A SHALL 操作所有 choice, group-header 三态自动刷新.
 - **THEN** 不生成任何 group-header, 显示和行为与现有实现一致
 
 ### Requirement: promptSkills 二级分组构建
-`promptSkills` SHALL 解析 `skill.source` 构建 category (group) 和 groupId (subGroup) 的二级分组数据.
+`promptSkills` SHALL 解析 `skill.source` 构建 category (group) 和 groupId (subGroup) 的二级分组数据.  custom skill 不再有 subGroup 分组.
 
 #### Scenario: official skill 解析为 provider/repo 分组
 - **WHEN** skill.source 为 "official/vercel-labs/agent-skills"
@@ -122,27 +122,19 @@ Ctrl+A SHALL 操作所有 choice, group-header 三态自动刷新.
 - **WHEN** skill.source 为 "community/obra/superpowers"
 - **THEN** choice.group 为 "community", choice.subGroup 为 "obra/superpowers"
 
-#### Scenario: 有分组的 custom skill 解析为 groupName 分组
-- **WHEN** skill.source 为 "custom/my-tools"
-- **THEN** choice.group 为 "custom", choice.subGroup 为 "my-tools"
-
-#### Scenario: 无分组的 custom skill 平铺显示
+#### Scenario: custom skill 平铺显示
 - **WHEN** skill.source 为 "custom"
-- **THEN** choice.group 为 "custom", choice.subGroup 为 undefined, 在 custom 分类下平铺显示 (不归属任何 group-header)
+- **THEN** choice.group 为 "custom", choice.subGroup 为 undefined, 在 custom 分类下平铺显示
 
 ### Requirement: list 命令二级缩进输出
-`list` 命令的 listAvailable SHALL 在 category separator 下按 subGroup 分组显示, 子项缩进.
+`list` 命令的 listAvailable SHALL 在 category separator 下按 subGroup 分组显示, 子项缩进.  custom skill 全部平铺, 不再有 subGroup.
 
-#### Scenario: list 显示 official 二级分组 (多 repo)
+#### Scenario: list 显示 official 二级分组
 - **WHEN** 用户运行 `skillsmgr list`, 且有 vercel-labs 来源的 skills
-- **THEN** 输出包含 `── official ──`, 其下 `  vercel-labs/agent-skills (N)` 和 `  vercel-labs/agent-browser (M)`, 各自下方列出 skills
+- **THEN** 输出包含 `── official ──`, 其下 `  vercel-labs/agent-skills (N)`, 各自下方列出 skills
 
-#### Scenario: list 显示 official 二级分组 (单 repo)
-- **WHEN** 用户运行 `skillsmgr list`, 且有 official/anthropic/skills 来源的 skill
-- **THEN** 输出包含 `── official ──`, 其下 `  anthropic/skills (N)`, 其下 `    skill-name`
-
-#### Scenario: list 显示无分组 custom skill
-- **WHEN** 用户运行 `skillsmgr list`, 且有 source 为 "custom" 的 skill (无分组)
+#### Scenario: list 显示 custom skill 平铺
+- **WHEN** 用户运行 `skillsmgr list`, 且有 custom skill
 - **THEN** 在 `── custom ──` 下直接显示 `  skill-name`, 不显示 group-header
 
 ### Requirement: SkillsService official 遍历

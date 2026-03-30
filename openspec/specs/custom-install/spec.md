@@ -4,25 +4,6 @@
 
 ## Requirements
 
-### Requirement: Install local skill to custom directory
-The system SHALL provide a `custom-install` command that copies a skill directory from the current working directory into `~/.skills-manager/custom/<name>/`, or into `~/.skills-manager/custom/<group>/<name>/` when `--group` is specified.
-
-#### Scenario: Successful install from CWD
-- **WHEN** user runs `skillsmgr custom-install abc` and `./abc/SKILL.md` exists
-- **THEN** the system copies the `./abc/` directory to `~/.skills-manager/custom/abc/` and outputs a success message
-
-#### Scenario: Skill directory not found
-- **WHEN** user runs `skillsmgr custom-install abc` and `./abc/` does not exist or `./abc/SKILL.md` does not exist
-- **THEN** the system exits with code 1 and outputs an error message indicating the skill was not found in the current directory
-
-#### Scenario: Install with --group option
-- **WHEN** user runs `skillsmgr custom-install abc --group my-tools` and `./abc/SKILL.md` exists
-- **THEN** the system copies `./abc/` to `~/.skills-manager/custom/my-tools/abc/` and outputs a success message
-
-#### Scenario: Install with -g short option
-- **WHEN** user runs `skillsmgr custom-install abc -g my-tools`
-- **THEN** behavior is identical to `--group my-tools`
-
 ### Requirement: Overwrite confirmation for existing skill
 install 命令 SHALL 使用 `findInstalledCustomSkill(skillName)` 检测 skill 是否已安装, 替代直接检查目标目录路径是否存在.  当 skill 已安装时提示 overwrite 确认.
 
@@ -34,30 +15,19 @@ install 命令 SHALL 使用 `findInstalledCustomSkill(skillName)` 检测 skill �
 - **WHEN** user declines the overwrite confirmation
 - **THEN** the system outputs "Cancelled." and exits normally (code 0)
 
-#### Scenario: Existing skill in group with confirmation
-- **WHEN** user runs `skillsmgr custom-install abc --group my-tools` and `~/.skills-manager/custom/my-tools/abc/` already exists
-- **THEN** the system prompts "Skill 'abc' already exists in group 'my-tools'. Overwrite?" and proceeds only if the user confirms
+### Requirement: install --group 自动入组
+`install` 命令 SHALL 接受 `--group <name>` 选项.  安装完成后, 系统 SHALL 自动将已安装 skill 的 source key 添加到指定虚拟 group 中.  group 不存在时自动创建.  安装目标路径不受 `--group` 影响 (始终按来源类型决定路径).
 
-#### Scenario: 同名 skill 在不同 group 下已存在
-- **WHEN** 用户执行 `skillsmgr install ./foo --group new-group`
-- **WHEN** `findInstalledCustomSkill("foo")` 返回 `custom/old-group/foo`
-- **THEN** 系统 SHALL 提示 "Skill 'foo' already installed at custom/old-group/foo. Remove it first or use a different name."
-- **THEN** 系统 SHALL NOT 允许同名 skill 安装到不同 group
+#### Scenario: install 本地 skill 并入组
+- **WHEN** 用户执行 `skillsmgr install ./my-linter --group python`
+- **THEN** skill 安装到 `custom/my-linter/` (不受 group 影响)
+- **AND** `custom/my-linter` 被添加到 groups.json 的 python group
 
-### Requirement: Force flag skips confirmation
-The system SHALL accept `-f` / `--force` flag to skip the overwrite confirmation prompt.
+#### Scenario: install 远程 skill 并入组
+- **WHEN** 用户执行 `skillsmgr install anthropic --group python`
+- **THEN** skill 安装到 `official/anthropic/skills/` 下
+- **AND** 每个安装的 skill key 被添加到 python group
 
-#### Scenario: Force overwrite
-- **WHEN** user runs `skillsmgr custom-install -f abc` and `~/.skills-manager/custom/abc/` already exists
-- **THEN** the system overwrites the existing skill without prompting
-
-#### Scenario: Force overwrite in group
-- **WHEN** user runs `skillsmgr custom-install -f abc --group my-tools` and `~/.skills-manager/custom/my-tools/abc/` already exists
-- **THEN** the system overwrites without prompting
-
-### Requirement: Setup prerequisite check
-The system SHALL verify `~/.skills-manager/` exists before executing.
-
-#### Scenario: Skills manager not set up
-- **WHEN** user runs `skillsmgr custom-install abc` and `~/.skills-manager/` does not exist
-- **THEN** the system exits with code 1 and outputs "Run: skillsmgr setup"
+#### Scenario: --group 指定的 group 不存在时自动创建
+- **WHEN** 用户执行 `skillsmgr install ./my-linter --group new-group`, 且 new-group 不存在
+- **THEN** 安装 skill, 自动创建 new-group, 并添加 skill 到该 group
