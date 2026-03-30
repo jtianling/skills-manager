@@ -148,7 +148,7 @@ describe('install E2E', () => {
     expect(installed.length).toBeGreaterThanOrEqual(15);
   });
 
-  it('install mattpocock/skills pre-selects already installed skills', async () => {
+  it('install mattpocock/skills locks installed skills and skips them on confirm', async () => {
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr setup');
     await tmux.waitForText('Setup complete');
@@ -164,7 +164,7 @@ describe('install E2E', () => {
     const installed = getInstalledSkillNames(communityDir);
     expect(installed.sort()).toEqual(['grill-me', 'tdd']);
 
-    // Run interactive install again — tdd and grill-me should be pre-selected
+    // Run interactive install again — tdd and grill-me should be locked
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install mattpocock/skills');
     await tmux.waitForText('Select skills to install', 110_000);
@@ -172,7 +172,7 @@ describe('install E2E', () => {
     const pane = await tmux.capturePane();
     const lines = pane.split('\n');
 
-    // tdd and grill-me should show (installed) suffix and filled circle ◉
+    // Installed skills show locked ◉ with (installed) suffix
     const tddLine = lines.find((l: string) => l.includes('tdd'));
     const grillLine = lines.find((l: string) => l.includes('grill-me'));
     expect(tddLine).toBeDefined();
@@ -182,9 +182,51 @@ describe('install E2E', () => {
     expect(grillLine).toContain('(installed)');
     expect(grillLine).toContain('◉');
 
-    // Non-installed skills visible on the page should have empty circle ◯
+    // Non-installed skills should have empty circle ◯
     const uncheckedLine = lines.find((l: string) => l.includes('◯'));
     expect(uncheckedLine).toBeDefined();
+
+    // Confirm without selecting any new skill — should say no new skills
+    await tmux.pressEnter();
+    await tmux.waitForText('No new skills to install', 10_000);
+
+    // Only tdd and grill-me remain, nothing new added
+    const afterInstalled = getInstalledSkillNames(communityDir);
+    expect(afterInstalled.sort()).toEqual(['grill-me', 'tdd']);
+  });
+
+  it('install mattpocock/skills installs only newly selected skills', async () => {
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr setup');
+    await tmux.waitForText('Setup complete');
+    tmux.destroy();
+
+    // Install tdd first
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install mattpocock/skills -s tdd');
+    await tmux.waitForText('Installed', 110_000);
+    tmux.destroy();
+
+    const communityDir = join(env.homeDir, '.skills-manager', 'community', 'mattpocock', 'skills');
+    expect(getInstalledSkillNames(communityDir)).toEqual(['tdd']);
+
+    // Run interactive install, select grill-me (first unchecked item) and confirm
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install mattpocock/skills');
+    await tmux.waitForText('Select skills to install', 110_000);
+
+    // Select the first unchecked skill and confirm
+    await new Promise((r) => setTimeout(r, 500));
+    await tmux.pressSpace();
+    await new Promise((r) => setTimeout(r, 300));
+    await tmux.pressEnter();
+
+    await tmux.waitForText('Installed 1 skill', 15_000);
+
+    // tdd still there plus the newly selected skill
+    const afterInstalled = getInstalledSkillNames(communityDir);
+    expect(afterInstalled).toContain('tdd');
+    expect(afterInstalled.length).toBe(2);
   });
 
   it('install GitHub tree URL for a specific skill path', async () => {

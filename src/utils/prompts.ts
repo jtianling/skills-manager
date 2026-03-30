@@ -201,19 +201,25 @@ export async function promptSkillsToInstall(
   skills: Array<{ name: string; description: string }>,
   installedNames?: Set<string>,
 ): Promise<string[]> {
-  const choices = skills.map((skill) => ({
-    name: skill.name,
-    description: skill.description,
-    value: skill.name,
-    checked: installedNames?.has(skill.name) ?? false,
-    suffix: installedNames?.has(skill.name) ? ' (installed)' : undefined,
-  }));
+  const choices = skills.map((skill) => {
+    const isInstalled = installedNames?.has(skill.name) ?? false;
+    return {
+      name: skill.name,
+      description: skill.description,
+      value: skill.name,
+      checked: isInstalled,
+      locked: isInstalled,
+      suffix: isInstalled ? ' (installed)' : undefined,
+    };
+  });
 
-  return interactiveCheckbox({
+  const selected = await interactiveCheckbox({
     message: 'Select skills to install:',
     choices,
     pageSize: 15,
   });
+
+  return selected.filter((name) => !installedNames?.has(name));
 }
 
 export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {

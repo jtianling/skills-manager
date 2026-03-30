@@ -185,13 +185,13 @@ export async function selectSkills(skills: InstallableSkill[], options: InstallO
     return skills;
   }
 
-  const selectedNames = await promptSkillsToInstall(skills, installedNames);
-  if (selectedNames.length === 0) {
-    console.log('No skills selected');
+  const newNames = await promptSkillsToInstall(skills, installedNames);
+  if (newNames.length === 0) {
+    console.log(installedNames?.size ? 'No new skills to install' : 'No skills selected');
     return [];
   }
 
-  return skills.filter((skill) => selectedNames.includes(skill.name));
+  return skills.filter((skill) => newNames.includes(skill.name));
 }
 
 export function createInstallResult(installedPaths: string[], sourceKeys: string[]): InstallResult {
