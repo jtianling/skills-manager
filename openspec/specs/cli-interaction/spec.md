@@ -6,16 +6,15 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 
 程序名: `skillsmgr`
 框架: Commander.js
-版本: package.json 中定义 (当前 0.8.0), `index.ts` 中同步设置
+版本: package.json 中定义, `index.ts` 中同步设置
 
 | 命令 | 别名 | 参数 | 选项 | 说明 |
 |------|------|------|------|------|
-| setup | - | - | - | 初始化 ~/.skills-manager/ |
 | install | i | \<source\> (必填) | --all, --custom, -f/--force, -g/--group, -s/--skill, -a/--agent | Install skills from a repository |
 | custom-install | ci | \<name\> (必填) | -f, --force | Install a local skill to custom directory |
 | update | - | [source] (可选) | - | Update installed skills to latest version |
 | list | - | - | --deployed | List available or deployed skills |
-| init | - | - | --copy | Deploy skills to current project |
+| deploy | - | - | --copy, -g/--global | Deploy skills to current project (or globally with -g) |
 | add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group | Add a skill to the project |
 | remove | - | [name] (可选) | -s/--skill, -a/--agent | Remove a skill from the project |
 | uninstall | - | [identifier] (可选) | -f, --force, --all, -s/--skill | Remove skills from ~/.skills-manager/ |
@@ -31,6 +30,18 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 #### Scenario: CLI help shows install alias
 - **WHEN** 用户执行 `skillsmgr --help`
 - **THEN** `install` 命令显示别名 `i`
+
+#### Scenario: CLI help shows deploy instead of init
+- **WHEN** 用户执行 `skillsmgr --help`
+- **THEN** 命令列表中显示 `deploy` 而非 `init`, 且不显示 `setup`
+
+#### Scenario: init 命令不存在
+- **WHEN** 用户执行 `skillsmgr init`
+- **THEN** Commander.js 报 unknown command 错误
+
+#### Scenario: setup 命令不存在
+- **WHEN** 用户执行 `skillsmgr setup`
+- **THEN** Commander.js 报 unknown command 错误
 
 ### Requirement: Command alias for custom-install
 The `custom-install` command SHALL have alias `ci`.
@@ -78,7 +89,7 @@ The `install` command SHALL have alias `i`.
 
 #### Scenario: add 命令参数可选
 - **WHEN** 用户执行 `skillsmgr add` (无参数)
-- **THEN** 命令正常执行, 进入 init 流程
+- **THEN** 命令正常执行, 进入 deploy 流程
 
 #### Scenario: add 命令接受 --agent 选项
 - **WHEN** 用户执行 `skillsmgr add code-review -a claude-code`
@@ -126,7 +137,7 @@ The `install` command SHALL have alias `i`.
 ### 工具选择 (promptTools)
 
 类型: 自定义 interactiveCheckbox (与 skill 选择共用同一组件)
-触发: `init` 命令, `add` 命令
+触发: `deploy` 命令, `add` 命令
 
 提示消息: "Select target agents:" (使用 "agents" 术语替代 "tools")
 
@@ -153,7 +164,7 @@ The `install` command SHALL have alias `i`.
 ### Skill 选择 (interactiveCheckbox)
 
 类型: 自定义 readline 实现
-触发: `init` 命令的 skill 选择, `install` 命令的 skill 选择
+触发: `deploy` 命令的 skill 选择, `install` 命令的 skill 选择
 
 **install 命令预选**: 当用户再次 install 同一仓库时, 已安装的 skill 在列表中自动 checked 并显示 `(installed)` 后缀.  详见 skill-lifecycle spec "安装时预选已安装 skill" 章节.
 
@@ -244,7 +255,7 @@ The `install` command SHALL have alias `i`.
 - 超过 3 个: `? {message} N skills selected` (青色)
 - 确认后清除整个选择 UI
 
-**init 命令中 Skill 选择**:
+**deploy 命令中 Skill 选择**:
 - 已部署的 skill 默认选中 (`checked: true`) 且标记 `[deployed]`
 - 按 source 分组, 并按 subGroup 显示 group-header
 
@@ -618,7 +629,7 @@ Fetching skill info ████████░░░░░░░░░░░░
 
 ### 部署输出格式
 
-`init` 命令:
+`deploy` 命令:
 ```
 Deploying...
 
@@ -633,8 +644,8 @@ Claude Code: symlink .claude/skills → .agents/skills
 Done! Deployed 3 skills.
 ```
 
-#### Scenario: init completion message
-- **WHEN** init 部署完成
+#### Scenario: deploy completion message
+- **WHEN** deploy 部署完成
 - **THEN** 输出 "Done! Deployed N skills."
 
 `add` 命令:
@@ -733,21 +744,21 @@ Downloading 3 skills...
 
 | 命令 | 条件 | 不满足时的行为 |
 |------|------|---------------|
-| install | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
-| update | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
+| install | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 install 流程 |
+| update | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 update 流程 |
 | update | 有已安装的 source | 输出 "No installed sources found." + 提示, 正常返回 |
-| list | `~/.skills-manager/` 存在 (仅 available 模式) | process.exit(1), 提示 "Run: skillsmgr setup" |
+| list | `~/.skills-manager/` 存在 (仅 available 模式) | 自动执行 `ensureSetup()`, 然后继续 list 流程 |
 | list | 有可用 skill (仅 available 模式) | 输出提示信息, 正常返回 |
 | list --deployed | 有部署 | 输出 "No skills deployed in current project.", 正常返回 |
-| init | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 init 流程 |
-| init | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
-| add | `~/.skills-manager/` 存在 | 自动执行 `executeSetup()`, 然后继续 add 流程 |
-| add (无参数) | 同 init 的前置条件 | 同 init |
+| deploy | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 deploy 流程 |
+| deploy | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
+| add | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 add 流程 |
+| add (无参数) | 同 deploy 的前置条件 | 同 deploy |
 | add (skill name) | name 未找到 | exit(1), 提示 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote." |
 | add (-a 指定无效 agent) | agent 名称不合法 | exit(1), 提示 "Unknown agent: 'xxx'. Available agents: ..." |
-| add (--same-agents 无已配置 agent) | 无已配置 agent | exit(1), 提示 "No agents configured. Run 'skillsmgr init' or omit --same-agents flag." |
+| add (--same-agents 无已配置 agent) | 无已配置 agent | exit(1), 提示 "No agents configured. Run 'skillsmgr deploy' or omit --same-agents flag." |
 | add (-a 和 --same-agents 同时使用) | 互斥 | exit(1), 提示 "Cannot use --agent and --same-agents together." |
-| remove | `~/.skills-manager/` 存在 | process.exit(1), 提示 "Run: skillsmgr setup" |
+| remove | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 remove 流程 |
 | remove | 有已配置工具 | process.exit(1), 提示 "No skills deployed in current project." |
 
 #### Scenario: no content found error
@@ -763,7 +774,7 @@ Downloading 3 skills...
 - **THEN** 消息为 "'name' not found" 或类似, 不提及 "skill or command"
 
 #### Scenario: no available skills message
-- **WHEN** init 时没有可用 skill
+- **WHEN** deploy 时没有可用 skill
 - **THEN** 输出 "No skills found. Run: skillsmgr install anthropic"
 
 #### Scenario: skill name 未找到提示改进
@@ -791,7 +802,7 @@ Downloading 3 skills...
 
 ### 命令注册
 
-- test_program_hasAllCommands: 注册了全部 7 个命令 (setup, install, update, list, init, add, remove)
+- test_program_hasAllCommands: 注册了全部命令 (install, custom-install, update, list, deploy, add, remove, uninstall, group)
 - test_program_name_isSkillsmgr: 程序名为 "skillsmgr"
 
 ### interactiveCheckbox
@@ -889,8 +900,7 @@ Downloading 3 skills...
 
 ### 前置条件
 
-- test_precondition_noSkillsManagerDir_exits: ~/.skills-manager/ 不存在时 exit(1) (install, update, list, remove 命令)
-- test_precondition_noSkillsManagerDir_autoSetup: ~/.skills-manager/ 不存在时自动执行 setup 后继续 (init, add 命令)
-- test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (init 命令)
+- test_precondition_noSkillsManagerDir_autoSetup: ~/.skills-manager/ 不存在时自动执行 ensureSetup() 后继续 (所有命令)
+- test_precondition_noAvailableSkills_exits: 无可用 skill 时 exit(1) (deploy 命令)
 - test_precondition_noConfiguredTools_exits: 无已配置工具时 exit(1) (add 命令)
 - test_precondition_skillNotFound_exits: add 命令找不到 skill 时 exit(1)
