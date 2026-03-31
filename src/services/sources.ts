@@ -8,9 +8,11 @@ function getSourcesFile(): string {
 
 export interface SourceInfo {
   url: string;
-  type: 'official' | 'community' | 'custom';
+  type: 'official' | 'community' | 'custom' | 'registry';
   repoName: string;
   installMethod?: 'git' | 'zip' | 'local-copy';
+  version?: string;
+  registryUrl?: string;
   installedAt: string;
   updatedAt: string;
 }

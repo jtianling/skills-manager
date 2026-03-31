@@ -16,7 +16,7 @@ export function detectArgFormat(arg: string): ArgFormat {
     return 'owner-repo';
   }
 
-  if (sourceType === 'unknown') {
+  if (sourceType === 'unknown' || sourceType === 'registry') {
     return 'skill-name';
   }
 

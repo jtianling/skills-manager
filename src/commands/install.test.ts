@@ -50,14 +50,20 @@ describe('install command', () => {
     return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
   }
 
-  it('rejects bare words with unknown source format error', async () => {
+  it('treats bare words as registry source and fails on 404', async () => {
     const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit');
     }) as never);
 
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+    }));
+
     await expect(executeInstall('local-skill', {})).rejects.toThrow('process.exit');
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('Unknown source format'),
+      expect.stringContaining('not found in registry'),
     );
     mockExit.mockRestore();
   });
