@@ -6,7 +6,10 @@ vi.mock('./interactive-select.js', () => ({
 
 import {
   buildVirtualGroupChoices,
+  buildSourceGroupedChoices,
+  getSourceSuffix,
   loadGroupsData,
+  mergeSuffix,
   promptSkills,
   promptSkillsToUninstall,
   resolveTargetAgents,
@@ -137,23 +140,23 @@ describe('prompts', () => {
       message: 'Select skills to deploy:',
       choices: [
         {
-          name: 'commit',
-          description: 'Commit skill',
-          value: 'commit',
-          checked: true,
-          suffix: '[deployed]',
-          locked: undefined,
-          group: 'official',
-          subGroup: 'anthropic/skills',
-        },
-        {
           name: 'review',
           description: 'Review skill',
           value: 'review',
           checked: undefined,
           suffix: undefined,
           locked: undefined,
-          group: 'custom',
+          group: undefined,
+          subGroup: 'develop',
+        },
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          value: 'commit',
+          checked: true,
+          suffix: '(anthropic/skills) [deployed]',
+          locked: undefined,
+          group: undefined,
           subGroup: 'develop',
         },
       ],
@@ -184,10 +187,10 @@ describe('prompts', () => {
           description: 'Commit skill',
           value: '/skills/official/anthropic/skills/commit',
           checked: undefined,
-          suffix: undefined,
+          suffix: '(anthropic/skills)',
           locked: undefined,
           group: undefined,
-          subGroup: 'anthropic/skills',
+          subGroup: 'develop',
         },
       ],
       pageSize: 15,
@@ -260,7 +263,7 @@ describe('prompts', () => {
         value: 'tool-c',
         suffix: undefined,
         locked: undefined,
-        subGroup: '(ungrouped)',
+        subGroup: undefined,
       },
     ]);
   });
@@ -363,6 +366,163 @@ describe('prompts', () => {
         subGroup: 'dev',
       },
     ]);
+  });
+});
+
+describe('getSourceSuffix', () => {
+  it('returns undefined for custom source', () => {
+    expect(getSourceSuffix('custom')).toBeUndefined();
+    expect(getSourceSuffix('custom/sub-pkg')).toBeUndefined();
+  });
+
+  it('returns owner/repo for official source', () => {
+    expect(getSourceSuffix('official/anthropic/skills')).toBe('(anthropic/skills)');
+  });
+
+  it('returns owner/repo for community source', () => {
+    expect(getSourceSuffix('community/bob/tools')).toBe('(bob/tools)');
+  });
+});
+
+describe('mergeSuffix', () => {
+  it('merges multiple parts', () => {
+    expect(mergeSuffix('(anthropic/skills)', '[deployed]')).toBe('(anthropic/skills) [deployed]');
+  });
+
+  it('filters undefined parts', () => {
+    expect(mergeSuffix(undefined, '[deployed]')).toBe('[deployed]');
+    expect(mergeSuffix('(a/b)', undefined)).toBe('(a/b)');
+  });
+
+  it('returns undefined when all parts are undefined', () => {
+    expect(mergeSuffix(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('buildVirtualGroupChoices source suffix', () => {
+  it('adds source suffix for official skill in virtual group', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      { dev: ['official/anthropic/skills/commit', 'custom/my-tool'] },
+    );
+
+    expect(choices).toEqual([
+      {
+        name: 'commit',
+        description: 'Commit',
+        value: 'commit',
+        suffix: '(anthropic/skills)',
+        locked: undefined,
+        subGroup: 'dev',
+      },
+      {
+        name: 'my-tool',
+        description: 'My tool',
+        value: 'my-tool',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: 'dev',
+      },
+    ]);
+  });
+
+  it('combines source suffix with functional suffix', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+      ],
+      { dev: ['official/anthropic/skills/commit'] },
+      { getSuffix: () => '[deployed]' },
+    );
+
+    expect(choices[0].suffix).toBe('(anthropic/skills) [deployed]');
+  });
+
+  it('does not add source suffix for ungrouped skills', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'review', source: 'official/anthropic/skills', description: 'Review' },
+      ],
+      { dev: ['official/anthropic/skills/commit'] },
+    );
+
+    const review = choices.find(c => c.name === 'review')!;
+    expect(review.suffix).toBeUndefined();
+    expect(review.subGroup).toBeUndefined();
+  });
+});
+
+describe('buildSourceGroupedChoices cross-source virtual groups', () => {
+  it('moves official skill to virtual group with source suffix', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'review', source: 'official/anthropic/skills', description: 'Review' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      { dev: ['official/anthropic/skills/commit', 'custom/my-tool'] },
+    );
+
+    const commit = choices.find(c => c.name === 'commit')!;
+    expect(commit.subGroup).toBe('dev');
+    expect(commit.suffix).toBe('(anthropic/skills)');
+
+    const review = choices.find(c => c.name === 'review')!;
+    expect(review.subGroup).toBe('anthropic/skills');
+    expect(review.group).toBe('official');
+    expect(review.suffix).toBeUndefined();
+
+    const myTool = choices.find(c => c.name === 'my-tool')!;
+    expect(myTool.subGroup).toBe('dev');
+    expect(myTool.suffix).toBeUndefined();
+  });
+
+  it('official skill not duplicated in source category', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      { dev: ['official/anthropic/skills/commit', 'custom/my-tool'] },
+    );
+
+    const commitChoices = choices.filter(c => c.name === 'commit');
+    expect(commitChoices).toHaveLength(1);
+    expect(commitChoices[0].subGroup).toBe('dev');
+  });
+
+  it('hides empty source sub-group when all skills moved to virtual group', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      { dev: ['official/anthropic/skills/commit', 'custom/my-tool'] },
+    );
+
+    const officialChoices = choices.filter(c => c.group === 'official');
+    expect(officialChoices).toHaveLength(0);
+  });
+
+  it('behaves unchanged when no virtual groups', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      {},
+    );
+
+    const commit = choices.find(c => c.name === 'commit')!;
+    expect(commit.group).toBe('official');
+    expect(commit.subGroup).toBe('anthropic/skills');
+
+    const myTool = choices.find(c => c.name === 'my-tool')!;
+    expect(myTool.group).toBe('custom');
   });
 });
 

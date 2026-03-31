@@ -37,7 +37,7 @@ describe('ungrouped display label E2E', () => {
     })();
   }
 
-  it('list shows (ungrouped) label for custom skills without group', async () => {
+  it('list shows custom skills without (ungrouped) label', async () => {
     await setup();
 
     createLocalSkill('solo-a');
@@ -47,15 +47,15 @@ describe('ungrouped display label E2E', () => {
 
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr list');
-    const output = await tmux.waitForText(/\(ungrouped\)/, 10_000);
+    const output = await tmux.waitForText(/solo-a/, 10_000);
 
     expect(output).toContain('── custom');
-    expect(output).toContain('(ungrouped)');
+    expect(output).not.toContain('(ungrouped)');
     expect(output).toContain('solo-a');
     expect(output).toContain('solo-b');
   });
 
-  it('list shows (ungrouped) after real groups in custom category', async () => {
+  it('list shows ungrouped skills flat after real groups in custom category', async () => {
     await setup();
 
     // Create a directory with a skill inside to trigger batch install (physical group)
@@ -79,21 +79,16 @@ describe('ungrouped display label E2E', () => {
 
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr list');
-    const output = await tmux.waitForText(/\(ungrouped\)/, 10_000);
+    const output = await tmux.waitForText(/loose-skill/, 10_000);
 
     expect(output).toContain('── custom');
     expect(output).toContain('my-tools');
-    expect(output).toContain('(ungrouped)');
+    expect(output).not.toContain('(ungrouped)');
     expect(output).toContain('grouped-skill');
     expect(output).toContain('loose-skill');
-
-    // (ungrouped) must appear AFTER the real group
-    const myToolsPos = output.indexOf('my-tools');
-    const ungroupedPos = output.indexOf('(ungrouped)');
-    expect(ungroupedPos).toBeGreaterThan(myToolsPos);
   });
 
-  it('list shows only (ungrouped) when all custom skills are ungrouped', async () => {
+  it('list shows custom skills flat when all are ungrouped', async () => {
     await setup();
 
     createLocalSkill('only-one');
@@ -101,10 +96,10 @@ describe('ungrouped display label E2E', () => {
 
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr list');
-    const output = await tmux.waitForText(/\(ungrouped\)/, 10_000);
+    const output = await tmux.waitForText(/only-one/, 10_000);
 
     expect(output).toContain('── custom');
-    expect(output).toContain('(ungrouped)');
+    expect(output).not.toContain('(ungrouped)');
     expect(output).toContain('only-one');
   });
 });

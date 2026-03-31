@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
 
@@ -129,10 +129,10 @@ describe('add interactive virtual group display E2E', () => {
     // Virtual group should appear within custom section
     expect(output).toContain('tools');
 
-    // Ungrouped custom skill should appear after grouped
-    const toolsPos = output.indexOf('tools');
-    const ungroupedPos = output.indexOf('(ungrouped)');
-    expect(ungroupedPos).toBeGreaterThan(toolsPos);
+    // No (ungrouped) label — ungrouped skills appear flat
+    expect(output).not.toContain('(ungrouped)');
+    // src-b (ungrouped) should still appear after grouped skills
+    expect(output).toContain('src-b');
 
     await tmux.pressKey('q');
   }, 120_000);
@@ -166,5 +166,43 @@ describe('add interactive virtual group display E2E', () => {
     expect(output).toContain('deployed');
 
     await tmux.pressKey('q');
+  });
+
+  it('interactive add locks deployed skills — space on locked skill does not deselect', async () => {
+    createLocalSkill('lock-a');
+    createLocalSkill('lock-b');
+    await installSkill('lock-a');
+    await installSkill('lock-b');
+
+    // Deploy lock-a first
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr add lock-a -a claude-code', env.projectDir);
+    await tmux.waitForText(/linked|already deployed/, 15_000);
+    tmux.destroy();
+
+    const deployedDir = join(env.projectDir, '.agents', 'skills');
+    expect(existsSync(join(deployedDir, 'lock-a'))).toBe(true);
+
+    // Run interactive add
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr add', env.projectDir);
+
+    await tmux.waitForText(/Select target agents/, 10_000);
+    await tmux.pressSpace();
+    await tmux.pressEnter();
+
+    await tmux.waitForText(/Select skills to/, 10_000);
+
+    // Navigate to lock-a (deployed/locked) and press space — should NOT deselect
+    // lock-a appears first (deployed, checked+locked)
+    // Press space on it, then confirm
+    await tmux.pressSpace();
+    await tmux.pressEnter();
+
+    await tmux.waitForText(/linked|already deployed|None selected/, 15_000);
+    tmux.destroy();
+
+    // lock-a must still be deployed (space on locked item is a no-op)
+    expect(existsSync(join(deployedDir, 'lock-a'))).toBe(true);
   });
 });

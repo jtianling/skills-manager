@@ -266,7 +266,7 @@ describe('remove command', () => {
           value: 'skill-c',
           suffix: undefined,
           locked: undefined,
-          subGroup: '(ungrouped)',
+          subGroup: undefined,
         },
       ],
     });

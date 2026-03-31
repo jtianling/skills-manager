@@ -259,10 +259,10 @@ describe('remove --group E2E', () => {
     // Virtual group should appear within custom section
     expect(output).toContain('dev');
 
-    // Ungrouped after grouped
-    const devPos = output.indexOf('dev');
-    const ungroupedPos = output.indexOf('(ungrouped)');
-    expect(ungroupedPos).toBeGreaterThan(devPos);
+    // No (ungrouped) label — ungrouped skills appear flat
+    expect(output).not.toContain('(ungrouped)');
+    // rm-y (ungrouped) should still appear
+    expect(output).toContain('rm-y');
 
     await tmux.pressKey('q');
   }, 120_000);

@@ -94,6 +94,18 @@ export async function promptAgentsGlobal(): Promise<string[]> {
   });
 }
 
+export function getSourceSuffix(source: string): string | undefined {
+  if (source.startsWith('custom')) return undefined;
+  const parts = source.split('/');
+  if (parts.length < 2) return undefined;
+  return `(${parts.slice(1).join('/')})`;
+}
+
+export function mergeSuffix(...parts: (string | undefined)[]): string | undefined {
+  const filtered = parts.filter(Boolean) as string[];
+  return filtered.length > 0 ? filtered.join(' ') : undefined;
+}
+
 function parseSource(source: string): { category: string; groupId?: string } {
   const parts = source.split('/');
   const category = parts[0];
@@ -154,7 +166,7 @@ function buildSkillChoices(
 
   for (const [source, sourceSkills] of entries) {
     const { category, groupId } = parseSource(source);
-    const effectiveGroupId = category === 'custom' && !groupId ? '(ungrouped)' : groupId;
+    const effectiveGroupId = groupId;
     for (const skill of sourceSkills) {
       choices.push(mapChoice(skill, category, effectiveGroupId));
     }
@@ -231,7 +243,10 @@ export function buildVirtualGroupChoices<
     description: options.getDescription?.(skill) ?? skill.description,
     value: options.getValue?.(skill) ?? skill.name,
     checked: options.getChecked?.(skill),
-    suffix: options.getSuffix?.(skill),
+    suffix: mergeSuffix(
+      subGroup !== undefined ? getSourceSuffix(skill.source) : undefined,
+      options.getSuffix?.(skill),
+    ),
     locked: options.getLocked?.(skill),
     subGroup,
   });
@@ -249,7 +264,7 @@ export function buildVirtualGroupChoices<
   }
 
   if (ungroupedSkills.length > 0) {
-    choices.push(...ungroupedSkills.map((skill) => toChoice(skill, '(ungrouped)')));
+    choices.push(...ungroupedSkills.map((skill) => toChoice(skill)));
   }
 
   return choices;
@@ -276,10 +291,26 @@ export function buildSourceGroupedChoices<
     }
   }
 
+  const movedToVirtualGroup = new Map<string, T[]>();
+  const movedKeys = new Set<string>();
+
   const byCategory = new Map<string, T[]>();
   for (const skill of skills) {
+    const skillKey = `${skill.source}/${skill.name}`;
     const { category } = parseSource(skill.source);
-    byCategory.set(category, [...(byCategory.get(category) ?? []), skill]);
+    const vg = skillToGroup.get(skillKey);
+
+    if (vg && category !== 'custom') {
+      movedToVirtualGroup.set(vg, [...(movedToVirtualGroup.get(vg) ?? []), skill]);
+      movedKeys.add(skillKey);
+    } else {
+      byCategory.set(category, [...(byCategory.get(category) ?? []), skill]);
+    }
+  }
+
+  const hasMovedSkills = movedKeys.size > 0;
+  if (hasMovedSkills && !byCategory.has('custom')) {
+    byCategory.set('custom', []);
   }
 
   const categories = Array.from(byCategory.keys()).sort(
@@ -287,12 +318,17 @@ export function buildSourceGroupedChoices<
   );
   const showCategory = categories.length > 1;
 
-  const toChoice = (skill: T, group?: string, subGroup?: string): SelectChoice => ({
+  const toChoice = (
+    skill: T,
+    group?: string,
+    subGroup?: string,
+    sourceSuffix?: string,
+  ): SelectChoice => ({
     name: skill.name,
     description: skill.description,
     value: options.getValue?.(skill) ?? skill.name,
     checked: options.getChecked?.(skill),
-    suffix: options.getSuffix?.(skill),
+    suffix: mergeSuffix(sourceSuffix, options.getSuffix?.(skill)),
     locked: options.getLocked?.(skill),
     group,
     subGroup,
@@ -319,12 +355,19 @@ export function buildSourceGroupedChoices<
         }
       }
 
+      for (const [vgName, vgSkills] of movedToVirtualGroup) {
+        hasNamed = true;
+        grouped.set(vgName, [...(grouped.get(vgName) ?? []), ...vgSkills]);
+      }
+
       if (hasNamed) {
         for (const gn of Array.from(grouped.keys()).sort()) {
-          choices.push(...grouped.get(gn)!.map(s => toChoice(s, group, gn)));
+          choices.push(...grouped.get(gn)!.map(s =>
+            toChoice(s, group, gn, getSourceSuffix(s.source))
+          ));
         }
         if (ungrouped.length > 0) {
-          choices.push(...ungrouped.map(s => toChoice(s, group, '(ungrouped)')));
+          choices.push(...ungrouped.map(s => toChoice(s, group)));
         }
       } else {
         choices.push(...catSkills.map(s => toChoice(s, group)));
@@ -338,7 +381,10 @@ export function buildSourceGroupedChoices<
       }
 
       for (const src of Array.from(bySource.keys()).sort()) {
-        choices.push(...bySource.get(src)!.map(s => toChoice(s, group, src)));
+        const srcSkills = bySource.get(src)!;
+        if (srcSkills.length > 0) {
+          choices.push(...srcSkills.map(s => toChoice(s, group, src)));
+        }
       }
     }
   }

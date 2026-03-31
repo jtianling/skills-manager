@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { SkillsService } from '../services/skills.js';
+import { getSourceSuffix } from '../utils/prompts.js';
 import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { ensureSetup } from './setup.js';
 
@@ -34,7 +35,11 @@ async function executeGroupList(name?: string): Promise<void> {
     }
     console.log(`${name}:`);
     for (const key of skills) {
-      console.log(`  ${key}`);
+      const lastSlash = key.lastIndexOf('/');
+      const skillName = lastSlash >= 0 ? key.slice(lastSlash + 1) : key;
+      const source = lastSlash >= 0 ? key.slice(0, lastSlash) : '';
+      const suffix = getSourceSuffix(source);
+      console.log(suffix ? `  ${skillName}  ${suffix}` : `  ${skillName}`);
     }
     return;
   }

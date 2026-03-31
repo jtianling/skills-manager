@@ -113,15 +113,15 @@ describe('uninstall interactive virtual group display E2E', () => {
     // Virtual group should appear within custom section
     expect(output).toContain('dev');
 
-    // Ungrouped after grouped
-    const devPos = output.indexOf('dev');
-    const ungroupedPos = output.indexOf('(ungrouped)');
-    expect(ungroupedPos).toBeGreaterThan(devPos);
+    // No (ungrouped) label — ungrouped skills appear flat
+    expect(output).not.toContain('(ungrouped)');
+    // src-y (ungrouped) should still appear
+    expect(output).toContain('src-y');
 
     await tmux.pressKey('q');
   }, 120_000);
 
-  it('interactive uninstall shows ungrouped skills after named groups', async () => {
+  it('interactive uninstall shows ungrouped skills flat after named groups', async () => {
     createLocalSkill('grp-skill');
     createLocalSkill('loose-skill');
     await installSkill('grp-skill');
@@ -137,10 +137,8 @@ describe('uninstall interactive virtual group display E2E', () => {
     expect(output).toContain('grp-skill');
     expect(output).toContain('loose-skill');
 
-    // (ungrouped) should appear after named group
-    const groupPos = output.indexOf('my-group');
-    const ungroupedPos = output.indexOf('(ungrouped)');
-    expect(ungroupedPos).toBeGreaterThan(groupPos);
+    // No (ungrouped) label — ungrouped skills appear flat
+    expect(output).not.toContain('(ungrouped)');
 
     await tmux.pressKey('q');
   });

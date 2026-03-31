@@ -139,7 +139,7 @@ describe('remove command - owner/repo format', () => {
           name: 'skill-a',
           description: undefined,
           value: 'skill-a',
-          suffix: undefined,
+          suffix: '(mattpocock/skills)',
           locked: undefined,
           subGroup: 'alpha',
         },
@@ -149,7 +149,7 @@ describe('remove command - owner/repo format', () => {
           value: 'skill-b',
           suffix: undefined,
           locked: undefined,
-          subGroup: '(ungrouped)',
+          subGroup: undefined,
         },
       ],
     });

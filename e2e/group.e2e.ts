@@ -126,11 +126,12 @@ describe('group E2E', () => {
     await tmux.waitForText(/Added/, 10_000);
     tmux.destroy();
 
-    // List group details
+    // List group details — shows skill name, no source suffix for custom
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr group list python');
-    const output = await tmux.waitForText(/custom\/my-linter/, 10_000);
-    expect(output).toContain('custom/my-linter');
+    const output = await tmux.waitForText(/my-linter/, 10_000);
+    expect(output).toContain('my-linter');
+    expect(output).not.toContain('custom/my-linter');
 
     // Verify groups.json
     const groups = readGroups();

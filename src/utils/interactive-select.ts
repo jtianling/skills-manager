@@ -260,14 +260,15 @@ export async function interactiveCheckbox(
             const reset = '\x1b[0m';
             const suffixText = isSelected && choice.selectedSuffix ? choice.selectedSuffix : choice.suffix;
             const suffix = suffixText ? ` \x1b[33m${suffixText}\x1b[0m` : '';
-            const indent = '    ';
+            const isUnderGroup = choice.subGroup !== undefined;
+            const indent = isUnderGroup ? '    ' : '';
 
             lines.push(
               `${lineNum} ${indent}${prefix} ${checkbox} ${highlight}${choice.name}${reset}${suffix}`
             );
 
             if (isCursor && choice.description) {
-              const descIndent = lineNumberWidth + 9;
+              const descIndent = lineNumberWidth + (isUnderGroup ? 9 : 5);
               const maxWidth = process.stdout.columns
                 ? process.stdout.columns - descIndent - 1
                 : 80 - descIndent - 1;

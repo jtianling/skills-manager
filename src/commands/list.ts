@@ -63,15 +63,8 @@ async function listAvailable(): Promise<void> {
     }
 
     if (ungrouped.length > 0) {
-      if (category === 'custom') {
-        console.log(`  (ungrouped) (${ungrouped.length})`);
-        for (const name of ungrouped) {
-          console.log(`    ${name}`);
-        }
-      } else {
-        for (const name of ungrouped) {
-          console.log(`  ${name}`);
-        }
+      for (const name of ungrouped) {
+        console.log(`  ${name}`);
       }
     }
 

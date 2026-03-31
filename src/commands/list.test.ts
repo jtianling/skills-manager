@@ -103,11 +103,10 @@ describe('list command two-level grouping', () => {
     }
   });
 
-  it('custom ungrouped skills display (ungrouped) label in list output', () => {
+  it('custom ungrouped skills display flat without (ungrouped) label', () => {
     const service = new SkillsService(testDir);
     const skills = service.getAllSkills();
 
-    const byCategory: Record<string, Record<string, string[]>> = {};
     const ungroupedByCategory: Record<string, string[]> = {};
 
     for (const skill of skills) {
@@ -115,42 +114,26 @@ describe('list command two-level grouping', () => {
       const category = parts[0];
       const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
 
-      if (groupId) {
-        if (!byCategory[category]) byCategory[category] = {};
-        if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
-        byCategory[category][groupId].push(skill.name);
-      } else {
+      if (!groupId) {
         if (!ungroupedByCategory[category]) ungroupedByCategory[category] = [];
         ungroupedByCategory[category].push(skill.name);
       }
     }
 
     const lines: string[] = [];
-    const category = 'custom';
-    const groups = byCategory[category] || {};
-    const ungrouped = ungroupedByCategory[category] || [];
+    const ungrouped = ungroupedByCategory['custom'] || [];
 
-    for (const [groupId, skillNames] of Object.entries(groups)) {
-      lines.push(`  ${groupId} (${skillNames.length})`);
-      for (const name of skillNames) {
-        lines.push(`    ${name}`);
-      }
+    for (const name of ungrouped) {
+      lines.push(`  ${name}`);
     }
 
-    if (ungrouped.length > 0 && category === 'custom') {
-      lines.push(`  (ungrouped) (${ungrouped.length})`);
-      for (const name of ungrouped) {
-        lines.push(`    ${name}`);
-      }
-    }
-
-    expect(lines).toContainEqual(expect.stringContaining('(ungrouped)'));
-    const ungroupedIdx = lines.findIndex((l) => l.includes('(ungrouped)'));
-    expect(ungroupedIdx).toBeGreaterThanOrEqual(0);
-    expect(lines[ungroupedIdx]).toBe('  (ungrouped) (2)');
+    expect(ungrouped.length).toBe(2);
+    expect(lines).not.toContainEqual(expect.stringContaining('(ungrouped)'));
+    expect(lines).toContainEqual(expect.stringContaining('tool-a'));
+    expect(lines).toContainEqual(expect.stringContaining('solo-skill'));
   });
 
-  it('(ungrouped) appears after real groups in custom category', () => {
+  it('ungrouped custom skills display at same indent as other categories', () => {
     mkdirSync(join(testDir, 'custom', 'my-tools', 'linter'), { recursive: true });
     writeFileSync(
       join(testDir, 'custom', 'my-tools', 'linter', 'SKILL.md'),
@@ -179,21 +162,21 @@ describe('list command two-level grouping', () => {
     }
 
     const lines: string[] = [];
-    const category = 'custom';
-    const groups = byCategory[category] || {};
-    const ungrouped = ungroupedByCategory[category] || [];
+    const groups = byCategory['custom'] || {};
+    const ungrouped = ungroupedByCategory['custom'] || [];
 
     for (const [groupId, skillNames] of Object.entries(groups)) {
       lines.push(`  ${groupId} (${skillNames.length})`);
     }
 
-    if (ungrouped.length > 0 && category === 'custom') {
-      lines.push(`  (ungrouped) (${ungrouped.length})`);
+    for (const name of ungrouped) {
+      lines.push(`  ${name}`);
     }
 
-    const myToolsIdx = lines.findIndex((l) => l.includes('my-tools'));
-    const ungroupedIdx = lines.findIndex((l) => l.includes('(ungrouped)'));
-    expect(myToolsIdx).toBeLessThan(ungroupedIdx);
+    expect(lines).not.toContainEqual(expect.stringContaining('(ungrouped)'));
+    expect(lines.findIndex((l) => l.includes('my-tools'))).toBeLessThan(
+      lines.findIndex((l) => l.includes('tool-a'))
+    );
   });
 
   it('shows multi-repo provider with separate groupIds', () => {
