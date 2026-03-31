@@ -16,11 +16,12 @@ export async function executeWhoami(): Promise<void> {
     console.log(`Logged in as ${username}`);
   } catch (error) {
     if (error instanceof Error && error.message.includes('expired')) {
-      console.log('Token expired. Run "skillsmgr login" to re-authenticate.');
+      console.error('Token expired. Run "skillsmgr login" to re-authenticate.');
       clearAuth();
     } else {
       console.error(`Error: ${(error as Error).message}`);
     }
+    process.exit(1);
   }
 }
 

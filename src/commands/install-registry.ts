@@ -106,7 +106,7 @@ export async function installFromRegistry(
     url: `${REGISTRY_URL}/${packageName}`,
     type: 'registry',
     repoName: packageName,
-    installMethod: 'git',
+    installMethod: 'registry',
     version,
     registryUrl: REGISTRY_URL,
   });

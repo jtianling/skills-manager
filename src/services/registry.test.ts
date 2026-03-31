@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, writeFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { RegistryService } from './registry.js';
 
 const mockFetch = vi.fn();
@@ -28,9 +32,11 @@ describe('RegistryService', () => {
 
       const result = await service.getPackument('code-review');
       expect(result).toEqual(packument);
-      expect(mockFetch).toHaveBeenCalledWith('https://test-registry.dev/api/r/code-review', {
-        headers: { 'Accept': 'application/json' },
-      });
+      expect(mockFetch).toHaveBeenCalledWith('https://test-registry.dev/api/r/code-review',
+        expect.objectContaining({
+          headers: { 'Accept': 'application/json' },
+        })
+      );
     });
 
     it('throws for non-existent package', async () => {
@@ -57,6 +63,78 @@ describe('RegistryService', () => {
         expect.stringContaining('@'),
         expect.any(Object)
       );
+    });
+  });
+
+  describe('downloadTarball', () => {
+    it('downloads and extracts a tarball', async () => {
+      // Create a real tarball to serve as mock response
+      const srcDir = mkdtempSync(join(tmpdir(), 'tarball-src-'));
+      writeFileSync(join(srcDir, 'SKILL.md'), '---\nname: test\n---\ntest skill');
+      const tarballPath = join(tmpdir(), 'test-pkg.tgz');
+      execFileSync('tar', ['czf', tarballPath, '-C', srcDir, '.']);
+
+      const tarballBuffer = require('fs').readFileSync(tarballPath);
+      const { ReadableStream } = require('stream/web');
+      const stream = new ReadableStream({
+        start(controller: any) {
+          controller.enqueue(tarballBuffer);
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      });
+
+      const destDir = mkdtempSync(join(tmpdir(), 'tarball-dest-'));
+      await service.downloadTarball('https://test-registry.dev/pkg/-/pkg-1.0.0.tgz', destDir);
+
+      expect(existsSync(join(destDir, 'SKILL.md'))).toBe(true);
+    });
+
+    it('normalizes vercel.app URLs', async () => {
+      const srcDir = mkdtempSync(join(tmpdir(), 'tarball-src2-'));
+      writeFileSync(join(srcDir, 'index.js'), 'module.exports = {}');
+      const tarballPath = join(tmpdir(), 'test-pkg2.tgz');
+      execFileSync('tar', ['czf', tarballPath, '-C', srcDir, '.']);
+
+      const tarballBuffer = require('fs').readFileSync(tarballPath);
+      const { ReadableStream } = require('stream/web');
+      const stream = new ReadableStream({
+        start(controller: any) {
+          controller.enqueue(tarballBuffer);
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      });
+
+      const destDir = mkdtempSync(join(tmpdir(), 'tarball-dest2-'));
+      await service.downloadTarball('https://skillsmgr-web.vercel.app/pkg/-/pkg-1.0.0.tgz', destDir);
+
+      // Should have rewritten the URL to use test-registry.dev
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-registry.dev/pkg/-/pkg-1.0.0.tgz',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
+
+    it('throws on failed download', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+      const destDir = mkdtempSync(join(tmpdir(), 'tarball-fail-'));
+      await expect(
+        service.downloadTarball('https://test-registry.dev/pkg/-/pkg-1.0.0.tgz', destDir)
+      ).rejects.toThrow('Failed to download tarball');
     });
   });
 

@@ -8,6 +8,14 @@ import { REGISTRY_URL } from '../constants.js';
 import type { Packument, PublishPayload, SearchResult } from '../types.js';
 import { removeDir } from '../utils/fs.js';
 
+const FETCH_TIMEOUT_MS = 30_000;
+
+function withTimeout(init?: RequestInit): RequestInit {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return { ...init, signal: controller.signal };
+}
+
 export class RegistryService {
   private baseUrl: string;
 
@@ -18,9 +26,9 @@ export class RegistryService {
   async getPackument(name: string): Promise<Packument> {
     const encodedName = name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
     const url = `${this.baseUrl}/api/r/${encodedName}`;
-    const response = await fetch(url, {
+    const response = await fetch(url, withTimeout({
       headers: { 'Accept': 'application/json' },
-    });
+    }));
 
     if (response.status === 404) {
       throw new Error(`Package "${name}" not found in registry`);
@@ -34,9 +42,12 @@ export class RegistryService {
   }
 
   async downloadTarball(url: string, destDir: string): Promise<void> {
-    // Normalize tarball URL to use the main registry domain
+    // Workaround: the registry's packument returns tarball URLs pointing to the
+    // internal Vercel deployment hostname (skillsmgr-web.vercel.app) which may be
+    // behind SSO protection. Rewrite to the public domain so downloads work.
+    // This can be removed once the registry sets CANONICAL_URL to the public domain.
     const normalizedUrl = url.replace('https://skillsmgr-web.vercel.app/', `${this.baseUrl}/`);
-    const response = await fetch(normalizedUrl);
+    const response = await fetch(normalizedUrl, withTimeout());
 
     if (!response.ok) {
       throw new Error(`Failed to download tarball: ${response.status} ${response.statusText}`);
@@ -69,9 +80,9 @@ export class RegistryService {
     if (options?.size !== undefined) params.set('size', String(options.size));
 
     const url = `${this.baseUrl}/-/v1/search?${params.toString()}`;
-    const response = await fetch(url, {
+    const response = await fetch(url, withTimeout({
       headers: { 'Accept': 'application/json' },
-    });
+    }));
 
     if (!response.ok) {
       throw new Error(`Search failed: ${response.status} ${response.statusText}`);
@@ -84,14 +95,14 @@ export class RegistryService {
     const encodedName = name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
     const url = `${this.baseUrl}/api/r/${encodedName}`;
 
-    const response = await fetch(url, {
+    const response = await fetch(url, withTimeout({
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
-    });
+    }));
 
     if (response.status === 401) {
       throw new Error('Authentication failed. Run "skillsmgr login" to re-authenticate.');
@@ -111,11 +122,11 @@ export class RegistryService {
 
   async whoami(token: string): Promise<{ username: string }> {
     const url = `${this.baseUrl}/-/whoami`;
-    const response = await fetch(url, {
+    const response = await fetch(url, withTimeout({
       headers: {
         'Authorization': `Bearer ${token}`,
       },
-    });
+    }));
 
     if (response.status === 401) {
       throw new Error('Token expired or invalid');
@@ -130,7 +141,7 @@ export class RegistryService {
 
   async npmLogin(username: string, password: string): Promise<{ ok: boolean; token: string }> {
     const url = `${this.baseUrl}/-/user/org.couchdb.user:${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
+    const response = await fetch(url, withTimeout({
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -140,7 +151,7 @@ export class RegistryService {
         password,
         type: 'user',
       }),
-    });
+    }));
 
     if (response.status === 401) {
       throw new Error('Invalid username or password');

@@ -63,7 +63,7 @@ export class SkillsService {
         } else {
           const subDirs = getDirectoriesInDir(topDir.path);
           for (const subDir of subDirs) {
-            const nestedSkill = this.loadSkill(subDir.path, `${sourcePrefix}/${topDir.name}`);
+            const nestedSkill = this.loadSkill(subDir.path, sourcePrefix);
             if (nestedSkill) {
               skills.push(nestedSkill);
             }
@@ -123,6 +123,8 @@ export class SkillsService {
     // registry/{packageName}/ — may contain skills directly or in subdirectories
     const packageDirs = getDirectoriesInDir(registryDir);
     for (const packageDir of packageDirs) {
+      // Skip @scope dirs here; handled in the scoped section below
+      if (packageDir.name.startsWith('@')) continue;
       // Check if the package dir itself is a skill
       const skill = this.loadSkill(packageDir.path, `registry/${packageDir.name}`);
       if (skill) {
@@ -140,7 +142,7 @@ export class SkillsService {
     }
 
     // Also handle scoped packages: registry/@scope/name/
-    const scopedDirs = getDirectoriesInDir(registryDir).filter((d) => d.name.startsWith('@'));
+    const scopedDirs = packageDirs.filter((d) => d.name.startsWith('@'));
     for (const scopeDir of scopedDirs) {
       const scopePackageDirs = getDirectoriesInDir(scopeDir.path);
       for (const packageDir of scopePackageDirs) {

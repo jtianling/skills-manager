@@ -2,6 +2,7 @@ import { join } from 'path';
 import { fileExists, readFileContent } from '../utils/fs.js';
 import type { SkillManifest } from '../types.js';
 
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?(\+[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$/;
 const PACKAGE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SCOPED_PACKAGE_NAME_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
 const MAX_PACKAGE_NAME_LENGTH = 214;
@@ -43,6 +44,8 @@ export function validateManifest(manifest: SkillManifest): { valid: boolean; err
 
   if (!manifest.version) {
     errors.push('Missing required field: version');
+  } else if (!SEMVER_PATTERN.test(manifest.version)) {
+    errors.push(`Invalid version "${manifest.version}". Must be valid semver (e.g., 1.0.0)`);
   }
 
   if (!manifest.description) {

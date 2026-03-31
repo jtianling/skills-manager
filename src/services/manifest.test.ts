@@ -93,4 +93,16 @@ describe('validateManifest', () => {
     });
     expect(result.valid).toBe(false);
   });
+
+  it('validates semver format', () => {
+    expect(validateManifest({ name: 'a', version: '1.0.0', description: 'x' }).valid).toBe(true);
+    expect(validateManifest({ name: 'a', version: '1.0.0-beta.1', description: 'x' }).valid).toBe(true);
+    expect(validateManifest({ name: 'a', version: '1.0.0+build', description: 'x' }).valid).toBe(true);
+  });
+
+  it('rejects invalid semver', () => {
+    const result = validateManifest({ name: 'a', version: 'abc', description: 'x' });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('Invalid version');
+  });
 });
