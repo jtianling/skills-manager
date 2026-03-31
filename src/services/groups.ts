@@ -55,6 +55,28 @@ export class GroupsService {
     this.save(data);
   }
 
+  renameGroup(oldName: string, newName: string): void {
+    validateGroupName(newName);
+    const data = this.load();
+    const group = data[oldName];
+
+    if (!group) {
+      throw new Error(`Group '${oldName}' not found.`);
+    }
+    if (oldName === newName) {
+      throw new Error('New name is the same as the current name.');
+    }
+    if (data[newName]) {
+      throw new Error(`Group '${newName}' already exists.`);
+    }
+
+    const { [oldName]: _oldGroup, ...remaining } = data;
+    this.save({
+      ...remaining,
+      [newName]: group,
+    });
+  }
+
   addSkill(group: string, skillKey: string): boolean {
     validateGroupName(group);
     const data = this.load();
