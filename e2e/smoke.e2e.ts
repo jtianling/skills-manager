@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
@@ -22,13 +22,17 @@ describe('E2E framework smoke test', () => {
     expect(output).toContain('hello e2e test');
   });
 
-  it('can run skillsmgr --version', async () => {
+  it('skillsmgr --version matches package.json (ensures local build)', async () => {
+    const pkg = JSON.parse(
+      readFileSync(join(process.cwd(), 'package.json'), 'utf-8'),
+    );
     env = createTestEnv();
     tmux = new TmuxSession(env);
 
     await tmux.start('skillsmgr --version');
-    const output = await tmux.waitForText(/\d+\.\d+\.\d+/);
-    expect(output).toMatch(/\d+\.\d+\.\d+/);
+    const escaped = pkg.version.replace(/\./g, '\\.');
+    const output = await tmux.waitForText(new RegExp(escaped));
+    expect(output).toContain(pkg.version);
   });
 
   it('packed npm tarball installs and runs setup successfully', () => {

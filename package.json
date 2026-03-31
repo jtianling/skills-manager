@@ -10,7 +10,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && ln -sf index.js dist/skillsmgr",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:e2e": "vitest --config vitest.config.e2e.ts",

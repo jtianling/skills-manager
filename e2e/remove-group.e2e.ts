@@ -222,6 +222,52 @@ describe('remove --group E2E', () => {
     expect(existsSync(join(deployedDir, 'batch-c'))).toBe(true);
   });
 
+  // --- nested custom skill group matching ---
+
+  it('interactive remove groups nested custom skills correctly', async () => {
+    // Install a flat skill first to trigger setup
+    createLocalSkill('flat-one');
+    await installSkill('flat-one');
+
+    // Create nested custom skill structure: custom/sub-pkg/nested-a, custom/sub-pkg/nested-b
+    const customSubDir = join(env.homeDir, '.skills-manager', 'custom', 'sub-pkg');
+    mkdirSync(join(customSubDir, 'nested-a'), { recursive: true });
+    writeFileSync(
+      join(customSubDir, 'nested-a', 'SKILL.md'),
+      '---\nname: nested-a\ndescription: Nested skill A\n---\n# nested-a\nA nested test skill.\n',
+    );
+    mkdirSync(join(customSubDir, 'nested-b'), { recursive: true });
+    writeFileSync(
+      join(customSubDir, 'nested-b', 'SKILL.md'),
+      '---\nname: nested-b\ndescription: Nested skill B\n---\n# nested-b\nA nested test skill.\n',
+    );
+
+    // Deploy all three
+    await deploySkill('nested-a');
+    await deploySkill('nested-b');
+    await deploySkill('flat-one');
+
+    // Add nested skills to a group
+    await addToGroup('nested-grp', 'nested-a');
+    await addToGroup('nested-grp', 'nested-b');
+
+    // Verify group keys include nested source path (custom/sub-pkg/*, not custom/*)
+    const groups = readGroups();
+    expect(groups['nested-grp']).toContain('custom/sub-pkg/nested-a');
+    expect(groups['nested-grp']).toContain('custom/sub-pkg/nested-b');
+
+    // Run interactive remove — nested skills should appear under nested-grp header
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr remove', env.projectDir);
+    const output = await tmux.waitForText(/Select skills to remove/, 10_000);
+
+    expect(output).toContain('nested-grp');
+    expect(output).toContain('nested-a');
+    expect(output).toContain('nested-b');
+
+    await tmux.pressKey('q');
+  });
+
   // --- group reference cleanup ---
 
   it('remove cleans up group references in groups.json', async () => {
