@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { selectSkills, findInstalledCustomSkill } from './install-utils.js';
+import { selectSkills, findInstalledCustomSkill, findInstalledCustomSkills, findCustomSkillByKey } from './install-utils.js';
 import type { InstallableSkill } from './install-utils.js';
 import * as constants from '../constants.js';
 
@@ -105,7 +105,7 @@ describe('findInstalledCustomSkill', () => {
     writeFileSync(join(groupedDir, 'SKILL.md'), '---\nname: foo\n---\n');
 
     const result = findInstalledCustomSkill('foo');
-    expect(result).toEqual({ key: 'custom/foo', path: groupedDir });
+    expect(result).toEqual({ key: 'custom/group-a/foo', path: groupedDir });
   });
 
   it('returns null when custom directory does not exist', () => {
@@ -146,6 +146,110 @@ describe('findInstalledCustomSkill', () => {
     writeFileSync(join(groupBDir, 'SKILL.md'), '---\nname: bar\n---\n');
 
     const result = findInstalledCustomSkill('bar');
-    expect(result).toEqual({ key: 'custom/bar', path: groupBDir });
+    expect(result).toEqual({ key: 'custom/group-b/bar', path: groupBDir });
+  });
+});
+
+describe('findInstalledCustomSkills', () => {
+  let testManagerDir: string;
+
+  beforeEach(() => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    testManagerDir = join(tmpdir(), `skillsmgr-lookup-${id}`);
+    mkdirSync(testManagerDir, { recursive: true });
+    Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', { value: testManagerDir, writable: true });
+  });
+
+  afterEach(() => {
+    rmSync(testManagerDir, { recursive: true, force: true });
+  });
+
+  it('returns empty array when no matches', () => {
+    mkdirSync(join(testManagerDir, 'custom'), { recursive: true });
+    const result = findInstalledCustomSkills('unknown');
+    expect(result).toEqual([]);
+  });
+
+  it('returns single result for top-level only', () => {
+    const skillDir = join(testManagerDir, 'custom', 'jt-codex');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const result = findInstalledCustomSkills('jt-codex');
+    expect(result).toEqual([{ key: 'custom/jt-codex', path: skillDir }]);
+  });
+
+  it('returns both top-level and subdirectory matches', () => {
+    const directDir = join(testManagerDir, 'custom', 'jt-codex');
+    mkdirSync(directDir, { recursive: true });
+    writeFileSync(join(directDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const nestedDir = join(testManagerDir, 'custom', 'develop', 'jt-codex');
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(nestedDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const result = findInstalledCustomSkills('jt-codex');
+    expect(result).toEqual([
+      { key: 'custom/jt-codex', path: directDir },
+      { key: 'custom/develop/jt-codex', path: nestedDir },
+    ]);
+  });
+
+  it('returns only subdirectory match when no top-level', () => {
+    const nestedDir = join(testManagerDir, 'custom', 'develop', 'jt-codex');
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(nestedDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const result = findInstalledCustomSkills('jt-codex');
+    expect(result).toEqual([{ key: 'custom/develop/jt-codex', path: nestedDir }]);
+  });
+
+  it('returns empty when custom dir does not exist', () => {
+    const result = findInstalledCustomSkills('any-skill');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('findCustomSkillByKey', () => {
+  let testManagerDir: string;
+
+  beforeEach(() => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    testManagerDir = join(tmpdir(), `skillsmgr-lookup-${id}`);
+    mkdirSync(testManagerDir, { recursive: true });
+    Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', { value: testManagerDir, writable: true });
+  });
+
+  afterEach(() => {
+    rmSync(testManagerDir, { recursive: true, force: true });
+  });
+
+  it('finds skill by full key with subdirectory', () => {
+    const skillDir = join(testManagerDir, 'custom', 'develop', 'jt-codex');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const result = findCustomSkillByKey('custom/develop/jt-codex');
+    expect(result).toEqual({ key: 'custom/develop/jt-codex', path: skillDir });
+  });
+
+  it('finds skill by simple key', () => {
+    const skillDir = join(testManagerDir, 'custom', 'jt-codex');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: jt-codex\n---\n');
+
+    const result = findCustomSkillByKey('custom/jt-codex');
+    expect(result).toEqual({ key: 'custom/jt-codex', path: skillDir });
+  });
+
+  it('returns null for non-existent key', () => {
+    mkdirSync(join(testManagerDir, 'custom'), { recursive: true });
+    const result = findCustomSkillByKey('custom/develop/jt-codex');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for non-custom key', () => {
+    const result = findCustomSkillByKey('official/anthropic/skills');
+    expect(result).toBeNull();
   });
 });

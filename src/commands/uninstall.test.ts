@@ -16,6 +16,7 @@ vi.mock('../constants.js', async () => {
 vi.mock('../utils/prompts.js', () => ({
   promptConfirm: vi.fn().mockResolvedValue(true),
   promptSkillsToUninstall: vi.fn().mockResolvedValue([]),
+  promptSelect: vi.fn().mockResolvedValue(''),
 }));
 
 vi.mock('../utils/interactive-select.js', () => ({
@@ -25,7 +26,7 @@ vi.mock('../utils/interactive-select.js', () => ({
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { executeUninstall } from './uninstall.js';
 import { SourcesService } from '../services/sources.js';
-import { promptConfirm } from '../utils/prompts.js';
+import { promptConfirm, promptSelect } from '../utils/prompts.js';
 import { promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 
@@ -41,9 +42,11 @@ describe('uninstall command', () => {
     vi.mocked(promptConfirm).mockReset();
     vi.mocked(promptSkillsToUninstall).mockReset();
     vi.mocked(interactiveCheckbox).mockReset();
+    vi.mocked(promptSelect).mockReset();
     vi.mocked(promptConfirm).mockResolvedValue(true);
     vi.mocked(promptSkillsToUninstall).mockResolvedValue([]);
     vi.mocked(interactiveCheckbox).mockResolvedValue([]);
+    vi.mocked(promptSelect).mockResolvedValue('');
     mkdirSync(SKILLS_MANAGER_DIR, { recursive: true });
   });
 
@@ -306,11 +309,11 @@ describe('uninstall command', () => {
       createSkillDir(officialSkill, 'dupe-skill');
       createSkillDir(communitySkill, 'dupe-skill');
 
-      vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['official/anthropic/skills/dupe-skill']);
+      vi.mocked(promptSelect).mockResolvedValueOnce('official/anthropic/skills/dupe-skill');
 
       await executeUninstall('dupe-skill', { force: true });
 
-      expect(interactiveCheckbox).toHaveBeenCalled();
+      expect(promptSelect).toHaveBeenCalled();
       expect(existsSync(officialSkill)).toBe(false);
       expect(existsSync(communitySkill)).toBe(true);
     });

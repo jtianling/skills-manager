@@ -198,8 +198,8 @@ describe('install command', () => {
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-b', 'SKILL.md'))).toBe(true);
 
       const sources = readSources();
-      expect(sources.sources['custom/skill-a']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
-      expect(sources.sources['custom/skill-b']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
+      expect(sources.sources['custom/my-skills/skill-a']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
+      expect(sources.sources['custom/my-skills/skill-b']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
     });
 
     it('auto-creates group with directory name after batch install', async () => {
@@ -210,8 +210,8 @@ describe('install command', () => {
       await executeInstall('./openspec', { all: true });
 
       const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
-      expect(groups['openspec']).toContain('custom/explore');
-      expect(groups['openspec']).toContain('custom/ff-change');
+      expect(groups['openspec']).toContain('custom/openspec/explore');
+      expect(groups['openspec']).toContain('custom/openspec/ff-change');
     });
 
     it('--group overrides auto group name', async () => {
@@ -221,7 +221,7 @@ describe('install command', () => {
       await executeInstall('./openspec', { all: true, group: 'tools' });
 
       const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
-      expect(groups['tools']).toContain('custom/explore');
+      expect(groups['tools']).toContain('custom/openspec/explore');
       expect(groups['openspec']).toBeUndefined();
     });
 

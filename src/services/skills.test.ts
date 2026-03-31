@@ -135,7 +135,7 @@ describe('SkillsService', () => {
       const freshService = new SkillsService(testDir);
       const skill = freshService.getSkillByName('tool-a');
       expect(skill).toBeDefined();
-      expect(skill?.source).toBe('custom');
+      expect(skill?.source).toBe('custom/my-tools');
     });
 
     it('finds mixed flat and nested skills', () => {

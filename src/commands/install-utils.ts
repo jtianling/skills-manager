@@ -10,15 +10,17 @@ export interface InstalledCustomSkill {
   path: string;
 }
 
-export function findInstalledCustomSkill(skillName: string): InstalledCustomSkill | null {
+export function findInstalledCustomSkills(skillName: string): InstalledCustomSkill[] {
   const customDir = join(SKILLS_MANAGER_DIR, 'custom');
   if (!fileExists(customDir)) {
-    return null;
+    return [];
   }
+
+  const results: InstalledCustomSkill[] = [];
 
   const directPath = join(customDir, skillName);
   if (fileExists(join(directPath, 'SKILL.md'))) {
-    return { key: `custom/${skillName}`, path: directPath };
+    results.push({ key: `custom/${skillName}`, path: directPath });
   }
 
   for (const subdir of getDirectoriesInDir(customDir)) {
@@ -27,10 +29,28 @@ export function findInstalledCustomSkill(skillName: string): InstalledCustomSkil
     }
     const nestedPath = join(subdir.path, skillName);
     if (fileExists(join(nestedPath, 'SKILL.md'))) {
-      return { key: `custom/${skillName}`, path: nestedPath };
+      results.push({ key: `custom/${subdir.name}/${skillName}`, path: nestedPath });
     }
   }
 
+  return results;
+}
+
+export function findInstalledCustomSkill(skillName: string): InstalledCustomSkill | null {
+  const results = findInstalledCustomSkills(skillName);
+  return results.length > 0 ? results[0] : null;
+}
+
+export function findCustomSkillByKey(sourceKey: string): InstalledCustomSkill | null {
+  const parts = sourceKey.split('/');
+  if (parts[0] !== 'custom') {
+    return null;
+  }
+
+  const skillPath = join(SKILLS_MANAGER_DIR, ...parts);
+  if (fileExists(join(skillPath, 'SKILL.md'))) {
+    return { key: sourceKey, path: skillPath };
+  }
   return null;
 }
 
@@ -78,7 +98,10 @@ export function getCustomSkillDir(skillName: string, subdirectory?: string): str
   return join(SKILLS_MANAGER_DIR, 'custom', skillName);
 }
 
-export function getCustomSkillKey(skillName: string): string {
+export function getCustomSkillKey(skillName: string, subdirectory?: string): string {
+  if (subdirectory) {
+    return `custom/${subdirectory}/${skillName}`;
+  }
   return `custom/${skillName}`;
 }
 

@@ -100,7 +100,7 @@ async function installFromLocalDirBatch(skillDir: string, options: InstallOption
 
   const installedNames = new Set<string>();
   for (const skill of scannedSkills) {
-    if (findInstalledCustomSkill(skill.name)) {
+    if (fileExists(getCustomSkillDir(skill.name, dirName))) {
       installedNames.add(skill.name);
     }
   }
@@ -115,9 +115,8 @@ async function installFromLocalDirBatch(skillDir: string, options: InstallOption
   const allScriptFiles: string[] = [];
 
   for (const skill of selectedSkills) {
-    const existing = findInstalledCustomSkill(skill.name);
-    const targetDir = existing ? existing.path : getCustomSkillDir(skill.name, dirName);
-    const sourceKey = getCustomSkillKey(skill.name);
+    const targetDir = getCustomSkillDir(skill.name, dirName);
+    const sourceKey = getCustomSkillKey(skill.name, dirName);
 
     const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name), options.force);
     if (!ready) {
