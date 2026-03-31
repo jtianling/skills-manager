@@ -40,17 +40,14 @@ Todas as skills são implantadas em `.agents/skills/`. Ferramentas nativas leem 
 ## Início Rápido
 
 ```bash
-# 1. Inicializar ~/.skills-manager/
-npx skillsmgr setup
-
-# 2. Instalar skills do repositório oficial da Anthropic
+# 1. Instalar skills do repositório oficial da Anthropic
 npx skillsmgr install anthropic
 
-# 3. Implantar skills no projeto atual
+# 2. Implantar skills no projeto atual
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. Inspecionar skills implantadas
+# 3. Inspecionar skills implantadas
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - Ferramentas nativas leem `.agents/skills/` diretamente.
-- Ferramentas não nativas são configuradas criando uma ponte de symlink durante `init` ou `add`.
+- Ferramentas não nativas são configuradas criando uma ponte de symlink durante `deploy` ou `add`.
 - A implantação de skills usa symlinks por padrão; use `--copy` se preferir cópias locais no projeto.
 - Use `-g` para implantar globalmente nos diretórios de nível de usuário dos agentes (ex.: `~/.claude/skills`).
 
@@ -77,15 +74,15 @@ project/
 
 | Comando | Alias | Descrição |
 |---------|-------|-----------|
-| `skillsmgr setup` | - | Inicializar `~/.skills-manager/` e criar `custom/example-skill/` |
 | `skillsmgr install <source>` | `i` | Instalar skills do GitHub, diretório local ou arquivo zip |
 | `skillsmgr uninstall [identifier]` | - | Remover skills de `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | Atualizar skills instaladas a partir das fontes rastreadas |
 | `skillsmgr list` | - | Listar skills instaladas em `~/.skills-manager/` |
 | `skillsmgr list --deployed` | - | Listar skills implantadas e ferramentas configuradas no projeto atual |
-| `skillsmgr init` | - | Implantação interativa no projeto atual |
+| `skillsmgr deploy` | - | Implantação interativa no projeto atual |
 | `skillsmgr add [name]` | - | Adicionar uma skill ao projeto |
 | `skillsmgr remove [name]` | - | Remover uma skill implantada do projeto |
+| `skillsmgr group <subcommand>` | - | Gerenciar grupos virtuais de skills |
 
 ### Flags dos Comandos
 
@@ -96,29 +93,34 @@ project/
 | `--all` | Instalar todas as skills descobertas sem solicitar confirmação |
 | `--custom` | Instalar em `custom/` em vez de `community/` |
 | `-f, --force` | Sobrescrever skill existente sem confirmação |
-| `--group <name>` | Agrupar skills em `custom/<name>/` |
+| `--group <name>` | Adicionar skills instaladas a um grupo virtual |
 | `-s, --skill <name>` | Selecionar skills específicas (repetível) |
 
 **add**
 
 | Flag | Descrição |
 |------|-----------|
+| `--all` | Adicionar todas as skills sem solicitar confirmação |
 | `--copy` | Copiar arquivos em vez de criar symlinks |
 | `-a, --agent <name>` | Agente alvo (repetível) |
 | `-s, --skill <name>` | Selecionar skills específicas (repetível) |
 | `-g, --global` | Implantar globalmente nos diretórios de nível de usuário dos agentes |
-| `--group <name>` | Implantar em lote todas as skills de um grupo personalizado |
+| `--group <name>` | Implantar em lote todas as skills de um grupo |
+| `-y, --yes` | Pular todas as confirmações (equivalente a --all) |
 | `--same-agents` | Usar os agentes atualmente configurados |
 
 **remove**
 
 | Flag | Descrição |
 |------|-----------|
+| `--all` | Remover todas as skills correspondentes sem solicitar confirmação |
 | `-s, --skill <name>` | Skill específica para remover (repetível) |
 | `-a, --agent <name>` | Agente alvo (repetível) |
 | `-g, --global` | Remover dos diretórios globais dos agentes |
+| `--group <name>` | Remover em lote as skills implantadas de um grupo |
+| `-y, --yes` | Pular todas as confirmações (equivalente a --all) |
 
-**init**
+**deploy**
 
 | Flag | Descrição |
 |------|-----------|
@@ -129,8 +131,21 @@ project/
 
 | Flag | Descrição |
 |------|-----------|
+| `--all` | Pular seleção e desinstalar todas as skills correspondentes |
 | `-f, --force` | Pular confirmação |
+| `-y, --yes` | Pular todas as confirmações (equivalente a --all --force) |
 | `-s, --skill <name>` | Skill específica para desinstalar (repetível) |
+
+**group**
+
+| Subcomando | Descrição |
+|------------|-----------|
+| `group list [name]` | Listar todos os grupos ou mostrar detalhes de um grupo |
+| `group create <name>` | Criar um novo grupo vazio |
+| `group delete <name>` | Excluir um grupo (as skills não são afetadas) |
+| `group add <group> <skill>` | Adicionar uma skill a um grupo |
+| `group remove <group> <skill>` | Remover uma skill de um grupo |
+| `group rename <old> <new>` | Renomear um grupo |
 
 ## Instalando Skills
 
@@ -194,10 +209,10 @@ O instalador lida com os seguintes layouts de repositório:
 
 ```bash
 # implantar no projeto atual (seleção interativa de agentes e skills)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # implantar globalmente nos diretórios de nível de usuário dos agentes
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### Implantação não interativa
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## Uso Interativo
 
-`install`, `init`, `add` e `uninstall` usam um seletor interativo com os seguintes atalhos:
+`install`, `deploy`, `add`, `remove` e `uninstall` usam um seletor interativo com os seguintes atalhos:
 
 | Tecla | Ação |
 |-------|------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: fontes oficiais integradas, como `anthropic`
 - `community/`: repositórios de terceiros
-- `custom/`: skills locais, skills agrupadas e skills instaladas explicitamente como custom
+- `custom/`: skills locais e skills instaladas explicitamente como custom
+- `groups.json`: definições de grupos virtuais gerenciados pelos comandos `group`
 - `sources.json`: metadados de fontes usados pelo `update`
 
 ## Agradecimentos

@@ -40,17 +40,14 @@ All skills deploy to `.agents/skills/`. Native tools read that directory directl
 ## Quick Start
 
 ```bash
-# 1. Initialize ~/.skills-manager/
-npx skillsmgr setup
-
-# 2. Install skills from the official Anthropic repository
+# 1. Install skills from the official Anthropic repository
 npx skillsmgr install anthropic
 
-# 3. Deploy skills to the current project
+# 2. Deploy skills to the current project
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. Inspect deployed skills
+# 3. Inspect deployed skills
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - Native tools read `.agents/skills/` directly.
-- Non-native tools are configured by creating a symlink bridge during `init` or `add`.
+- Non-native tools are configured by creating a symlink bridge during `deploy` or `add`.
 - Skill deployment defaults to symlinks; use `--copy` if you want project-local copies instead.
 - Use `-g` to deploy globally to agent user-level directories (e.g., `~/.claude/skills`).
 
@@ -77,15 +74,15 @@ project/
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `skillsmgr setup` | - | Initialize `~/.skills-manager/` and create `custom/example-skill/` |
 | `skillsmgr install <source>` | `i` | Install skills from GitHub, local directory, or zip archive |
 | `skillsmgr uninstall [identifier]` | - | Remove skills from `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | Update installed skills from tracked sources |
 | `skillsmgr list` | - | List installed skills in `~/.skills-manager/` |
 | `skillsmgr list --deployed` | - | List deployed skills and configured tools in the current project |
-| `skillsmgr init` | - | Interactive deployment to the current project |
+| `skillsmgr deploy` | - | Interactive deployment to the current project |
 | `skillsmgr add [name]` | - | Add a skill to the project |
 | `skillsmgr remove [name]` | - | Remove a deployed skill from the project |
+| `skillsmgr group <subcommand>` | - | Manage virtual skill groups |
 
 ### Command Flags
 
@@ -96,29 +93,34 @@ project/
 | `--all` | Install all discovered skills without prompting |
 | `--custom` | Install to `custom/` instead of `community/` |
 | `-f, --force` | Overwrite existing skill without confirmation |
-| `--group <name>` | Group skills under `custom/<name>/` |
+| `--group <name>` | Add installed skills to a virtual group |
 | `-s, --skill <name>` | Select specific skills (repeatable) |
 
 **add**
 
 | Flag | Description |
 |------|-------------|
+| `--all` | Add all skills without prompting |
 | `--copy` | Copy files instead of creating symlinks |
 | `-a, --agent <name>` | Target agent (repeatable) |
 | `-s, --skill <name>` | Select specific skills (repeatable) |
 | `-g, --global` | Deploy globally to agent user-level directories |
-| `--group <name>` | Batch deploy all skills from a custom group |
+| `--group <name>` | Batch deploy all skills from a group |
+| `-y, --yes` | Skip all prompts (equivalent to --all) |
 | `--same-agents` | Use currently configured agents |
 
 **remove**
 
 | Flag | Description |
 |------|-------------|
+| `--all` | Remove all matching skills without prompting |
 | `-s, --skill <name>` | Specific skill to remove (repeatable) |
 | `-a, --agent <name>` | Target agent (repeatable) |
 | `-g, --global` | Remove from global agent directories |
+| `--group <name>` | Batch remove deployed skills from a group |
+| `-y, --yes` | Skip all prompts (equivalent to --all) |
 
-**init**
+**deploy**
 
 | Flag | Description |
 |------|-------------|
@@ -129,8 +131,21 @@ project/
 
 | Flag | Description |
 |------|-------------|
+| `--all` | Skip selection prompt and uninstall all matching skills |
 | `-f, --force` | Skip confirmation prompt |
+| `-y, --yes` | Skip all prompts (equivalent to --all --force) |
 | `-s, --skill <name>` | Specific skill to uninstall (repeatable) |
+
+**group**
+
+| Subcommand | Description |
+|------------|-------------|
+| `group list [name]` | List all groups or show group details |
+| `group create <name>` | Create a new empty group |
+| `group delete <name>` | Delete a group (skills are not affected) |
+| `group add <group> <skill>` | Add a skill to a group |
+| `group remove <group> <skill>` | Remove a skill from a group |
+| `group rename <old> <new>` | Rename a group |
 
 ## Installing Skills
 
@@ -194,10 +209,10 @@ The installer handles these repository layouts:
 
 ```bash
 # deploy to current project (interactive agent and skill selection)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # deploy globally to agent user-level directories
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### Non-interactive deployment
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## Interactive Usage
 
-`install`, `init`, `add`, and `uninstall` use an interactive selector with these shortcuts:
+`install`, `deploy`, `add`, `remove`, and `uninstall` use an interactive selector with these shortcuts:
 
 | Key | Action |
 |-----|--------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: built-in official sources such as `anthropic`
 - `community/`: third-party repositories
-- `custom/`: local skills, grouped skills, and skills explicitly installed as custom
+- `custom/`: local skills and skills explicitly installed as custom
+- `groups.json`: virtual group definitions managed by `group` commands
 - `sources.json`: source metadata used by `update`
 
 ## Acknowledgements

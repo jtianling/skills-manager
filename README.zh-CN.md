@@ -40,17 +40,14 @@
 ## 快速开始
 
 ```bash
-# 1. 初始化 ~/.skills-manager/
-npx skillsmgr setup
-
-# 2. 安装官方 Anthropic skills
+# 1. 安装官方 Anthropic skills
 npx skillsmgr install anthropic
 
-# 3. 部署到当前项目
+# 2. 部署到当前项目
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. 查看当前项目中的已部署 skills
+# 3. 查看当前项目中的已部署 skills
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - 原生工具直接读取 `.agents/skills/`
-- 非原生工具在 `init` 或 `add` 时创建 symlink bridge
+- 非原生工具在 `deploy` 或 `add` 时创建 symlink bridge
 - 默认用符号链接部署 skill; 如果需要项目内独立副本, 可使用 `--copy`
 - 使用 `-g` 全局部署到 agent 用户级目录 (如 `~/.claude/skills`)
 
@@ -77,15 +74,15 @@ project/
 
 | 命令 | 别名 | 说明 |
 |------|------|------|
-| `skillsmgr setup` | - | 初始化 `~/.skills-manager/`, 并创建 `custom/example-skill/` |
 | `skillsmgr install <source>` | `i` | 从 GitHub, 本地目录或 zip 压缩包安装 skills |
 | `skillsmgr uninstall [identifier]` | - | 从 `~/.skills-manager/` 卸载 skills |
 | `skillsmgr update [source]` | - | 从已记录的来源更新已安装 skills |
 | `skillsmgr list` | - | 列出 `~/.skills-manager/` 中已安装的 skills |
 | `skillsmgr list --deployed` | - | 列出当前项目中已部署的 skills 和已配置工具 |
-| `skillsmgr init` | - | 交互式部署到当前项目 |
+| `skillsmgr deploy` | - | 交互式部署到当前项目 |
 | `skillsmgr add [name]` | - | 添加 skill 到项目 |
 | `skillsmgr remove [name]` | - | 从项目中移除已部署的 skill |
+| `skillsmgr group <subcommand>` | - | 管理虚拟 skill 分组 |
 
 ### 命令选项
 
@@ -96,29 +93,34 @@ project/
 | `--all` | 安装发现到的全部 skills, 不交互 |
 | `--custom` | 安装到 `custom/` 而非 `community/` |
 | `-f, --force` | 覆盖已存在的 skill, 不确认 |
-| `--group <name>` | 将 skills 归入 `custom/<name>/` 分组 |
+| `--group <name>` | 将已安装的 skills 加入虚拟分组 |
 | `-s, --skill <name>` | 选择指定 skill (可重复) |
 
 **add**
 
 | 选项 | 说明 |
 |------|------|
+| `--all` | 不交互, 添加所有 skills |
 | `--copy` | 复制文件而非创建符号链接 |
 | `-a, --agent <name>` | 指定目标 agent (可重复) |
 | `-s, --skill <name>` | 选择指定 skill (可重复) |
 | `-g, --global` | 全局部署到 agent 用户级目录 |
-| `--group <name>` | 批量部署自定义分组中的所有 skills |
+| `--group <name>` | 批量部署分组中的所有 skills |
+| `-y, --yes` | 跳过所有提示 (等同于 --all) |
 | `--same-agents` | 使用当前已配置的 agents |
 
 **remove**
 
 | 选项 | 说明 |
 |------|------|
+| `--all` | 不交互, 移除所有匹配的 skills |
 | `-s, --skill <name>` | 指定要移除的 skill (可重复) |
 | `-a, --agent <name>` | 指定目标 agent (可重复) |
 | `-g, --global` | 从全局 agent 目录移除 |
+| `--group <name>` | 批量移除分组中已部署的 skills |
+| `-y, --yes` | 跳过所有提示 (等同于 --all) |
 
-**init**
+**deploy**
 
 | 选项 | 说明 |
 |------|------|
@@ -129,8 +131,21 @@ project/
 
 | 选项 | 说明 |
 |------|------|
+| `--all` | 跳过选择提示, 卸载所有匹配的 skills |
 | `-f, --force` | 跳过确认提示 |
+| `-y, --yes` | 跳过所有提示 (等同于 --all --force) |
 | `-s, --skill <name>` | 指定要卸载的 skill (可重复) |
+
+**group**
+
+| 子命令 | 说明 |
+|--------|------|
+| `group list [name]` | 列出所有分组或查看分组详情 |
+| `group create <name>` | 创建一个空分组 |
+| `group delete <name>` | 删除分组 (不影响 skills 本身) |
+| `group add <group> <skill>` | 将 skill 添加到分组 |
+| `group remove <group> <skill>` | 从分组中移除 skill |
+| `group rename <old> <new>` | 重命名分组 |
 
 ## 安装 Skills
 
@@ -194,10 +209,10 @@ npx skillsmgr install https://github.com/user/repo --custom
 
 ```bash
 # 部署到当前项目 (交互选择 agent 和 skill)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # 全局部署到 agent 用户级目录
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### 非交互式部署
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## 交互式操作
 
-`install`, `init`, `add`, `uninstall` 使用统一的交互式选择器, 快捷键如下:
+`install`, `deploy`, `add`, `remove`, `uninstall` 使用统一的交互式选择器, 快捷键如下:
 
 | 按键 | 操作 |
 |------|------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: 官方来源, 例如 `anthropic`
 - `community/`: 第三方仓库
-- `custom/`: 本地 skill, 分组 skill, 或明确按 custom 分类安装的 skill
+- `custom/`: 本地 skill, 或明确按 custom 分类安装的 skill
+- `groups.json`: 由 `group` 命令管理的虚拟分组定义
 - `sources.json`: 供 `update` 使用的来源元数据
 
 ## 致谢

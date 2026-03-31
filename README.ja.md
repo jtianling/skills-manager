@@ -40,17 +40,14 @@ AIコーディングツールのための統合スキルマネージャーです
 ## クイックスタート
 
 ```bash
-# 1. ~/.skills-manager/ を初期化
-npx skillsmgr setup
-
-# 2. 公式 Anthropic リポジトリからスキルをインストール
+# 1. 公式 Anthropic リポジトリからスキルをインストール
 npx skillsmgr install anthropic
 
-# 3. 現在のプロジェクトにスキルをデプロイ
+# 2. 現在のプロジェクトにスキルをデプロイ
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. デプロイ済みスキルを確認
+# 3. デプロイ済みスキルを確認
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - ネイティブツールは `.agents/skills/` を直接読み取ります.
-- 非ネイティブツールは `init` または `add` の実行時にシンボリックリンクブリッジを作成して設定されます.
+- 非ネイティブツールは `deploy` または `add` の実行時にシンボリックリンクブリッジを作成して設定されます.
 - スキルのデプロイはデフォルトでシンボリックリンクを使用します. プロジェクトローカルのコピーが必要な場合は `--copy` を使用してください.
 - `-g` を使用すると, エージェントのユーザーレベルディレクトリ (例: `~/.claude/skills`) にグローバルにデプロイできます.
 
@@ -77,15 +74,15 @@ project/
 
 | コマンド | エイリアス | 説明 |
 |----------|------------|------|
-| `skillsmgr setup` | - | `~/.skills-manager/` を初期化し, `custom/example-skill/` を作成 |
 | `skillsmgr install <source>` | `i` | GitHub, ローカルディレクトリ, またはzipアーカイブからスキルをインストール |
 | `skillsmgr uninstall [identifier]` | - | `~/.skills-manager/` からスキルを削除 |
 | `skillsmgr update [source]` | - | 追跡されているソースからインストール済みスキルを更新 |
 | `skillsmgr list` | - | `~/.skills-manager/` のインストール済みスキルを一覧表示 |
 | `skillsmgr list --deployed` | - | 現在のプロジェクトのデプロイ済みスキルと設定済みツールを一覧表示 |
-| `skillsmgr init` | - | 現在のプロジェクトへのインタラクティブデプロイ |
+| `skillsmgr deploy` | - | 現在のプロジェクトへのインタラクティブデプロイ |
 | `skillsmgr add [name]` | - | プロジェクトにスキルを追加 |
 | `skillsmgr remove [name]` | - | プロジェクトからデプロイ済みスキルを削除 |
+| `skillsmgr group <subcommand>` | - | 仮想スキルグループを管理 |
 
 ### コマンドフラグ
 
@@ -96,29 +93,34 @@ project/
 | `--all` | プロンプトなしで検出された全スキルをインストール |
 | `--custom` | `community/` ではなく `custom/` にインストール |
 | `-f, --force` | 確認なしで既存のスキルを上書き |
-| `--group <name>` | `custom/<name>/` 以下にスキルをグループ化 |
+| `--group <name>` | インストールしたスキルを仮想グループに追加 |
 | `-s, --skill <name>` | 特定のスキルを選択 (繰り返し指定可能) |
 
 **add**
 
 | フラグ | 説明 |
 |--------|------|
+| `--all` | プロンプトなしで全スキルを追加 |
 | `--copy` | シンボリックリンクの代わりにファイルをコピー |
 | `-a, --agent <name>` | 対象エージェント (繰り返し指定可能) |
 | `-s, --skill <name>` | 特定のスキルを選択 (繰り返し指定可能) |
 | `-g, --global` | エージェントのユーザーレベルディレクトリにグローバルデプロイ |
-| `--group <name>` | カスタムグループの全スキルを一括デプロイ |
+| `--group <name>` | グループの全スキルを一括デプロイ |
+| `-y, --yes` | 全プロンプトをスキップ (--allと同等) |
 | `--same-agents` | 現在設定されているエージェントを使用 |
 
 **remove**
 
 | フラグ | 説明 |
 |--------|------|
+| `--all` | プロンプトなしで一致する全スキルを削除 |
 | `-s, --skill <name>` | 削除する特定のスキル (繰り返し指定可能) |
 | `-a, --agent <name>` | 対象エージェント (繰り返し指定可能) |
 | `-g, --global` | グローバルのエージェントディレクトリから削除 |
+| `--group <name>` | グループのデプロイ済みスキルを一括削除 |
+| `-y, --yes` | 全プロンプトをスキップ (--allと同等) |
 
-**init**
+**deploy**
 
 | フラグ | 説明 |
 |--------|------|
@@ -129,8 +131,21 @@ project/
 
 | フラグ | 説明 |
 |--------|------|
+| `--all` | 選択プロンプトをスキップし一致する全スキルをアンインストール |
 | `-f, --force` | 確認プロンプトをスキップ |
+| `-y, --yes` | 全プロンプトをスキップ (--all --forceと同等) |
 | `-s, --skill <name>` | アンインストールする特定のスキル (繰り返し指定可能) |
+
+**group**
+
+| サブコマンド | 説明 |
+|--------------|------|
+| `group list [name]` | 全グループの一覧表示またはグループの詳細表示 |
+| `group create <name>` | 新しい空のグループを作成 |
+| `group delete <name>` | グループを削除 (スキルには影響しない) |
+| `group add <group> <skill>` | グループにスキルを追加 |
+| `group remove <group> <skill>` | グループからスキルを削除 |
+| `group rename <old> <new>` | グループの名前を変更 |
 
 ## スキルのインストール
 
@@ -194,10 +209,10 @@ npx skillsmgr install https://github.com/user/repo --custom
 
 ```bash
 # 現在のプロジェクトにデプロイ (エージェントとスキルをインタラクティブに選択)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # エージェントのユーザーレベルディレクトリにグローバルデプロイ
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### 非インタラクティブデプロイ
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## インタラクティブ操作
 
-`install`, `init`, `add`, `uninstall` はインタラクティブセレクターを使用し, 以下のショートカットに対応しています:
+`install`, `deploy`, `add`, `remove`, `uninstall` はインタラクティブセレクターを使用し, 以下のショートカットに対応しています:
 
 | キー | アクション |
 |------|------------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: `anthropic` などの公式ビルトインソース
 - `community/`: サードパーティリポジトリ
-- `custom/`: ローカルスキル, グループ化されたスキル, およびcustomとして明示的にインストールされたスキル
+- `custom/`: ローカルスキルおよびcustomとして明示的にインストールされたスキル
+- `groups.json`: `group` コマンドで管理される仮想グループ定義
 - `sources.json`: `update` で使用されるソースメタデータ
 
 ## 謝辞

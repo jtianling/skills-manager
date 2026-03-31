@@ -40,17 +40,14 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 ## 빠른 시작
 
 ```bash
-# 1. ~/.skills-manager/ 초기화
-npx skillsmgr setup
-
-# 2. Anthropic 공식 저장소에서 스킬 설치
+# 1. Anthropic 공식 저장소에서 스킬 설치
 npx skillsmgr install anthropic
 
-# 3. 현재 프로젝트에 스킬 배포
+# 2. 현재 프로젝트에 스킬 배포
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. 배포된 스킬 확인
+# 3. 배포된 스킬 확인
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - 네이티브 도구는 `.agents/skills/`를 직접 읽습니다.
-- 비네이티브 도구는 `init` 또는 `add` 실행 시 심볼릭 링크 브리지를 생성하여 설정됩니다.
+- 비네이티브 도구는 `deploy` 또는 `add` 실행 시 심볼릭 링크 브리지를 생성하여 설정됩니다.
 - 스킬 배포는 기본적으로 심볼릭 링크를 사용합니다. 프로젝트 로컬 복사본이 필요하면 `--copy`를 사용하세요.
 - `-g`를 사용하면 에이전트 사용자 수준 디렉토리(예: `~/.claude/skills`)에 전역으로 배포합니다.
 
@@ -77,15 +74,15 @@ project/
 
 | 명령어 | 별칭 | 설명 |
 |--------|------|------|
-| `skillsmgr setup` | - | `~/.skills-manager/` 초기화 및 `custom/example-skill/` 생성 |
 | `skillsmgr install <source>` | `i` | GitHub, 로컬 디렉토리 또는 zip 아카이브에서 스킬 설치 |
 | `skillsmgr uninstall [identifier]` | - | `~/.skills-manager/`에서 스킬 제거 |
 | `skillsmgr update [source]` | - | 추적된 소스에서 설치된 스킬 업데이트 |
 | `skillsmgr list` | - | `~/.skills-manager/`에 설치된 스킬 목록 조회 |
 | `skillsmgr list --deployed` | - | 현재 프로젝트의 배포된 스킬 및 설정된 도구 목록 조회 |
-| `skillsmgr init` | - | 현재 프로젝트에 대화형 배포 |
+| `skillsmgr deploy` | - | 현재 프로젝트에 대화형 배포 |
 | `skillsmgr add [name]` | - | 프로젝트에 스킬 추가 |
 | `skillsmgr remove [name]` | - | 프로젝트에서 배포된 스킬 제거 |
+| `skillsmgr group <subcommand>` | - | 가상 스킬 그룹 관리 |
 
 ### 명령어 플래그
 
@@ -96,29 +93,34 @@ project/
 | `--all` | 프롬프트 없이 발견된 모든 스킬 설치 |
 | `--custom` | `community/` 대신 `custom/`에 설치 |
 | `-f, --force` | 확인 없이 기존 스킬 덮어쓰기 |
-| `--group <name>` | `custom/<name>/` 아래에 스킬 그룹화 |
+| `--group <name>` | 설치된 스킬을 가상 그룹에 추가 |
 | `-s, --skill <name>` | 특정 스킬 선택 (반복 가능) |
 
 **add**
 
 | 플래그 | 설명 |
 |--------|------|
+| `--all` | 프롬프트 없이 모든 스킬 추가 |
 | `--copy` | 심볼릭 링크 대신 파일 복사 |
 | `-a, --agent <name>` | 대상 에이전트 (반복 가능) |
 | `-s, --skill <name>` | 특정 스킬 선택 (반복 가능) |
 | `-g, --global` | 에이전트 사용자 수준 디렉토리에 전역 배포 |
-| `--group <name>` | 사용자 정의 그룹의 모든 스킬 일괄 배포 |
+| `--group <name>` | 그룹의 모든 스킬 일괄 배포 |
+| `-y, --yes` | 모든 프롬프트 건너뛰기 (--all과 동일) |
 | `--same-agents` | 현재 설정된 에이전트 사용 |
 
 **remove**
 
 | 플래그 | 설명 |
 |--------|------|
+| `--all` | 프롬프트 없이 일치하는 모든 스킬 제거 |
 | `-s, --skill <name>` | 제거할 특정 스킬 (반복 가능) |
 | `-a, --agent <name>` | 대상 에이전트 (반복 가능) |
 | `-g, --global` | 전역 에이전트 디렉토리에서 제거 |
+| `--group <name>` | 그룹의 배포된 스킬 일괄 제거 |
+| `-y, --yes` | 모든 프롬프트 건너뛰기 (--all과 동일) |
 
-**init**
+**deploy**
 
 | 플래그 | 설명 |
 |--------|------|
@@ -129,8 +131,21 @@ project/
 
 | 플래그 | 설명 |
 |--------|------|
+| `--all` | 선택 프롬프트 건너뛰고 일치하는 모든 스킬 제거 |
 | `-f, --force` | 확인 프롬프트 건너뛰기 |
+| `-y, --yes` | 모든 프롬프트 건너뛰기 (--all --force와 동일) |
 | `-s, --skill <name>` | 제거할 특정 스킬 (반복 가능) |
+
+**group**
+
+| 하위 명령어 | 설명 |
+|-------------|------|
+| `group list [name]` | 모든 그룹 목록 조회 또는 그룹 상세 조회 |
+| `group create <name>` | 새 빈 그룹 생성 |
+| `group delete <name>` | 그룹 삭제 (스킬에는 영향 없음) |
+| `group add <group> <skill>` | 그룹에 스킬 추가 |
+| `group remove <group> <skill>` | 그룹에서 스킬 제거 |
+| `group rename <old> <new>` | 그룹 이름 변경 |
 
 ## 스킬 설치
 
@@ -194,10 +209,10 @@ npx skillsmgr install https://github.com/user/repo --custom
 
 ```bash
 # 현재 프로젝트에 배포 (대화형 에이전트 및 스킬 선택)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # 에이전트 사용자 수준 디렉토리에 전역 배포
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### 비대화형 배포
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## 대화형 사용법
 
-`install`, `init`, `add`, `uninstall`은 다음 단축키를 사용하는 대화형 선택기를 제공합니다:
+`install`, `deploy`, `add`, `remove`, `uninstall`은 다음 단축키를 사용하는 대화형 선택기를 제공합니다:
 
 | 키 | 동작 |
 |----|------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: `anthropic` 등 내장 공식 소스
 - `community/`: 서드파티 저장소
-- `custom/`: 로컬 스킬, 그룹화된 스킬 및 custom으로 명시적으로 설치된 스킬
+- `custom/`: 로컬 스킬 및 custom으로 명시적으로 설치된 스킬
+- `groups.json`: `group` 명령으로 관리되는 가상 그룹 정의
 - `sources.json`: `update`에서 사용하는 소스 메타데이터
 
 ## 감사의 글

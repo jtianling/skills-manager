@@ -40,17 +40,14 @@ Tutte le skill vengono distribuite in `.agents/skills/`. Gli strumenti nativi le
 ## Avvio rapido
 
 ```bash
-# 1. Inizializza ~/.skills-manager/
-npx skillsmgr setup
-
-# 2. Installa le skill dal repository ufficiale Anthropic
+# 1. Installa le skill dal repository ufficiale Anthropic
 npx skillsmgr install anthropic
 
-# 3. Distribuisci le skill al progetto corrente
+# 2. Distribuisci le skill al progetto corrente
 cd your-project
-npx skillsmgr init
+npx skillsmgr deploy
 
-# 4. Ispeziona le skill distribuite
+# 3. Ispeziona le skill distribuite
 npx skillsmgr list --deployed
 ```
 
@@ -69,7 +66,7 @@ project/
 ```
 
 - Gli strumenti nativi leggono `.agents/skills/` direttamente.
-- Gli strumenti non nativi vengono configurati creando un ponte symlink durante `init` o `add`.
+- Gli strumenti non nativi vengono configurati creando un ponte symlink durante `deploy` o `add`.
 - La distribuzione delle skill usa symlink per impostazione predefinita; usa `--copy` se preferisci copie locali al progetto.
 - Usa `-g` per distribuire globalmente nelle directory a livello utente degli agenti (es. `~/.claude/skills`).
 
@@ -77,15 +74,15 @@ project/
 
 | Comando | Alias | Descrizione |
 |---------|-------|-------------|
-| `skillsmgr setup` | - | Inizializza `~/.skills-manager/` e crea `custom/example-skill/` |
 | `skillsmgr install <source>` | `i` | Installa skill da GitHub, directory locale o archivio zip |
 | `skillsmgr uninstall [identifier]` | - | Rimuove skill da `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | Aggiorna le skill installate dalle sorgenti tracciate |
 | `skillsmgr list` | - | Elenca le skill installate in `~/.skills-manager/` |
 | `skillsmgr list --deployed` | - | Elenca le skill distribuite e gli strumenti configurati nel progetto corrente |
-| `skillsmgr init` | - | Distribuzione interattiva al progetto corrente |
+| `skillsmgr deploy` | - | Distribuzione interattiva al progetto corrente |
 | `skillsmgr add [name]` | - | Aggiunge una skill al progetto |
 | `skillsmgr remove [name]` | - | Rimuove una skill distribuita dal progetto |
+| `skillsmgr group <subcommand>` | - | Gestisce i gruppi virtuali di skill |
 
 ### Flag dei comandi
 
@@ -96,29 +93,34 @@ project/
 | `--all` | Installa tutte le skill trovate senza chiedere conferma |
 | `--custom` | Installa in `custom/` invece che in `community/` |
 | `-f, --force` | Sovrascrive la skill esistente senza conferma |
-| `--group <name>` | Raggruppa le skill sotto `custom/<name>/` |
+| `--group <name>` | Aggiunge le skill installate a un gruppo virtuale |
 | `-s, --skill <name>` | Seleziona skill specifiche (ripetibile) |
 
 **add**
 
 | Flag | Descrizione |
 |------|-------------|
+| `--all` | Aggiunge tutte le skill senza chiedere conferma |
 | `--copy` | Copia i file invece di creare symlink |
 | `-a, --agent <name>` | Agente di destinazione (ripetibile) |
 | `-s, --skill <name>` | Seleziona skill specifiche (ripetibile) |
 | `-g, --global` | Distribuisce globalmente nelle directory a livello utente degli agenti |
-| `--group <name>` | Distribuisce in blocco tutte le skill di un gruppo personalizzato |
+| `--group <name>` | Distribuisce in blocco tutte le skill di un gruppo |
+| `-y, --yes` | Salta tutte le richieste di conferma (equivalente a --all) |
 | `--same-agents` | Usa gli agenti attualmente configurati |
 
 **remove**
 
 | Flag | Descrizione |
 |------|-------------|
+| `--all` | Rimuove tutte le skill corrispondenti senza chiedere conferma |
 | `-s, --skill <name>` | Skill specifica da rimuovere (ripetibile) |
 | `-a, --agent <name>` | Agente di destinazione (ripetibile) |
 | `-g, --global` | Rimuove dalle directory globali degli agenti |
+| `--group <name>` | Rimuove in blocco le skill distribuite di un gruppo |
+| `-y, --yes` | Salta tutte le richieste di conferma (equivalente a --all) |
 
-**init**
+**deploy**
 
 | Flag | Descrizione |
 |------|-------------|
@@ -129,8 +131,21 @@ project/
 
 | Flag | Descrizione |
 |------|-------------|
+| `--all` | Salta la selezione e disinstalla tutte le skill corrispondenti |
 | `-f, --force` | Salta la richiesta di conferma |
+| `-y, --yes` | Salta tutte le richieste di conferma (equivalente a --all --force) |
 | `-s, --skill <name>` | Skill specifica da disinstallare (ripetibile) |
+
+**group**
+
+| Sottocomando | Descrizione |
+|--------------|-------------|
+| `group list [name]` | Elenca tutti i gruppi o mostra i dettagli di un gruppo |
+| `group create <name>` | Crea un nuovo gruppo vuoto |
+| `group delete <name>` | Elimina un gruppo (le skill non vengono modificate) |
+| `group add <group> <skill>` | Aggiunge una skill a un gruppo |
+| `group remove <group> <skill>` | Rimuove una skill da un gruppo |
+| `group rename <old> <new>` | Rinomina un gruppo |
 
 ## Installazione delle skill
 
@@ -194,10 +209,10 @@ L'installer gestisce i seguenti layout di repository:
 
 ```bash
 # distribuisci al progetto corrente (selezione interattiva di agenti e skill)
-npx skillsmgr init
+npx skillsmgr deploy
 
 # distribuisci globalmente nelle directory a livello utente degli agenti
-npx skillsmgr init -g
+npx skillsmgr deploy -g
 ```
 
 ### Distribuzione non interattiva
@@ -221,7 +236,7 @@ npx skillsmgr remove code-review -g -a claude-code
 
 ## Utilizzo interattivo
 
-`install`, `init`, `add` e `uninstall` utilizzano un selettore interattivo con le seguenti scorciatoie:
+`install`, `deploy`, `add`, `remove` e `uninstall` utilizzano un selettore interattivo con le seguenti scorciatoie:
 
 | Tasto | Azione |
 |-------|--------|
@@ -249,15 +264,15 @@ npx skillsmgr remove code-review -g -a claude-code
 │       └── repo-name/
 │           └── skill-name/SKILL.md
 ├── custom/
-│   ├── example-skill/SKILL.md
-│   └── my-group/
-│       └── my-skill/SKILL.md
+│   └── example-skill/SKILL.md
+├── groups.json
 └── sources.json
 ```
 
 - `official/`: sorgenti ufficiali integrate come `anthropic`
 - `community/`: repository di terze parti
-- `custom/`: skill locali, skill raggruppate e skill installate esplicitamente come personalizzate
+- `custom/`: skill locali e skill installate esplicitamente come personalizzate
+- `groups.json`: definizioni dei gruppi virtuali gestiti dai comandi `group`
 - `sources.json`: metadati delle sorgenti utilizzati da `update`
 
 ## Ringraziamenti
