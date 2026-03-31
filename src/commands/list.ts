@@ -4,7 +4,7 @@ import { SkillsService } from '../services/skills.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ListOptions } from '../types.js';
-import { fileExists } from '../utils/fs.js';
+import { ensureSetup } from './setup.js';
 
 export async function executeList(options: ListOptions): Promise<void> {
   if (options.deployed) {
@@ -15,10 +15,7 @@ export async function executeList(options: ListOptions): Promise<void> {
 }
 
 async function listAvailable(): Promise<void> {
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
+  await ensureSetup();
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const skills = skillsService.getAllSkills();
@@ -65,8 +62,17 @@ async function listAvailable(): Promise<void> {
       }
     }
 
-    for (const name of ungrouped) {
-      console.log(`  ${name}`);
+    if (ungrouped.length > 0) {
+      if (category === 'custom') {
+        console.log(`  (ungrouped) (${ungrouped.length})`);
+        for (const name of ungrouped) {
+          console.log(`    ${name}`);
+        }
+      } else {
+        for (const name of ungrouped) {
+          console.log(`  ${name}`);
+        }
+      }
     }
 
     console.log();
@@ -79,7 +85,7 @@ async function listDeployed(): Promise<void> {
 
   if (skills.length === 0) {
     console.log('No skills deployed in current project.');
-    console.log('\nRun: skillsmgr init');
+    console.log('\nRun: skillsmgr deploy');
     return;
   }
 

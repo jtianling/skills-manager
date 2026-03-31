@@ -142,10 +142,20 @@ function buildSkillChoices(
     suffix?: string;
   }> = [];
 
-  for (const [source, sourceSkills] of Object.entries(grouped)) {
+  const entries = Object.entries(grouped).sort(([a], [b]) => {
+    const { category: catA, groupId: gidA } = parseSource(a);
+    const { category: catB, groupId: gidB } = parseSource(b);
+    if (catA !== catB) return catA.localeCompare(catB);
+    if (!gidA && gidB) return 1;
+    if (gidA && !gidB) return -1;
+    return a.localeCompare(b);
+  });
+
+  for (const [source, sourceSkills] of entries) {
     const { category, groupId } = parseSource(source);
+    const effectiveGroupId = category === 'custom' && !groupId ? '(ungrouped)' : groupId;
     for (const skill of sourceSkills) {
-      choices.push(mapChoice(skill, category, groupId));
+      choices.push(mapChoice(skill, category, effectiveGroupId));
     }
   }
 
@@ -344,7 +354,7 @@ export async function resolveTargetAgents(
   if (options.sameAgents) {
     const configured = getConfiguredTools();
     if (configured.length === 0) {
-      console.log('No agents configured. Run \'skillsmgr init\' or omit --same-agents flag.');
+      console.log('No agents configured. Run \'skillsmgr deploy\' or omit --same-agents flag.');
       process.exit(1);
     }
     return configured;

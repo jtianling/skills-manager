@@ -103,6 +103,99 @@ describe('list command two-level grouping', () => {
     }
   });
 
+  it('custom ungrouped skills display (ungrouped) label in list output', () => {
+    const service = new SkillsService(testDir);
+    const skills = service.getAllSkills();
+
+    const byCategory: Record<string, Record<string, string[]>> = {};
+    const ungroupedByCategory: Record<string, string[]> = {};
+
+    for (const skill of skills) {
+      const parts = skill.source.split('/');
+      const category = parts[0];
+      const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
+
+      if (groupId) {
+        if (!byCategory[category]) byCategory[category] = {};
+        if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
+        byCategory[category][groupId].push(skill.name);
+      } else {
+        if (!ungroupedByCategory[category]) ungroupedByCategory[category] = [];
+        ungroupedByCategory[category].push(skill.name);
+      }
+    }
+
+    const lines: string[] = [];
+    const category = 'custom';
+    const groups = byCategory[category] || {};
+    const ungrouped = ungroupedByCategory[category] || [];
+
+    for (const [groupId, skillNames] of Object.entries(groups)) {
+      lines.push(`  ${groupId} (${skillNames.length})`);
+      for (const name of skillNames) {
+        lines.push(`    ${name}`);
+      }
+    }
+
+    if (ungrouped.length > 0 && category === 'custom') {
+      lines.push(`  (ungrouped) (${ungrouped.length})`);
+      for (const name of ungrouped) {
+        lines.push(`    ${name}`);
+      }
+    }
+
+    expect(lines).toContainEqual(expect.stringContaining('(ungrouped)'));
+    const ungroupedIdx = lines.findIndex((l) => l.includes('(ungrouped)'));
+    expect(ungroupedIdx).toBeGreaterThanOrEqual(0);
+    expect(lines[ungroupedIdx]).toBe('  (ungrouped) (2)');
+  });
+
+  it('(ungrouped) appears after real groups in custom category', () => {
+    mkdirSync(join(testDir, 'custom', 'my-tools', 'linter'), { recursive: true });
+    writeFileSync(
+      join(testDir, 'custom', 'my-tools', 'linter', 'SKILL.md'),
+      '---\nname: linter\ndescription: Linter\n---\n'
+    );
+
+    const service = new SkillsService(testDir);
+    const skills = service.getAllSkills();
+
+    const byCategory: Record<string, Record<string, string[]>> = {};
+    const ungroupedByCategory: Record<string, string[]> = {};
+
+    for (const skill of skills) {
+      const parts = skill.source.split('/');
+      const category = parts[0];
+      const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
+
+      if (groupId) {
+        if (!byCategory[category]) byCategory[category] = {};
+        if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
+        byCategory[category][groupId].push(skill.name);
+      } else {
+        if (!ungroupedByCategory[category]) ungroupedByCategory[category] = [];
+        ungroupedByCategory[category].push(skill.name);
+      }
+    }
+
+    const lines: string[] = [];
+    const category = 'custom';
+    const groups = byCategory[category] || {};
+    const ungrouped = ungroupedByCategory[category] || [];
+
+    for (const [groupId, skillNames] of Object.entries(groups)) {
+      lines.push(`  ${groupId} (${skillNames.length})`);
+    }
+
+    if (ungrouped.length > 0 && category === 'custom') {
+      lines.push(`  (ungrouped) (${ungrouped.length})`);
+    }
+
+    const myToolsIdx = lines.findIndex((l) => l.includes('my-tools'));
+    const ungroupedIdx = lines.findIndex((l) => l.includes('(ungrouped)'));
+    expect(myToolsIdx).toBeLessThan(ungroupedIdx);
+  });
+
   it('shows multi-repo provider with separate groupIds', () => {
     mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-skills', 'deploy'), { recursive: true });
     mkdirSync(join(testDir, 'official', 'vercel-labs', 'agent-browser', 'browser'), { recursive: true });
