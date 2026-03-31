@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 vi.mock('../utils/prompts.js', () => ({
+  loadGroupsData: vi.fn().mockReturnValue({}),
   promptAgents: vi.fn().mockResolvedValue(['agents-skills-standard']),
   promptSkills: vi.fn().mockResolvedValue([]),
 }));
@@ -15,7 +16,7 @@ vi.mock('./setup.js', () => ({
 
 import * as constants from '../constants.js';
 import { executeDeploy } from './deploy.js';
-import { promptAgents, promptSkills } from '../utils/prompts.js';
+import { loadGroupsData, promptAgents, promptSkills } from '../utils/prompts.js';
 
 describe('deploy command', () => {
   let testManagerDir: string;
@@ -117,5 +118,21 @@ describe('deploy command', () => {
     await executeDeploy({});
 
     expect(existsSync(unmanagedPath)).toBe(true);
+  });
+
+  it('passes virtual groups data into skill prompt', async () => {
+    vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
+    vi.mocked(promptSkills).mockResolvedValue(['code-review']);
+    vi.mocked(loadGroupsData).mockReturnValue({
+      dev: ['official/anthropic/skills/code-review'],
+    });
+
+    await executeDeploy({});
+
+    expect(promptSkills).toHaveBeenCalledWith(
+      expect.any(Array),
+      [],
+      { dev: ['official/anthropic/skills/code-review'] },
+    );
   });
 });

@@ -7,7 +7,12 @@ import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
 import { AddOptions, SkillInfo, ToolName, collect } from '../types.js';
-import { resolveTargetAgents } from '../utils/prompts.js';
+import {
+  buildVirtualGroupChoices,
+  loadGroupsData,
+  resolveTargetAgents,
+  type VirtualGroupsData,
+} from '../utils/prompts.js';
 import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.js';
 import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
@@ -18,18 +23,28 @@ import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-look
 async function promptSkillsFromRepo(
   repoSkills: SkillInfo[],
   deployedSkillNames: string[],
+  groupsData?: VirtualGroupsData,
 ): Promise<string[]> {
-  const choices: SelectChoice[] = repoSkills.map((skill) => {
-    const isDeployed = deployedSkillNames.includes(skill.name);
-    return {
-      name: skill.name,
-      description: skill.description,
-      value: skill.name,
-      checked: isDeployed,
-      locked: isDeployed,
-      suffix: isDeployed ? '[deployed]' : undefined,
-    };
-  });
+  const choices: SelectChoice[] = groupsData
+    ? buildVirtualGroupChoices(repoSkills, groupsData, {
+        getValue: (skill) => skill.name,
+        getChecked: (skill) => deployedSkillNames.includes(skill.name),
+        getLocked: (skill) => deployedSkillNames.includes(skill.name),
+        getSuffix: (skill) => deployedSkillNames.includes(skill.name)
+          ? '[deployed]'
+          : undefined,
+      })
+    : repoSkills.map((skill) => {
+        const isDeployed = deployedSkillNames.includes(skill.name);
+        return {
+          name: skill.name,
+          description: skill.description,
+          value: skill.name,
+          checked: isDeployed,
+          locked: isDeployed,
+          suffix: isDeployed ? '[deployed]' : undefined,
+        };
+      });
 
   return interactiveCheckbox({
     message: 'Select skills to add:',
@@ -197,11 +212,12 @@ async function handleRepoSkillSelection(
     return;
   }
 
+  const groupsData = loadGroupsData(new GroupsService());
   const selectedNames = (options.skill && options.skill.length > 0)
     ? filterSkillsByFlag(repoSkills, options.skill)
     : options.all
       ? repoSkills.map((s) => s.name)
-      : await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames);
+      : await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames, groupsData);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));
@@ -270,6 +286,7 @@ async function handleRemoteInstallAndDeploy(
   }
 
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
+  const groupsData = loadGroupsData(new GroupsService());
 
   let selectedNames: string[];
   try {
@@ -277,7 +294,7 @@ async function handleRemoteInstallAndDeploy(
       ? filterSkillsByFlag(installedSkills, options.skill)
       : options.all
         ? installedSkills.map((s) => s.name)
-        : await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames);
+        : await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames, groupsData);
   } catch {
     rollback();
     return;
@@ -364,9 +381,10 @@ async function handleGroupBatchDeploy(
   }
 
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
+  const groupsData = loadGroupsData(groupsService);
   const selectedNames = options.all
     ? groupSkills.map((s) => s.name)
-    : await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames);
+    : await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames, groupsData);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));

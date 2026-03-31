@@ -6,6 +6,7 @@ vi.mock('./interactive-select.js', () => ({
 
 import {
   buildVirtualGroupChoices,
+  loadGroupsData,
   promptSkills,
   promptSkillsToUninstall,
   resolveTargetAgents,
@@ -39,20 +40,24 @@ describe('prompts', () => {
       message: 'Select skills to uninstall:',
       choices: [
         {
-          name: 'my-skill',
-          description: 'Community skill',
-          value: '/skills/community/owner/repo/my-skill',
-          checked: false,
-          group: 'community',
-          subGroup: 'owner/repo',
-        },
-        {
           name: 'commit',
           description: 'Commit skill',
           value: '/skills/official/anthropic/skills/commit',
-          checked: false,
+          checked: undefined,
           group: 'official',
           subGroup: 'anthropic/skills',
+          suffix: undefined,
+          locked: undefined,
+        },
+        {
+          name: 'my-skill',
+          description: 'Community skill',
+          value: '/skills/community/owner/repo/my-skill',
+          checked: undefined,
+          group: 'community',
+          subGroup: 'owner/repo',
+          suffix: undefined,
+          locked: undefined,
         },
       ],
       pageSize: 15,
@@ -82,15 +87,6 @@ describe('prompts', () => {
       message: 'Select skills to deploy:',
       choices: [
         {
-          name: 'review',
-          description: 'Review skill',
-          value: 'review',
-          checked: false,
-          group: 'custom',
-          subGroup: '(ungrouped)',
-          suffix: undefined,
-        },
-        {
           name: 'commit',
           description: 'Commit skill',
           value: 'commit',
@@ -98,9 +94,118 @@ describe('prompts', () => {
           group: 'official',
           subGroup: 'anthropic/skills',
           suffix: '[deployed]',
+          locked: undefined,
+        },
+        {
+          name: 'review',
+          description: 'Review skill',
+          value: 'review',
+          checked: undefined,
+          group: 'custom',
+          subGroup: undefined,
+          suffix: undefined,
+          locked: undefined,
         },
       ],
       pageSize: 15,
+    });
+  });
+
+  it('uses virtual groups in deploy choices when groupsData is provided', async () => {
+    await promptSkills(
+      [
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          path: '/skills/official/anthropic/skills/commit',
+          source: 'official/anthropic/skills',
+        },
+        {
+          name: 'review',
+          description: 'Review skill',
+          path: '/skills/custom/review',
+          source: 'custom',
+        },
+      ],
+      ['commit'],
+      {
+        develop: ['official/anthropic/skills/commit', 'custom/review'],
+      },
+    );
+
+    expect(interactiveCheckbox).toHaveBeenCalledWith({
+      message: 'Select skills to deploy:',
+      choices: [
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          value: 'commit',
+          checked: true,
+          suffix: '[deployed]',
+          locked: undefined,
+          group: 'official',
+          subGroup: 'anthropic/skills',
+        },
+        {
+          name: 'review',
+          description: 'Review skill',
+          value: 'review',
+          checked: undefined,
+          suffix: undefined,
+          locked: undefined,
+          group: 'custom',
+          subGroup: 'develop',
+        },
+      ],
+      pageSize: 15,
+    });
+  });
+
+  it('uses virtual groups in uninstall choices when groupsData is provided', async () => {
+    await promptSkillsToUninstall(
+      [
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          path: '/skills/official/anthropic/skills/commit',
+          source: 'official/anthropic/skills',
+        },
+      ],
+      {
+        develop: ['official/anthropic/skills/commit'],
+      },
+    );
+
+    expect(interactiveCheckbox).toHaveBeenCalledWith({
+      message: 'Select skills to uninstall:',
+      choices: [
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          value: '/skills/official/anthropic/skills/commit',
+          checked: undefined,
+          suffix: undefined,
+          locked: undefined,
+          group: undefined,
+          subGroup: 'anthropic/skills',
+        },
+      ],
+      pageSize: 15,
+    });
+  });
+
+  it('loads virtual groups data from groups service', () => {
+    const groupsService = {
+      listGroups: () => ['develop', 'ops'],
+      getGroup: (name: string) => ({
+        develop: ['custom/jt-codex'],
+        ops: ['custom/jt-release'],
+      }[name] ?? null),
+    };
+
+    expect(loadGroupsData(groupsService as never)).toEqual({
+      develop: ['custom/jt-codex'],
+      ops: ['custom/jt-release'],
     });
   });
 

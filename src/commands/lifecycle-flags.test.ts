@@ -31,17 +31,21 @@ import type { InstallableSkill } from './install-utils.js';
 describe('lifecycle with -s/--skill and -a/--agent flags', () => {
   let testManagerDir: string;
   let testProjectDir: string;
+  let testGlobalDir: string;
   let originalCwd: typeof process.cwd;
+  const savedGlobalDirs = new Map<string, string>();
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     testManagerDir = join(tmpdir(), `skillsmgr-lifecycle-mgr-${id}`);
     testProjectDir = join(tmpdir(), `skillsmgr-lifecycle-proj-${id}`);
+    testGlobalDir = join(tmpdir(), `skillsmgr-lifecycle-global-${id}`);
 
     mkdirSync(join(testManagerDir, 'official'), { recursive: true });
     mkdirSync(join(testManagerDir, 'community'), { recursive: true });
     mkdirSync(join(testManagerDir, 'custom'), { recursive: true });
     mkdirSync(join(testProjectDir, '.agents', 'skills'), { recursive: true });
+    mkdirSync(testGlobalDir, { recursive: true });
 
     Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', {
       value: testManagerDir,
@@ -51,6 +55,12 @@ describe('lifecycle with -s/--skill and -a/--agent flags', () => {
     originalCwd = process.cwd;
     process.cwd = () => testProjectDir;
 
+    savedGlobalDirs.set('claude-code', TOOL_CONFIGS['claude-code'].globalSkillsDir);
+    (TOOL_CONFIGS['claude-code'] as { globalSkillsDir: string }).globalSkillsDir = join(
+      testGlobalDir,
+      'claude-code',
+    );
+
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -59,8 +69,13 @@ describe('lifecycle with -s/--skill and -a/--agent flags', () => {
 
   afterEach(() => {
     process.cwd = originalCwd;
+    for (const [name, dir] of savedGlobalDirs) {
+      (TOOL_CONFIGS[name as keyof typeof TOOL_CONFIGS] as { globalSkillsDir: string }).globalSkillsDir = dir;
+    }
+    savedGlobalDirs.clear();
     rmSync(testManagerDir, { recursive: true, force: true });
     rmSync(testProjectDir, { recursive: true, force: true });
+    rmSync(testGlobalDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 

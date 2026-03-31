@@ -222,6 +222,51 @@ describe('remove --group E2E', () => {
     expect(existsSync(join(deployedDir, 'batch-c'))).toBe(true);
   });
 
+  it('interactive remove preserves source-based grouping with official and custom skills', async () => {
+    // Install one official skill
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr install openai/skills -s skill-creator');
+    await tmux.waitForText('Installed', 90_000);
+    tmux.destroy();
+
+    // Create and install custom skills
+    createLocalSkill('rm-x');
+    createLocalSkill('rm-y');
+    await installSkill('rm-x');
+    await installSkill('rm-y');
+    await addToGroup('dev', 'rm-x');
+
+    // Deploy all
+    await deploySkill('skill-creator');
+    await deploySkill('rm-x');
+    await deploySkill('rm-y');
+
+    // Run interactive remove
+    tmux = new TmuxSession(env);
+    await tmux.start('skillsmgr remove', env.projectDir);
+    const output = await tmux.waitForText(/Select skills to remove/, 10_000);
+
+    // Should show official and custom skills
+    expect(output).toContain('skill-creator');
+    expect(output).toContain('rm-x');
+    expect(output).toContain('rm-y');
+
+    // Official should appear before custom
+    const officialPos = output.indexOf('skill-creator');
+    const customPos = output.indexOf('rm-x');
+    expect(officialPos).toBeLessThan(customPos);
+
+    // Virtual group should appear within custom section
+    expect(output).toContain('dev');
+
+    // Ungrouped after grouped
+    const devPos = output.indexOf('dev');
+    const ungroupedPos = output.indexOf('(ungrouped)');
+    expect(ungroupedPos).toBeGreaterThan(devPos);
+
+    await tmux.pressKey('q');
+  }, 120_000);
+
   // --- nested custom skill group matching ---
 
   it('interactive remove groups nested custom skills correctly', async () => {

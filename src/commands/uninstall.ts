@@ -7,7 +7,11 @@ import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import { extractOwnerRepo } from '../utils/source-detection.js';
-import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
+import {
+  loadGroupsData,
+  promptConfirm,
+  promptSkillsToUninstall,
+} from '../utils/prompts.js';
 import { SkillInfo, collect } from '../types.js';
 import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { ensureSetup } from './setup.js';
@@ -107,9 +111,14 @@ async function uninstallSource(owner: string, repo: string, options: UninstallOp
     process.exit(1);
   }
 
+  const groupsService = new GroupsService();
+
   let selectedSkills = sourceSkills;
   if (!options.all && sourceSkills.length > 1) {
-    const selectedPaths = await promptSkillsToUninstall(sourceSkills);
+    const selectedPaths = await promptSkillsToUninstall(
+      sourceSkills,
+      loadGroupsData(groupsService),
+    );
     if (selectedPaths.length === 0) {
       console.log('No skills selected.');
       return;
@@ -128,7 +137,6 @@ async function uninstallSource(owner: string, repo: string, options: UninstallOp
     return;
   }
 
-  const groupsService = new GroupsService();
   removeSkills(selectedSkills, sourcesService, groupsService);
 
   const s = selectedSkills.length === 1 ? '' : 's';
@@ -144,7 +152,6 @@ async function uninstallByName(name: string, options: UninstallOptions): Promise
   if (!skill) {
     console.error(`Error: Skill '${name}' not found`);
     process.exit(1);
-    return;
   }
 
   const confirmed = await confirmUninstall([`${skill.name} (${skill.source})`], options.force ?? false);
@@ -174,6 +181,7 @@ async function uninstallByName(name: string, options: UninstallOptions): Promise
 async function interactiveUninstall(): Promise<void> {
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const sourcesService = new SourcesService();
+  const groupsService = new GroupsService();
   const allSkills = skillsService.getAllSkills();
 
   if (allSkills.length === 0) {
@@ -181,7 +189,10 @@ async function interactiveUninstall(): Promise<void> {
     return;
   }
 
-  const selectedPaths = await promptSkillsToUninstall(allSkills);
+  const selectedPaths = await promptSkillsToUninstall(
+    allSkills,
+    loadGroupsData(groupsService),
+  );
   if (selectedPaths.length === 0) {
     console.log('No skills selected.');
     return;
@@ -198,7 +209,6 @@ async function interactiveUninstall(): Promise<void> {
     return;
   }
 
-  const groupsService = new GroupsService();
   removeSkills(selectedSkills, sourcesService, groupsService);
 
   console.log(`Uninstalled ${selectedSkills.length} skills.`);

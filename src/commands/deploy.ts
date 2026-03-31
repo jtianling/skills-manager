@@ -3,11 +3,17 @@ import { join } from 'path';
 import { existsSync, readdirSync } from 'fs';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
+import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { DeployOptions, ToolName } from '../types.js';
-import { promptAgents, promptAgentsGlobal, promptSkills } from '../utils/prompts.js';
+import {
+  loadGroupsData,
+  promptAgents,
+  promptAgentsGlobal,
+  promptSkills,
+} from '../utils/prompts.js';
 import { ensureSetup } from './setup.js';
 
 function scanGlobalDeployedSkills(agents: ToolName[]): string[] {
@@ -43,7 +49,8 @@ async function executeDeployGlobal(
   const deployedGlobalNames = scanGlobalDeployedSkills(selectedAgents);
 
   const allSkills = skillsService.getAllSkills();
-  const selectedSkillNames = await promptSkills(allSkills, deployedGlobalNames);
+  const groupsData = loadGroupsData(new GroupsService());
+  const selectedSkillNames = await promptSkills(allSkills, deployedGlobalNames, groupsData);
 
   if (selectedSkillNames.length === 0) {
     console.log('No skills selected');
@@ -112,8 +119,9 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
 
   const deployedSkills = scanner.getDeployedSkills();
   const deployedSkillNames = deployedSkills.map((s) => s.name);
+  const groupsData = loadGroupsData(new GroupsService());
 
-  const selectedSkillNames = await promptSkills(allSkills, deployedSkillNames);
+  const selectedSkillNames = await promptSkills(allSkills, deployedSkillNames, groupsData);
 
   if (selectedSkillNames.length === 0) {
     console.log('No skills selected');

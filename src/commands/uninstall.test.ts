@@ -14,6 +14,7 @@ vi.mock('../constants.js', async () => {
 });
 
 vi.mock('../utils/prompts.js', () => ({
+  loadGroupsData: vi.fn().mockReturnValue({}),
   promptConfirm: vi.fn().mockResolvedValue(true),
   promptSkillsToUninstall: vi.fn().mockResolvedValue([]),
   promptSelect: vi.fn().mockResolvedValue(''),
@@ -26,7 +27,7 @@ vi.mock('../utils/interactive-select.js', () => ({
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { executeUninstall } from './uninstall.js';
 import { SourcesService } from '../services/sources.js';
-import { promptConfirm, promptSelect } from '../utils/prompts.js';
+import { loadGroupsData, promptConfirm, promptSelect } from '../utils/prompts.js';
 import { promptSkillsToUninstall } from '../utils/prompts.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 
@@ -390,6 +391,25 @@ describe('uninstall command', () => {
       expect(logSpy).toHaveBeenCalledWith('Removed: skill-a');
       expect(logSpy).toHaveBeenCalledWith('Removed: skill-b');
       expect(logSpy).toHaveBeenCalledWith('Uninstalled 2 skills.');
+
+      logSpy.mockRestore();
+    });
+
+    it('passes virtual groups data into uninstall prompt', async () => {
+      const skillDir = join(SKILLS_MANAGER_DIR, 'custom', 'keep-me');
+      createSkillDir(skillDir);
+      vi.mocked(loadGroupsData).mockReturnValue({
+        dev: ['custom/keep-me'],
+      });
+      vi.mocked(promptSkillsToUninstall).mockResolvedValueOnce([]);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await executeUninstall(undefined, {});
+
+      expect(promptSkillsToUninstall).toHaveBeenCalledWith(
+        expect.any(Array),
+        { dev: ['custom/keep-me'] },
+      );
 
       logSpy.mockRestore();
     });

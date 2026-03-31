@@ -32,22 +32,32 @@ import { GroupsService } from '../services/groups.js';
 describe('add command', () => {
   let testManagerDir: string;
   let testProjectDir: string;
+  let testGlobalDir: string;
   let originalCwd: typeof process.cwd;
+  const savedGlobalDirs = new Map<string, string>();
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     testManagerDir = join(tmpdir(), `skillsmgr-add-test-mgr-${id}`);
     testProjectDir = join(tmpdir(), `skillsmgr-add-test-proj-${id}`);
+    testGlobalDir = join(tmpdir(), `skillsmgr-add-test-global-${id}`);
 
     mkdirSync(join(testManagerDir, 'official'), { recursive: true });
     mkdirSync(join(testManagerDir, 'community'), { recursive: true });
     mkdirSync(join(testManagerDir, 'custom'), { recursive: true });
     mkdirSync(join(testProjectDir, '.agents', 'skills'), { recursive: true });
+    mkdirSync(testGlobalDir, { recursive: true });
 
     Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', { value: testManagerDir, writable: true });
 
     originalCwd = process.cwd;
     process.cwd = () => testProjectDir;
+
+    savedGlobalDirs.set('claude-code', TOOL_CONFIGS['claude-code'].globalSkillsDir);
+    (TOOL_CONFIGS['claude-code'] as { globalSkillsDir: string }).globalSkillsDir = join(
+      testGlobalDir,
+      'claude-code',
+    );
 
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -57,8 +67,13 @@ describe('add command', () => {
 
   afterEach(() => {
     process.cwd = originalCwd;
+    for (const [name, dir] of savedGlobalDirs) {
+      (TOOL_CONFIGS[name as keyof typeof TOOL_CONFIGS] as { globalSkillsDir: string }).globalSkillsDir = dir;
+    }
+    savedGlobalDirs.clear();
     rmSync(testManagerDir, { recursive: true, force: true });
     rmSync(testProjectDir, { recursive: true, force: true });
+    rmSync(testGlobalDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -145,6 +160,28 @@ describe('add command', () => {
       );
     });
 
+    it('uses virtual groups in repo skill selection', async () => {
+      createSkill('community/someuser/somerepo', 'skill-a', 'Skill A');
+      const groupsService = new GroupsService();
+      groupsService.addSkill('dev', 'community/someuser/somerepo/skill-a');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['skill-a'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd('someuser/somerepo', {});
+
+      expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Select skills to add:',
+        choices: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'skill-a',
+            subGroup: 'dev',
+          }),
+        ]),
+      }));
+    });
+
     it('matches official provider by owner name', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
       createSkill('official/anthropic/skills', 'tdd', 'TDD');
@@ -221,6 +258,34 @@ describe('add command', () => {
       expect(installSource).toHaveBeenCalledWith('https://github.com/owner/repo', {
         all: true,
       });
+    });
+
+    it('uses virtual groups after remote install', async () => {
+      vi.mocked(installSource).mockImplementation(async () => {
+        createSkill('community/owner/repo', 'url-skill', 'URL skill');
+        const groupsService = new GroupsService();
+        groupsService.addSkill('remote', 'community/owner/repo/url-skill');
+        return {
+          basePath: join(testManagerDir, 'community', 'owner', 'repo'),
+          sourceKey: 'community/owner/repo',
+        };
+      });
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['url-skill'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd('https://github.com/owner/repo', {});
+
+      expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Select skills to add:',
+        choices: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'url-skill',
+            subGroup: 'remote',
+          }),
+        ]),
+      }));
     });
   });
 
@@ -303,6 +368,29 @@ describe('add command', () => {
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ skill-a')
       );
+    });
+
+    it('uses virtual groups in --group selection', async () => {
+      createSkill('custom', 'skill-a', 'Skill A');
+
+      const groupsService = new GroupsService();
+      groupsService.addSkill('dev', 'custom/skill-a');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['skill-a'])
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd(undefined, { group: 'dev' });
+
+      expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Select skills to add:',
+        choices: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'skill-a',
+            subGroup: 'dev',
+          }),
+        ]),
+      }));
     });
 
     it('exits when group has no skills', async () => {

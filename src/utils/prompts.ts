@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 import * as readline from 'readline';
 import { Writable } from 'stream';
 import { TOOL_CONFIGS } from '../tools/configs.js';
+import { GroupsService } from '../services/groups.js';
 import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
 import { interactiveCheckbox, SelectChoice } from './interactive-select.js';
@@ -169,8 +170,23 @@ export interface BuildVirtualGroupChoicesOptions<
 > {
   getValue?: (skill: T) => string;
   getDescription?: (skill: T) => string | undefined;
+  getChecked?: (skill: T) => boolean | undefined;
   getSuffix?: (skill: T) => string | undefined;
   getLocked?: (skill: T) => boolean | undefined;
+}
+
+export function loadGroupsData(groupsService: GroupsService): VirtualGroupsData {
+  return groupsService.listGroups().reduce<VirtualGroupsData>((acc, groupName) => {
+    const skillKeys = groupsService.getGroup(groupName);
+    if (!skillKeys) {
+      return acc;
+    }
+
+    return {
+      ...acc,
+      [groupName]: skillKeys,
+    };
+  }, {});
 }
 
 export function buildVirtualGroupChoices<
@@ -214,6 +230,7 @@ export function buildVirtualGroupChoices<
     name: skill.name,
     description: options.getDescription?.(skill) ?? skill.description,
     value: options.getValue?.(skill) ?? skill.name,
+    checked: options.getChecked?.(skill),
     suffix: options.getSuffix?.(skill),
     locked: options.getLocked?.(skill),
     subGroup,
@@ -238,25 +255,106 @@ export function buildVirtualGroupChoices<
   return choices;
 }
 
+const CATEGORY_ORDER: Record<string, number> = { official: 0, community: 1, custom: 2 };
+
+export function buildSourceGroupedChoices<
+  T extends { name: string; source: string; description?: string },
+>(
+  skills: T[],
+  groupsData: VirtualGroupsData,
+  options: {
+    getValue?: (skill: T) => string;
+    getChecked?: (skill: T) => boolean | undefined;
+    getSuffix?: (skill: T) => string | undefined;
+    getLocked?: (skill: T) => boolean | undefined;
+  } = {},
+): SelectChoice[] {
+  const skillToGroup = new Map<string, string>();
+  for (const [groupName, keys] of Object.entries(groupsData)) {
+    for (const key of keys) {
+      if (!skillToGroup.has(key)) skillToGroup.set(key, groupName);
+    }
+  }
+
+  const byCategory = new Map<string, T[]>();
+  for (const skill of skills) {
+    const { category } = parseSource(skill.source);
+    byCategory.set(category, [...(byCategory.get(category) ?? []), skill]);
+  }
+
+  const categories = Array.from(byCategory.keys()).sort(
+    (a, b) => (CATEGORY_ORDER[a] ?? 99) - (CATEGORY_ORDER[b] ?? 99)
+  );
+  const showCategory = categories.length > 1;
+
+  const toChoice = (skill: T, group?: string, subGroup?: string): SelectChoice => ({
+    name: skill.name,
+    description: skill.description,
+    value: options.getValue?.(skill) ?? skill.name,
+    checked: options.getChecked?.(skill),
+    suffix: options.getSuffix?.(skill),
+    locked: options.getLocked?.(skill),
+    group,
+    subGroup,
+  });
+
+  const choices: SelectChoice[] = [];
+
+  for (const category of categories) {
+    const catSkills = byCategory.get(category)!;
+    const group = showCategory ? category : undefined;
+
+    if (category === 'custom') {
+      const grouped = new Map<string, T[]>();
+      const ungrouped: T[] = [];
+      let hasNamed = false;
+
+      for (const skill of catSkills) {
+        const vg = skillToGroup.get(`${skill.source}/${skill.name}`);
+        if (vg) {
+          hasNamed = true;
+          grouped.set(vg, [...(grouped.get(vg) ?? []), skill]);
+        } else {
+          ungrouped.push(skill);
+        }
+      }
+
+      if (hasNamed) {
+        for (const gn of Array.from(grouped.keys()).sort()) {
+          choices.push(...grouped.get(gn)!.map(s => toChoice(s, group, gn)));
+        }
+        if (ungrouped.length > 0) {
+          choices.push(...ungrouped.map(s => toChoice(s, group, '(ungrouped)')));
+        }
+      } else {
+        choices.push(...catSkills.map(s => toChoice(s, group)));
+      }
+    } else {
+      const bySource = new Map<string, T[]>();
+      for (const skill of catSkills) {
+        const { groupId } = parseSource(skill.source);
+        const key = groupId ?? skill.source;
+        bySource.set(key, [...(bySource.get(key) ?? []), skill]);
+      }
+
+      for (const src of Array.from(bySource.keys()).sort()) {
+        choices.push(...bySource.get(src)!.map(s => toChoice(s, group, src)));
+      }
+    }
+  }
+
+  return choices;
+}
+
 export async function promptSkills(
   skills: SkillInfo[],
-  deployedSkillNames: string[] = []
+  deployedSkillNames: string[] = [],
+  groupsData?: VirtualGroupsData,
 ): Promise<string[]> {
-  const choices = buildSkillChoices(
-    skills,
-    (skill, category, groupId) => {
-      const isDeployed = deployedSkillNames.includes(skill.name);
-      return {
-        name: skill.name,
-        description: skill.description,
-        value: skill.name,
-        checked: isDeployed,
-        group: category,
-        subGroup: groupId,
-        suffix: isDeployed ? '[deployed]' : undefined,
-      };
-    }
-  );
+  const choices = buildSourceGroupedChoices(skills, groupsData ?? {}, {
+    getChecked: (skill) => deployedSkillNames.includes(skill.name) ? true : undefined,
+    getSuffix: (skill) => deployedSkillNames.includes(skill.name) ? '[deployed]' : undefined,
+  });
 
   return interactiveCheckbox({
     message: 'Select skills to deploy:',
@@ -265,18 +363,13 @@ export async function promptSkills(
   });
 }
 
-export async function promptSkillsToUninstall(skills: SkillInfo[]): Promise<string[]> {
-  const choices = buildSkillChoices(
-    skills,
-    (skill, category, groupId) => ({
-      name: skill.name,
-      description: skill.description,
-      value: skill.path,
-      checked: false,
-      group: category,
-      subGroup: groupId,
-    })
-  );
+export async function promptSkillsToUninstall(
+  skills: SkillInfo[],
+  groupsData?: VirtualGroupsData,
+): Promise<string[]> {
+  const choices = buildSourceGroupedChoices(skills, groupsData ?? {}, {
+    getValue: (skill) => skill.path,
+  });
 
   return interactiveCheckbox({
     message: 'Select skills to uninstall:',

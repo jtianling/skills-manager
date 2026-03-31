@@ -9,9 +9,10 @@ import { Deployer } from '../services/deployer.js';
 import { readSymlinkTarget } from '../utils/fs.js';
 import { ensureSetup } from './setup.js';
 import {
+  buildSourceGroupedChoices,
   buildVirtualGroupChoices,
+  loadGroupsData,
   resolveTargetAgents,
-  type VirtualGroupsData,
 } from '../utils/prompts.js';
 import { type RemoveOptions, type SkillInfo, type ToolName, collect } from '../types.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
@@ -54,16 +55,6 @@ function pathOrLinkExists(path: string): boolean {
   } catch {
     return false;
   }
-}
-
-function loadGroupsData(groupsService: GroupsService): VirtualGroupsData {
-  return groupsService.listGroups().reduce<VirtualGroupsData>((acc, groupName) => {
-    const skillKeys = groupsService.getGroup(groupName);
-    if (skillKeys) {
-      acc[groupName] = skillKeys;
-    }
-    return acc;
-  }, {});
 }
 
 function resolveLinkedSkillSource(skillPath: string): string | null {
@@ -410,13 +401,14 @@ async function interactiveRemove(): Promise<void> {
     return;
   }
 
-  const choices = buildVirtualGroupChoices(
-    deployedSkills.map((skill) => ({
-      ...skill,
-      source: skill.skillKey
-        ? skill.skillKey.slice(0, -(skill.name.length + 1))
-        : skill.source,
-    })),
+  const mappedSkills = deployedSkills.map((skill) => ({
+    ...skill,
+    source: skill.skillKey
+      ? skill.skillKey.slice(0, -(skill.name.length + 1))
+      : skill.source,
+  }));
+  const choices = buildSourceGroupedChoices(
+    mappedSkills,
     loadGroupsData(groupsService),
     { getValue: (skill) => skill.name },
   );
