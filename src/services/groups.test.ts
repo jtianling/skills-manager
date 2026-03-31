@@ -89,6 +89,48 @@ describe('GroupsService', () => {
     });
   });
 
+  describe('renameGroup', () => {
+    it('renames group and preserves skills', () => {
+      service.addSkill('python', 'custom/my-linter');
+
+      service.renameGroup('python', 'py-tools');
+
+      expect(service.getGroup('python')).toBeNull();
+      expect(service.getGroup('py-tools')).toEqual(['custom/my-linter']);
+    });
+
+    it('throws when old group not found', () => {
+      expect(() => service.renameGroup('nonexistent', 'new-name')).toThrow(
+        "Group 'nonexistent' not found.",
+      );
+    });
+
+    it('throws when new group already exists', () => {
+      service.createGroup('python');
+      service.createGroup('rust');
+
+      expect(() => service.renameGroup('python', 'rust')).toThrow(
+        "Group 'rust' already exists.",
+      );
+    });
+
+    it('throws when new name is invalid', () => {
+      service.createGroup('python');
+
+      expect(() => service.renameGroup('python', 'my tools')).toThrow(
+        'Group name must contain only letters, numbers, hyphens, and underscores',
+      );
+    });
+
+    it('throws when new name is the same as current name', () => {
+      service.createGroup('python');
+
+      expect(() => service.renameGroup('python', 'python')).toThrow(
+        'New name is the same as the current name.',
+      );
+    });
+  });
+
   describe('addSkill', () => {
     it('adds skill to existing group', () => {
       service.createGroup('python');

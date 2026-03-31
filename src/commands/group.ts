@@ -124,6 +124,23 @@ async function executeGroupRemove(group: string, skill: string): Promise<void> {
   console.log(`Removed '${skillKey}' from group '${group}'.`);
 }
 
+export async function executeGroupRename(
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  await ensureSetup();
+  const service = new GroupsService();
+
+  try {
+    service.renameGroup(oldName, newName);
+  } catch (e) {
+    console.log((e as Error).message);
+    process.exit(1);
+  }
+
+  console.log(`Renamed group '${oldName}' to '${newName}'.`);
+}
+
 export const groupCommand = new Command('group')
   .description('Manage virtual skill groups');
 
@@ -167,4 +184,13 @@ groupCommand
   .description('Remove a skill from a group')
   .action(async (group: string, skill: string) => {
     await executeGroupRemove(group, skill);
+  });
+
+groupCommand
+  .command('rename')
+  .argument('<old-name>', 'Current group name')
+  .argument('<new-name>', 'New group name')
+  .description('Rename a group')
+  .action(async (oldName: string, newName: string) => {
+    await executeGroupRename(oldName, newName);
   });

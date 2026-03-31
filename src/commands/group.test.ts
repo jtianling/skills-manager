@@ -5,6 +5,12 @@ import { tmpdir } from 'os';
 import * as constants from '../constants.js';
 import { GroupsService } from '../services/groups.js';
 
+vi.mock('./setup.js', () => ({
+  ensureSetup: vi.fn(),
+}));
+
+import { executeGroupRename } from './group.js';
+
 // We test the underlying service + resolveSkillKey logic via integration.
 // The group command functions are thin wrappers, so we test the key behavior.
 
@@ -81,6 +87,57 @@ describe('group command integration', () => {
       service.removeSkill('python', 'custom/my-linter');
       expect(service.getGroup('python')).toEqual([]);
       expect(existsSync(join(testDir, 'custom', 'my-linter', 'SKILL.md'))).toBe(true);
+    });
+  });
+
+  describe('group rename', () => {
+    it('renames group successfully', async () => {
+      service.addSkill('python', 'custom/my-linter');
+
+      await executeGroupRename('python', 'py-tools');
+
+      expect(service.getGroup('python')).toBeNull();
+      expect(service.getGroup('py-tools')).toEqual(['custom/my-linter']);
+      expect(console.log).toHaveBeenCalledWith("Renamed group 'python' to 'py-tools'.");
+    });
+
+    it('exits when old group is missing', async () => {
+      await expect(executeGroupRename('nonexistent', 'new-name')).rejects.toThrow(
+        'process.exit',
+      );
+      expect(console.log).toHaveBeenCalledWith("Group 'nonexistent' not found.");
+    });
+
+    it('exits when new group already exists', async () => {
+      service.createGroup('python');
+      service.createGroup('rust');
+
+      await expect(executeGroupRename('python', 'rust')).rejects.toThrow(
+        'process.exit',
+      );
+      expect(console.log).toHaveBeenCalledWith("Group 'rust' already exists.");
+    });
+
+    it('exits when new name is invalid', async () => {
+      service.createGroup('python');
+
+      await expect(executeGroupRename('python', 'my tools')).rejects.toThrow(
+        'process.exit',
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'Group name must contain only letters, numbers, hyphens, and underscores',
+      );
+    });
+
+    it('exits when new name is the same as current name', async () => {
+      service.createGroup('python');
+
+      await expect(executeGroupRename('python', 'python')).rejects.toThrow(
+        'process.exit',
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'New name is the same as the current name.',
+      );
     });
   });
 });
