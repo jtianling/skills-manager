@@ -36,7 +36,7 @@ export interface InstallOptions {
   agent?: string[];
 }
 
-export interface InitOptions {
+export interface DeployOptions {
   copy?: boolean;
   global?: boolean;
 }

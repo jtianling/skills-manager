@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync, existsSync, writeFileSync, readlinkSync, lstatSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -10,21 +10,22 @@ vi.mock('../utils/prompts.js', () => ({
 
 vi.mock('./setup.js', () => ({
   executeSetup: vi.fn(),
+  ensureSetup: vi.fn(),
 }));
 
 import * as constants from '../constants.js';
-import { executeInit } from './init.js';
+import { executeDeploy } from './deploy.js';
 import { promptAgents, promptSkills } from '../utils/prompts.js';
 
-describe('init command', () => {
+describe('deploy command', () => {
   let testManagerDir: string;
   let testProjectDir: string;
   let originalCwd: typeof process.cwd;
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    testManagerDir = join(tmpdir(), `skillsmgr-init-test-mgr-${id}`);
-    testProjectDir = join(tmpdir(), `skillsmgr-init-test-proj-${id}`);
+    testManagerDir = join(tmpdir(), `skillsmgr-deploy-test-mgr-${id}`);
+    testProjectDir = join(tmpdir(), `skillsmgr-deploy-test-proj-${id}`);
 
     mkdirSync(join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review'), { recursive: true });
     writeFileSync(
@@ -59,7 +60,7 @@ describe('init command', () => {
     vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
     vi.mocked(promptSkills).mockResolvedValue(['code-review']);
 
-    await executeInit({});
+    await executeDeploy({});
 
     const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
     expect(existsSync(deployedPath)).toBe(true);
@@ -70,7 +71,7 @@ describe('init command', () => {
     vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
     vi.mocked(promptSkills).mockResolvedValue(['code-review']);
 
-    await executeInit({ copy: true });
+    await executeDeploy({ copy: true });
 
     const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
     expect(existsSync(deployedPath)).toBe(true);
@@ -81,7 +82,7 @@ describe('init command', () => {
     vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard', 'claude-code']);
     vi.mocked(promptSkills).mockResolvedValue(['code-review']);
 
-    await executeInit({});
+    await executeDeploy({});
 
     const bridgePath = join(testProjectDir, '.claude', 'skills');
     expect(existsSync(bridgePath)).toBe(true);
@@ -99,7 +100,7 @@ describe('init command', () => {
       throw new Error('process.exit');
     }) as never);
 
-    await expect(executeInit({})).rejects.toThrow('process.exit');
+    await expect(executeDeploy({})).rejects.toThrow('process.exit');
     expect(mockExit).toHaveBeenCalledWith(1);
 
     rmSync(constants.SKILLS_MANAGER_DIR, { recursive: true, force: true });
@@ -113,7 +114,7 @@ describe('init command', () => {
     vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
     vi.mocked(promptSkills).mockResolvedValue(['code-review']);
 
-    await executeInit({});
+    await executeDeploy({});
 
     expect(existsSync(unmanagedPath)).toBe(true);
   });

@@ -6,6 +6,7 @@ import { SourcesService, SourceInfo } from '../services/sources.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { detectSourceType } from '../utils/source-detection.js';
 import { findInstalledCustomSkill } from './install-utils.js';
+import { ensureSetup } from './setup.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
@@ -196,10 +197,7 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
 }
 
 export async function executeUpdate(source?: string): Promise<void> {
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
+  await ensureSetup();
 
   const allSources = sourcesService.getAllSources();
 

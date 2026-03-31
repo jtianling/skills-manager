@@ -1,8 +1,7 @@
 import { Command } from 'commander';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { type InstallOptions, collect } from '../types.js';
-import { fileExists } from '../utils/fs.js';
+import { ensureSetup } from './setup.js';
 import { detectSourceType } from '../utils/source-detection.js';
 import { installViaGitClone } from './install-git.js';
 import { installFromLocalDir, installFromRemoteZip, installFromZip } from './install-local.js';
@@ -40,10 +39,7 @@ export async function installSource(source: string, options: InstallOptions = {}
 }
 
 export async function executeInstall(source: string, options: InstallOptions): Promise<void> {
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
+  await ensureSetup();
 
   if (options.group) {
     try {

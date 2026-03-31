@@ -11,12 +11,13 @@ vi.mock('./install.js', () => ({
   installSource: vi.fn(),
 }));
 
-vi.mock('./init.js', () => ({
-  executeInit: vi.fn(),
+vi.mock('./deploy.js', () => ({
+  executeDeploy: vi.fn(),
 }));
 
 vi.mock('./setup.js', () => ({
   executeSetup: vi.fn(),
+  ensureSetup: vi.fn(),
 }));
 
 import { executeAdd } from './add.js';

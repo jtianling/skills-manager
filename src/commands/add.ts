@@ -7,12 +7,12 @@ import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
 import { AddOptions, SkillInfo, ToolName, collect } from '../types.js';
-import { fileExists } from '../utils/fs.js';
-import { promptSelect, resolveTargetAgents } from '../utils/prompts.js';
+import { resolveTargetAgents } from '../utils/prompts.js';
 import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.js';
+import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { executeSetup } from './setup.js';
-import { executeInit } from './init.js';
+import { ensureSetup } from './setup.js';
+import { executeDeploy } from './deploy.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
 
 async function promptSkillsFromRepo(
@@ -110,27 +110,12 @@ async function handleSkillName(
   scanner: DeploymentScanner,
   deployer: Deployer,
 ): Promise<void> {
-  const matchingSkills = skillsService.findSkillsByName(name);
+  const allSkills = skillsService.getAllSkills();
+  const skill = await resolveSkillByName(name, allSkills);
 
-  if (matchingSkills.length === 0) {
+  if (!skill) {
     await handleRemoteInstallAndDeploy(name, options, scanner, deployer);
     return;
-  }
-
-  let skill = matchingSkills[0];
-  if (matchingSkills.length > 1) {
-    console.log(`Multiple skills found with name '${name}':`);
-    const choices = matchingSkills.map((s, i) => ({
-      name: `${i + 1}. ${s.source}/${s.name}`,
-      value: s.path,
-    }));
-    const selectedPath = await promptSelect('Select skill:', choices);
-    const found = matchingSkills.find((s) => s.path === selectedPath);
-    if (!found) {
-      console.log('Failed to resolve skill selection.');
-      process.exit(1);
-    }
-    skill = found;
   }
 
   if (options.global) {
@@ -420,26 +405,20 @@ export async function executeAdd(
 
   // --group batch deploy
   if (options.group) {
-    if (!fileExists(SKILLS_MANAGER_DIR)) {
-      await executeSetup();
-      console.log();
-    }
+    await ensureSetup();
     const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
     const deployer = new Deployer(process.cwd());
     await handleGroupBatchDeploy(options.group, options, scanner, deployer);
     return;
   }
 
-  // No argument → init flow
+  // No argument → deploy flow
   if (!arg) {
-    await executeInit({ copy: options.copy, global: options.global });
+    await executeDeploy({ copy: options.copy, global: options.global });
     return;
   }
 
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    await executeSetup();
-    console.log();
-  }
+  await ensureSetup();
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);

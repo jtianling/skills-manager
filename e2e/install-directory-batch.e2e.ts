@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
 
@@ -17,10 +17,6 @@ describe('install directory as group E2E', () => {
   });
 
   async function setup(): Promise<void> {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
   }
 
   function createSkillInDir(parentDir: string, skillName: string): void {
@@ -98,10 +94,10 @@ describe('install directory as group E2E', () => {
     expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'my-pack', 'pack-skill-a', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'my-pack', 'pack-skill-b', 'SKILL.md'))).toBe(true);
 
-    // Skill key does not contain subdirectory prefix
+    // Skill key includes subdirectory prefix
     const sources = readJson('sources.json') as { sources: Record<string, unknown> };
-    expect(sources.sources['custom/pack-skill-a']).toBeDefined();
-    expect(sources.sources['custom/pack-skill-b']).toBeDefined();
+    expect(sources.sources['custom/my-pack/pack-skill-a']).toBeDefined();
+    expect(sources.sources['custom/my-pack/pack-skill-b']).toBeDefined();
   });
 
   it('batch install auto-creates virtual group named after directory', async () => {
@@ -114,8 +110,8 @@ describe('install directory as group E2E', () => {
 
     const groups = readJson('groups.json') as Record<string, string[]>;
     expect(groups['auto-group']).toBeDefined();
-    expect(groups['auto-group']).toContain('custom/ag-skill-a');
-    expect(groups['auto-group']).toContain('custom/ag-skill-b');
+    expect(groups['auto-group']).toContain('custom/auto-group/ag-skill-a');
+    expect(groups['auto-group']).toContain('custom/auto-group/ag-skill-b');
   });
 
   it('--group overrides auto group name but physical directory stays', async () => {
@@ -131,7 +127,7 @@ describe('install directory as group E2E', () => {
 
     // Group uses --group name, not directory name
     const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['my-custom-group']).toContain('custom/override-skill');
+    expect(groups['my-custom-group']).toContain('custom/orig-dir/override-skill');
     expect(groups['orig-dir']).toBeUndefined();
   });
 

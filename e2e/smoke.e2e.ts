@@ -65,16 +65,17 @@ describe('E2E framework smoke test', () => {
         shell: '/bin/zsh',
       });
 
-      const output = execSync('./node_modules/.bin/skillsmgr setup', {
+      const output = execSync('./node_modules/.bin/skillsmgr list', {
         cwd: installDir,
         env: execEnv,
         encoding: 'utf-8',
       });
 
       expect(output).toContain('Setup complete');
-      expect(
-        existsSync(join(env.homeDir, '.skills-manager', 'custom', 'example-skill', 'SKILL.md')),
-      ).toBe(true);
+      expect(existsSync(join(env.homeDir, '.skills-manager', 'official'))).toBe(true);
+      expect(existsSync(join(env.homeDir, '.skills-manager', 'custom'))).toBe(true);
+      // No example-skill should be created
+      expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'example-skill'))).toBe(false);
     } finally {
       if (existsSync(tarballPath)) {
         rmSync(tarballPath, { force: true });

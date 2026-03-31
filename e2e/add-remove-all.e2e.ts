@@ -18,11 +18,6 @@ describe('add/remove --all and -y E2E', () => {
     skills: string[];
   }> {
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
     tmux.destroy();

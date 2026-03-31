@@ -19,11 +19,6 @@ describe('install E2E', () => {
 
   it('install anthropics/skills --all discovers 15+ skills and classifies as official', async () => {
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
 
@@ -47,11 +42,6 @@ describe('install E2E', () => {
   });
 
   it('install anthropics/skills with interactive selection', async () => {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills');
 
@@ -77,11 +67,6 @@ describe('install E2E', () => {
 
   it('install microsoft/skills --all discovers 160+ skills via marketplace manifest', async () => {
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install microsoft/skills --all');
     await tmux.waitForText('Installed', 120_000);
 
@@ -106,11 +91,6 @@ describe('install E2E', () => {
 
   it('install obra/superpowers --all discovers 10+ skills', async () => {
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install obra/superpowers --all');
     await tmux.waitForText('Installed', 110_000);
 
@@ -128,11 +108,6 @@ describe('install E2E', () => {
 
   it('install mattpocock/skills --all discovers 15+ skills', async () => {
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install mattpocock/skills --all');
     await tmux.waitForText('Installed', 110_000);
 
@@ -149,11 +124,6 @@ describe('install E2E', () => {
   });
 
   it('install mattpocock/skills locks installed skills and skips them on confirm', async () => {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // Install only tdd and grill-me
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install mattpocock/skills -s tdd -s grill-me');
@@ -196,11 +166,6 @@ describe('install E2E', () => {
   });
 
   it('install mattpocock/skills installs only newly selected skills', async () => {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // Install tdd first
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install mattpocock/skills -s tdd');
@@ -230,11 +195,6 @@ describe('install E2E', () => {
   });
 
   it('install vercel-labs/agent-skills skips interactive prompt when all skills already installed', async () => {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // Install all skills first
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install vercel-labs/agent-skills --all');
@@ -261,11 +221,6 @@ describe('install E2E', () => {
   });
 
   it('install GitHub tree URL for a specific skill path', async () => {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);

@@ -13,10 +13,6 @@ describe('update E2E', () => {
   });
 
   async function setup(): Promise<void> {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
   }
 
   async function setupAndInstall(): Promise<void> {

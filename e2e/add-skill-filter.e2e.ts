@@ -19,11 +19,6 @@ describe('add -s skill filter E2E', () => {
     const skillsDir = join(smDir, 'official', 'openai', 'skills');
 
     // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // 2. Add with -s filter — should only install skill-creator
     tmux = new TmuxSession(env);
     await tmux.start(
@@ -51,11 +46,6 @@ describe('add -s skill filter E2E', () => {
     const smDir = join(env.homeDir, '.skills-manager');
 
     // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // 2. First install all to discover skill names
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
@@ -97,11 +87,6 @@ describe('add -s skill filter E2E', () => {
     const smDir = join(env.homeDir, '.skills-manager');
 
     // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // 2. Install all to get skill names
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
@@ -143,11 +128,6 @@ describe('add -s skill filter E2E', () => {
     const smDir = join(env.homeDir, '.skills-manager');
 
     // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // 2. Install all
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');

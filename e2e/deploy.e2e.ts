@@ -4,7 +4,7 @@ import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
 import { getDeployedSkillNames, getInstalledSkillNames } from './helpers/skills.js';
 
-describe('init E2E', () => {
+describe('deploy E2E', () => {
   let env: TestEnv;
   let tmux: TmuxSession;
 
@@ -13,12 +13,7 @@ describe('init E2E', () => {
     env?.cleanup();
   });
 
-  async function setupAndInstall(): Promise<string[]> {
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
+  async function installSkills(): Promise<string[]> {
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
@@ -28,20 +23,18 @@ describe('init E2E', () => {
     return getInstalledSkillNames(skillsDir);
   }
 
-  it('init deploys skills via interactive agent and skill selection', async () => {
+  it('deploy deploys skills via interactive agent and skill selection', async () => {
     env = createTestEnv();
-    const skills = await setupAndInstall();
+    const skills = await installSkills();
     expect(skills.length).toBeGreaterThan(0);
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr init', env.projectDir);
+    await tmux.start('skillsmgr deploy', env.projectDir);
 
-    // Select agents (first item: Agents Skills Standard)
     await tmux.waitForText('Select target agents', 15_000);
     await tmux.pressSpace();
     await tmux.pressEnter();
 
-    // Select skills (first item or group header)
     await tmux.waitForText('Select skills to deploy', 15_000);
     await tmux.pressSpace();
     await tmux.pressEnter();
@@ -53,16 +46,15 @@ describe('init E2E', () => {
 
     const deployed = getDeployedSkillNames(agentsSkillsDir);
     expect(deployed.length).toBeGreaterThan(0);
-    // Default mode is symlink
     expect(lstatSync(join(agentsSkillsDir, deployed[0])).isSymbolicLink()).toBe(true);
   });
 
-  it('init --copy deploys copies instead of symlinks', async () => {
+  it('deploy --copy deploys copies instead of symlinks', async () => {
     env = createTestEnv();
-    await setupAndInstall();
+    await installSkills();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr init --copy', env.projectDir);
+    await tmux.start('skillsmgr deploy --copy', env.projectDir);
 
     await tmux.waitForText('Select target agents', 15_000);
     await tmux.pressSpace();
@@ -79,16 +71,15 @@ describe('init E2E', () => {
 
     const deployed = getDeployedSkillNames(agentsSkillsDir);
     expect(deployed.length).toBeGreaterThan(0);
-    // Copy mode: not a symlink
     expect(lstatSync(join(agentsSkillsDir, deployed[0])).isSymbolicLink()).toBe(false);
   });
 
-  it('init -g deploys skills to global agent directory', async () => {
+  it('deploy -g deploys skills to global agent directory', async () => {
     env = createTestEnv();
-    await setupAndInstall();
+    await installSkills();
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr init -g', env.projectDir);
+    await tmux.start('skillsmgr deploy -g', env.projectDir);
 
     await tmux.waitForText('Select target agents for global install', 15_000);
     await tmux.pressSpace();
@@ -107,5 +98,4 @@ describe('init E2E', () => {
     expect(deployed.length).toBeGreaterThan(0);
     expect(lstatSync(join(globalSkillsDir, deployed[0])).isSymbolicLink()).toBe(true);
   });
-
 });

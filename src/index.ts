@@ -1,10 +1,9 @@
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
-import { setupCommand } from './commands/setup.js';
 import { installCommand } from './commands/install.js';
 import { updateCommand } from './commands/update.js';
 import { listCommand } from './commands/list.js';
-import { initCommand } from './commands/init.js';
+import { deployCommand } from './commands/deploy.js';
 import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { uninstallCommand } from './commands/uninstall.js';
@@ -20,11 +19,10 @@ program
   .description('Unified skills manager for AI coding tools')
   .version(version);
 
-program.addCommand(setupCommand);
 program.addCommand(installCommand);
 program.addCommand(updateCommand);
 program.addCommand(listCommand);
-program.addCommand(initCommand);
+program.addCommand(deployCommand);
 program.addCommand(addCommand);
 program.addCommand(removeCommand);
 program.addCommand(uninstallCommand);

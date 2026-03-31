@@ -52,7 +52,7 @@ describe('preserve-unmanaged-skills', () => {
     });
   });
 
-  describe('init toRemove filter logic', () => {
+  describe('deploy toRemove filter logic', () => {
     it('excludes unmanaged skills from toRemove', () => {
       const unmanagedPath = join(projectDir, '.agents', 'skills', 'user-created-skill');
       mkdirSync(unmanagedPath, { recursive: true });
@@ -95,7 +95,7 @@ describe('preserve-unmanaged-skills', () => {
     });
   });
 
-  describe('unmanaged items survive init deployment', () => {
+  describe('unmanaged items survive deploy', () => {
     it('unmanaged skill directory still exists after managed skill removal', () => {
       const unmanagedPath = join(projectDir, '.agents', 'skills', 'user-created-skill');
       mkdirSync(unmanagedPath, { recursive: true });

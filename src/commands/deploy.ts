@@ -6,10 +6,9 @@ import { SkillsService } from '../services/skills.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { InitOptions, ToolName } from '../types.js';
-import { fileExists } from '../utils/fs.js';
+import { DeployOptions, ToolName } from '../types.js';
 import { promptAgents, promptAgentsGlobal, promptSkills } from '../utils/prompts.js';
-import { executeSetup } from './setup.js';
+import { ensureSetup } from './setup.js';
 
 function scanGlobalDeployedSkills(agents: ToolName[]): string[] {
   const names = new Set<string>();
@@ -29,10 +28,10 @@ function scanGlobalDeployedSkills(agents: ToolName[]): string[] {
   return [...names];
 }
 
-async function executeInitGlobal(
+async function executeDeployGlobal(
   skillsService: SkillsService,
   deployer: Deployer,
-  options: InitOptions,
+  options: DeployOptions,
 ): Promise<void> {
   const selectedAgents = await promptAgentsGlobal() as ToolName[];
 
@@ -65,11 +64,8 @@ async function executeInitGlobal(
   );
 }
 
-export async function executeInit(options: InitOptions): Promise<void> {
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    await executeSetup();
-    console.log();
-  }
+export async function executeDeploy(options: DeployOptions): Promise<void> {
+  await ensureSetup();
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
@@ -82,7 +78,7 @@ export async function executeInit(options: InitOptions): Promise<void> {
   }
 
   if (options.global) {
-    await executeInitGlobal(skillsService, deployer, options);
+    await executeDeployGlobal(skillsService, deployer, options);
     return;
   }
 
@@ -190,10 +186,10 @@ export async function executeInit(options: InitOptions): Promise<void> {
   );
 }
 
-export const initCommand = new Command('init')
+export const deployCommand = new Command('deploy')
   .description('Deploy skills to current project (or globally with -g)')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-g, --global', 'Deploy skills globally to agent user-level directories')
-  .action(async (options: InitOptions) => {
-    await executeInit(options);
+  .action(async (options: DeployOptions) => {
+    await executeDeploy(options);
   });

@@ -19,11 +19,6 @@ describe('install → reinstall → uninstall cycle E2E', () => {
     const skillsDir = join(smDir, 'official', 'openai', 'skills');
 
     // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
     // 2. Install openai/skills — select only skill-creator
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install openai/skills');

@@ -11,18 +11,19 @@ vi.mock('./install.js', () => ({
   installSource: vi.fn(),
 }));
 
-vi.mock('./init.js', () => ({
-  executeInit: vi.fn(),
+vi.mock('./deploy.js', () => ({
+  executeDeploy: vi.fn(),
 }));
 
 vi.mock('./setup.js', () => ({
   executeSetup: vi.fn(),
+  ensureSetup: vi.fn(),
 }));
 
 import { executeAdd } from './add.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { installSource } from './install.js';
-import { executeInit } from './init.js';
+import { executeDeploy } from './deploy.js';
 import * as constants from '../constants.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { executeRemove } from './remove.js';
@@ -75,15 +76,15 @@ describe('add command', () => {
     symlinkSync(sourcePath, targetPath);
   }
 
-  describe('no argument → init flow', () => {
-    it('calls executeInit when no arg provided', async () => {
+  describe('no argument → deploy flow', () => {
+    it('calls executeDeploy when no arg provided', async () => {
       await executeAdd(undefined, {});
-      expect(executeInit).toHaveBeenCalledWith({ copy: undefined });
+      expect(executeDeploy).toHaveBeenCalledWith({ copy: undefined });
     });
 
-    it('passes --copy to executeInit', async () => {
+    it('passes --copy to executeDeploy', async () => {
       await executeAdd(undefined, { copy: true });
-      expect(executeInit).toHaveBeenCalledWith({ copy: true });
+      expect(executeDeploy).toHaveBeenCalledWith({ copy: true });
     });
   });
 
@@ -298,7 +299,7 @@ describe('add command', () => {
 
       await executeAdd(undefined, { group: 'dev' });
 
-      expect(executeInit).not.toHaveBeenCalled();
+      expect(executeDeploy).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('✓ skill-a')
       );
@@ -336,11 +337,11 @@ describe('add command', () => {
   });
 
   describe('-g / --global flag', () => {
-    it('-g without arg delegates to init with global flag', async () => {
+    it('-g without arg delegates to deploy with global flag', async () => {
       await executeAdd(undefined, { global: true });
 
-      const { executeInit } = await import('./init.js');
-      expect(executeInit).toHaveBeenCalledWith({ copy: undefined, global: true });
+      const { executeDeploy } = await import('./deploy.js');
+      expect(executeDeploy).toHaveBeenCalledWith({ copy: undefined, global: true });
     });
 
     it('add -g deploys and remove -g cleans up', async () => {
@@ -393,7 +394,7 @@ describe('add command', () => {
 
       await executeAdd(undefined, { global: true, group: 'dev' });
 
-      expect(executeInit).not.toHaveBeenCalled();
+      expect(executeDeploy).not.toHaveBeenCalled();
       expect(existsSync(join(globalDir, 'skill-a'))).toBe(true);
 
       // cleanup

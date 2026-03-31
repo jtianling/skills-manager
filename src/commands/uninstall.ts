@@ -8,8 +8,9 @@ import { GroupsService } from '../services/groups.js';
 import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import { extractOwnerRepo } from '../utils/source-detection.js';
 import { promptConfirm, promptSkillsToUninstall } from '../utils/prompts.js';
-import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { SkillInfo, collect } from '../types.js';
+import { resolveSkillByName } from '../utils/skill-resolve.js';
+import { ensureSetup } from './setup.js';
 
 interface UninstallOptions {
   all?: boolean;
@@ -137,33 +138,13 @@ async function uninstallSource(owner: string, repo: string, options: UninstallOp
 async function uninstallByName(name: string, options: UninstallOptions): Promise<void> {
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const sourcesService = new SourcesService();
-  const matches = skillsService.findSkillsByName(name);
+  const allSkills = skillsService.getAllSkills();
+  const skill = await resolveSkillByName(name, allSkills);
 
-  if (matches.length === 0) {
+  if (!skill) {
     console.error(`Error: Skill '${name}' not found`);
     process.exit(1);
-  }
-
-  let skill = matches[0];
-
-  if (matches.length > 1) {
-    console.log(`Found ${matches.length} skills named '${name}':\n`);
-    const choices = matches.map((s) => ({
-      name: s.name,
-      description: s.source,
-      value: `${s.source}/${s.name}`,
-    }));
-    const selected = await interactiveCheckbox({
-      message: 'Select skill to uninstall:',
-      choices,
-    });
-    if (selected.length === 0) {
-      console.log('No skill selected');
-      return;
-    }
-    const match = matches.find((s) => selected.includes(`${s.source}/${s.name}`));
-    if (!match) return;
-    skill = match;
+    return;
   }
 
   const confirmed = await confirmUninstall([`${skill.name} (${skill.source})`], options.force ?? false);
@@ -232,10 +213,7 @@ export async function executeUninstall(
     options.force = true;
   }
 
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
+  await ensureSetup();
 
   if (options.skill && options.skill.length > 0) {
     for (const name of options.skill) {

@@ -3,7 +3,8 @@ import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
-import { fileExists, readSymlinkTarget } from '../utils/fs.js';
+import { readSymlinkTarget } from '../utils/fs.js';
+import { ensureSetup } from './setup.js';
 import { resolveTargetAgents } from '../utils/prompts.js';
 import { type RemoveOptions, type ToolName, collect } from '../types.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
@@ -199,10 +200,7 @@ export async function executeRemove(
     options.all = true;
   }
 
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
+  await ensureSetup();
 
   const skillNames = resolveSkillNames(name, options);
 

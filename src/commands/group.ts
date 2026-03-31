@@ -2,46 +2,24 @@ import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { SkillsService } from '../services/skills.js';
-import { fileExists } from '../utils/fs.js';
+import { resolveSkillByName } from '../utils/skill-resolve.js';
+import { ensureSetup } from './setup.js';
 
-function ensureSetup(): void {
-  if (!fileExists(SKILLS_MANAGER_DIR)) {
-    console.log('Skills manager not set up. Run: skillsmgr setup');
-    process.exit(1);
-  }
-}
-
-function resolveSkillKey(skillIdentifier: string): string {
+async function resolveSkillKey(skillIdentifier: string): Promise<string> {
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const allSkills = skillsService.getAllSkills();
+  const skill = await resolveSkillByName(skillIdentifier, allSkills);
 
-  const fullKeyMatch = allSkills.find(
-    (s) => `${s.source}/${s.name}` === skillIdentifier,
-  );
-  if (fullKeyMatch) {
-    return `${fullKeyMatch.source}/${fullKeyMatch.name}`;
-  }
-
-  const nameMatches = allSkills.filter((s) => s.name === skillIdentifier);
-
-  if (nameMatches.length === 0) {
+  if (!skill) {
     console.log(`Skill '${skillIdentifier}' not found.`);
     process.exit(1);
   }
 
-  if (nameMatches.length > 1) {
-    console.log(`Multiple skills named '${skillIdentifier}'. Specify full key:`);
-    for (const s of nameMatches) {
-      console.log(`  ${s.source}/${s.name}`);
-    }
-    process.exit(1);
-  }
-
-  return `${nameMatches[0].source}/${nameMatches[0].name}`;
+  return `${skill.source}/${skill.name}`;
 }
 
-function executeGroupList(name?: string): void {
-  ensureSetup();
+async function executeGroupList(name?: string): Promise<void> {
+  await ensureSetup();
   const service = new GroupsService();
 
   if (name) {
@@ -73,8 +51,8 @@ function executeGroupList(name?: string): void {
   }
 }
 
-function executeGroupCreate(name: string): void {
-  ensureSetup();
+async function executeGroupCreate(name: string): Promise<void> {
+  await ensureSetup();
   try {
     validateGroupName(name);
   } catch (e) {
@@ -92,8 +70,8 @@ function executeGroupCreate(name: string): void {
   console.log(`Created group '${name}'.`);
 }
 
-function executeGroupDelete(name: string): void {
-  ensureSetup();
+async function executeGroupDelete(name: string): Promise<void> {
+  await ensureSetup();
   const service = new GroupsService();
   try {
     service.deleteGroup(name);
@@ -104,8 +82,8 @@ function executeGroupDelete(name: string): void {
   console.log(`Deleted group '${name}'.`);
 }
 
-function executeGroupAdd(group: string, skill: string): void {
-  ensureSetup();
+async function executeGroupAdd(group: string, skill: string): Promise<void> {
+  await ensureSetup();
   try {
     validateGroupName(group);
   } catch (e) {
@@ -113,7 +91,7 @@ function executeGroupAdd(group: string, skill: string): void {
     process.exit(1);
   }
 
-  const skillKey = resolveSkillKey(skill);
+  const skillKey = await resolveSkillKey(skill);
   const service = new GroupsService();
 
   const added = service.addSkill(group, skillKey);
@@ -126,8 +104,8 @@ function executeGroupAdd(group: string, skill: string): void {
   console.log(`Added '${skillKey}' to group '${group}'.`);
 }
 
-function executeGroupRemove(group: string, skill: string): void {
-  ensureSetup();
+async function executeGroupRemove(group: string, skill: string): Promise<void> {
+  await ensureSetup();
   const service = new GroupsService();
 
   const groupSkills = service.getGroup(group);
@@ -136,7 +114,7 @@ function executeGroupRemove(group: string, skill: string): void {
     process.exit(1);
   }
 
-  const skillKey = resolveSkillKey(skill);
+  const skillKey = await resolveSkillKey(skill);
   const removed = service.removeSkill(group, skillKey);
   if (!removed) {
     console.log(`Skill '${skillKey}' is not in group '${group}'.`);
@@ -178,8 +156,8 @@ groupCommand
   .argument('<group>', 'Group name')
   .argument('<skill>', 'Skill name or full source key')
   .description('Add a skill to a group')
-  .action((group: string, skill: string) => {
-    executeGroupAdd(group, skill);
+  .action(async (group: string, skill: string) => {
+    await executeGroupAdd(group, skill);
   });
 
 groupCommand
@@ -187,6 +165,6 @@ groupCommand
   .argument('<group>', 'Group name')
   .argument('<skill>', 'Skill name or full source key')
   .description('Remove a skill from a group')
-  .action((group: string, skill: string) => {
-    executeGroupRemove(group, skill);
+  .action(async (group: string, skill: string) => {
+    await executeGroupRemove(group, skill);
   });

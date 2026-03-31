@@ -13,19 +13,11 @@ describe('full lifecycle E2E', () => {
     env?.cleanup();
   });
 
-  it('setup → install → list → add → list --deployed → remove → uninstall', async () => {
+  it('install → list → add → list --deployed → remove → uninstall', async () => {
     env = createTestEnv();
     const smDir = join(env.homeDir, '.skills-manager');
 
-    // 1. Setup
-    tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr setup');
-    await tmux.waitForText('Setup complete');
-    tmux.destroy();
-
-    expect(existsSync(join(smDir, 'official'))).toBe(true);
-
-    // 2. Install --all
+    // 1. Install --all (auto-setup triggers automatically)
     tmux = new TmuxSession(env);
     await tmux.start('skillsmgr install anthropics/skills --all');
     await tmux.waitForText('Installed', 110_000);
