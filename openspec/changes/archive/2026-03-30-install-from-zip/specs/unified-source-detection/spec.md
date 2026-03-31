@@ -20,7 +20,7 @@
 
 #### Scenario: 以 https:// 开头且非 zip 识别为远程 URL
 - **WHEN** 用户输入以 `https://` 开头且不以 `.zip` 结尾
-- **THEN** 系统识别为远程 URL, 走 git clone 流程
+- **THEN** 系统识别为远程 URL, 走 GitHub API 或 git clone 流程
 
 #### Scenario: 含单个 / 识别为 owner/repo
 - **WHEN** 用户输入匹配 `owner/repo` 格式(含且仅含一个 `/`)

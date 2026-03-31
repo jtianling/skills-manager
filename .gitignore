@@ -4,6 +4,12 @@ dist/
 .DS_Store
 .claude/
 .agents/
+.goose/
+.kilocode/
+.kiro/
+.qoder/
+.trae/
+.trae-cn/
 AGENTS.md
 CLAUDE.md
 .e2e-test/
