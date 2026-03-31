@@ -28,7 +28,7 @@ describe('RegistryService', () => {
 
       const result = await service.getPackument('code-review');
       expect(result).toEqual(packument);
-      expect(mockFetch).toHaveBeenCalledWith('https://test-registry.dev/code-review', {
+      expect(mockFetch).toHaveBeenCalledWith('https://test-registry.dev/api/r/code-review', {
         headers: { 'Accept': 'application/json' },
       });
     });
@@ -107,7 +107,7 @@ describe('RegistryService', () => {
 
       expect(result.ok).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://test-registry.dev/test-skill',
+        'https://test-registry.dev/api/r/test-skill',
         expect.objectContaining({
           method: 'PUT',
           headers: expect.objectContaining({

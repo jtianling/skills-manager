@@ -17,7 +17,7 @@ export class RegistryService {
 
   async getPackument(name: string): Promise<Packument> {
     const encodedName = name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
-    const url = `${this.baseUrl}/${encodedName}`;
+    const url = `${this.baseUrl}/api/r/${encodedName}`;
     const response = await fetch(url, {
       headers: { 'Accept': 'application/json' },
     });
@@ -34,7 +34,9 @@ export class RegistryService {
   }
 
   async downloadTarball(url: string, destDir: string): Promise<void> {
-    const response = await fetch(url);
+    // Normalize tarball URL to use the main registry domain
+    const normalizedUrl = url.replace('https://skillsmgr-web.vercel.app/', `${this.baseUrl}/`);
+    const response = await fetch(normalizedUrl);
 
     if (!response.ok) {
       throw new Error(`Failed to download tarball: ${response.status} ${response.statusText}`);
@@ -80,7 +82,7 @@ export class RegistryService {
 
   async publish(name: string, payload: PublishPayload, token: string): Promise<{ ok: boolean }> {
     const encodedName = name.startsWith('@') ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
-    const url = `${this.baseUrl}/${encodedName}`;
+    const url = `${this.baseUrl}/api/r/${encodedName}`;
 
     const response = await fetch(url, {
       method: 'PUT',
