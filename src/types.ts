@@ -57,6 +57,7 @@ export interface RemoveOptions {
   global?: boolean;
   agent?: string[];
   all?: boolean;
+  group?: string;
   yes?: boolean;
 }
 

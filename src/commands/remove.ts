@@ -1,15 +1,27 @@
+import { lstatSync } from 'fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
-import { DeploymentScanner } from '../services/scanner.js';
+import { GroupsService } from '../services/groups.js';
+import { DeploymentScanner, type ScannedSkill } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { readSymlinkTarget } from '../utils/fs.js';
 import { ensureSetup } from './setup.js';
-import { resolveTargetAgents } from '../utils/prompts.js';
-import { type RemoveOptions, type ToolName, collect } from '../types.js';
+import {
+  buildVirtualGroupChoices,
+  resolveTargetAgents,
+  type VirtualGroupsData,
+} from '../utils/prompts.js';
+import { type RemoveOptions, type SkillInfo, type ToolName, collect } from '../types.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
 import { extractOwnerRepo } from '../utils/source-detection.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
+import { TOOL_CONFIGS } from '../tools/configs.js';
+
+interface ResolvedDeployedSkill extends ScannedSkill {
+  skillKey: string | null;
+}
 
 function resolveSkillNames(
   name: string | undefined,
@@ -18,8 +30,10 @@ function resolveSkillNames(
   const names: string[] = [];
   if (name) names.push(name);
   if (options.skill && options.skill.length > 0) {
-    for (const s of options.skill) {
-      if (!names.includes(s)) names.push(s);
+    for (const skillName of options.skill) {
+      if (!names.includes(skillName)) {
+        names.push(skillName);
+      }
     }
   }
   return names;
@@ -29,39 +43,122 @@ function normalizePath(path: string): string {
   return path.replace(/\\/g, '/');
 }
 
+function skillKeyOf(source: string, name: string): string {
+  return `${source}/${name}`;
+}
+
+function pathOrLinkExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadGroupsData(groupsService: GroupsService): VirtualGroupsData {
+  return groupsService.listGroups().reduce<VirtualGroupsData>((acc, groupName) => {
+    const skillKeys = groupsService.getGroup(groupName);
+    if (skillKeys) {
+      acc[groupName] = skillKeys;
+    }
+    return acc;
+  }, {});
+}
+
+function resolveLinkedSkillSource(skillPath: string): string | null {
+  const linkTarget = readSymlinkTarget(skillPath);
+  if (!linkTarget) {
+    return null;
+  }
+
+  const absoluteTarget = isAbsolute(linkTarget)
+    ? linkTarget
+    : resolve(dirname(skillPath), linkTarget);
+  const relativeTarget = normalizePath(relative(SKILLS_MANAGER_DIR, absoluteTarget));
+
+  if (!relativeTarget || relativeTarget.startsWith('..')) {
+    return null;
+  }
+
+  const parts = relativeTarget.split('/').filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+
+  return parts.slice(0, -1).join('/');
+}
+
+function resolveDeployedSkillKey(
+  skill: ScannedSkill,
+  skillsService: SkillsService,
+): string | null {
+  const linkedSource = skill.deployMode === 'link'
+    ? resolveLinkedSkillSource(skill.path)
+    : null;
+  const knownSource = skill.source !== 'unknown' ? skill.source : null;
+  const source = linkedSource ?? knownSource;
+
+  if (source) {
+    return skillKeyOf(source, skill.name);
+  }
+
+  const matches = skillsService.findSkillsByName(skill.name);
+  if (matches.length === 1) {
+    return skillKeyOf(matches[0].source, matches[0].name);
+  }
+
+  return null;
+}
+
+function resolveDeployedSkills(
+  skills: ScannedSkill[],
+  skillsService: SkillsService,
+): ResolvedDeployedSkill[] {
+  return skills.map((skill) => ({
+    ...skill,
+    skillKey: resolveDeployedSkillKey(skill, skillsService),
+  }));
+}
+
+function cleanupGroupRefs(skillKeys: Array<string | null>): void {
+  const groupsService = new GroupsService();
+  const uniqueKeys = [...new Set(skillKeys.filter((skillKey): skillKey is string => Boolean(skillKey)))];
+
+  for (const skillKey of uniqueKeys) {
+    groupsService.removeSkillFromAll(skillKey);
+  }
+}
+
 function findMatchingRepoSkills(
   ownerRepo: string,
   scanner: DeploymentScanner,
   skillsService: SkillsService,
-): string[] | null {
+): ScannedSkill[] | null {
   const repoSkills = findRepoInCentralRepository(ownerRepo, skillsService);
   if (!repoSkills) {
     return null;
   }
 
   const repoSkillByName = new Map(repoSkills.map((skill) => [skill.name, skill]));
-  const matchedSkillNames = scanner
-    .getDeployedSkills()
-    .filter((deployedSkill) => {
-      const repoSkill = repoSkillByName.get(deployedSkill.name);
-      if (!repoSkill) {
-        return false;
-      }
+  const matchedSkills = new Map<string, ScannedSkill>();
 
-      if (deployedSkill.deployMode === 'link') {
-        const linkTarget = readSymlinkTarget(deployedSkill.path);
-        if (!linkTarget) {
-          return false;
-        }
+  for (const deployedSkill of scanner.getDeployedSkills()) {
+    const repoSkill = repoSkillByName.get(deployedSkill.name);
+    if (!repoSkill) {
+      continue;
+    }
 
-        return normalizePath(linkTarget) === normalizePath(repoSkill.path);
-      }
+    const isMatch = deployedSkill.deployMode === 'link'
+      ? normalizePath(readSymlinkTarget(deployedSkill.path) ?? '') === normalizePath(repoSkill.path)
+      : deployedSkill.source === repoSkill.source;
 
-      return deployedSkill.source === repoSkill.source;
-    })
-    .map((skill) => skill.name);
+    if (isMatch && !matchedSkills.has(deployedSkill.name)) {
+      matchedSkills.set(deployedSkill.name, deployedSkill);
+    }
+  }
 
-  return [...new Set(matchedSkillNames)];
+  return [...matchedSkills.values()];
 }
 
 function removeSkillNames(
@@ -78,14 +175,128 @@ function removeSkillNamesGlobal(
   skillNames: string[],
   deployer: Deployer,
   agents: ToolName[],
-): boolean {
-  let removed = false;
+): string[] {
+  const removedNames: string[] = [];
 
   for (const skillName of skillNames) {
-    removed = deployer.removeSkillGlobal(skillName, agents) || removed;
+    const removed = deployer.removeSkillGlobal(skillName, agents);
+    if (removed) {
+      removedNames.push(skillName);
+    }
   }
 
-  return removed;
+  return removedNames;
+}
+
+function resolveSkillInfosByKeys(
+  skillKeys: string[],
+  skillsService: SkillsService,
+): SkillInfo[] {
+  const keySet = new Set(skillKeys);
+  return skillsService.getAllSkills().filter((skill) => keySet.has(skillKeyOf(skill.source, skill.name)));
+}
+
+function filterGloballyDeployedSkills(
+  skills: SkillInfo[],
+  agents: ToolName[],
+): SkillInfo[] {
+  return skills.filter((skill) =>
+    agents.some((agent) => pathOrLinkExists(join(TOOL_CONFIGS[agent].globalSkillsDir, skill.name)))
+  );
+}
+
+async function removeByGroup(
+  groupName: string,
+  options: RemoveOptions,
+): Promise<void> {
+  const groupsService = new GroupsService();
+  const groupSkillKeys = groupsService.getGroup(groupName);
+
+  if (!groupSkillKeys) {
+    console.log(`Group '${groupName}' not found.`);
+    process.exit(1);
+  }
+
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+
+  if (options.global) {
+    const agents = await resolveTargetAgents(
+      { agent: options.agent },
+      () => [] as ToolName[],
+      true,
+    );
+    const deployer = new Deployer(process.cwd());
+    const groupSkills = resolveSkillInfosByKeys(groupSkillKeys, skillsService);
+    const deployedGroupSkills = filterGloballyDeployedSkills(groupSkills, agents);
+
+    if (deployedGroupSkills.length === 0) {
+      console.log(`No deployed skills found in group '${groupName}'.`);
+      process.exit(1);
+    }
+
+    const selectedSkillNames = options.all
+      ? deployedGroupSkills.map((skill) => skill.name)
+      : await interactiveCheckbox({
+          message: `Select skills to remove from group '${groupName}':`,
+          choices: deployedGroupSkills.map((skill) => ({
+            name: skill.name,
+            value: skill.name,
+          })),
+        });
+
+    if (selectedSkillNames.length === 0) {
+      console.log('No skills selected.');
+      return;
+    }
+
+    const removedNames = removeSkillNamesGlobal(selectedSkillNames, deployer, agents);
+    if (removedNames.length === 0) {
+      console.log(`No deployed skills found in group '${groupName}'.`);
+      process.exit(1);
+    }
+
+    cleanupGroupRefs(
+      deployedGroupSkills
+        .filter((skill) => removedNames.includes(skill.name))
+        .map((skill) => skillKeyOf(skill.source, skill.name)),
+    );
+    return;
+  }
+
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+  const deployer = new Deployer(process.cwd());
+  const deployedSkills = resolveDeployedSkills(scanner.getDeployedSkills(), skillsService);
+  const groupSkillSet = new Set(groupSkillKeys);
+  const deployedGroupSkills = deployedSkills.filter((skill) =>
+    skill.skillKey ? groupSkillSet.has(skill.skillKey) : false
+  );
+
+  if (deployedGroupSkills.length === 0) {
+    console.log(`No deployed skills found in group '${groupName}'.`);
+    process.exit(1);
+  }
+
+  const selectedSkillNames = options.all
+    ? deployedGroupSkills.map((skill) => skill.name)
+    : await interactiveCheckbox({
+        message: `Select skills to remove from group '${groupName}':`,
+        choices: deployedGroupSkills.map((skill) => ({
+          name: skill.name,
+          value: skill.name,
+        })),
+      });
+
+  if (selectedSkillNames.length === 0) {
+    console.log('No skills selected.');
+    return;
+  }
+
+  removeSkillNames(selectedSkillNames, deployer);
+  cleanupGroupRefs(
+    deployedGroupSkills
+      .filter((skill) => selectedSkillNames.includes(skill.name))
+      .map((skill) => skill.skillKey),
+  );
 }
 
 async function removeByOwnerRepo(
@@ -104,7 +315,7 @@ async function removeByOwnerRepo(
 
     const allNames = [...new Set(repoSkills.map((skill) => skill.name))];
     const targetNames = explicitSkillNames.length > 0
-      ? allNames.filter((n) => explicitSkillNames.includes(n))
+      ? allNames.filter((name) => explicitSkillNames.includes(name))
       : allNames;
 
     const agents = await resolveTargetAgents(
@@ -113,46 +324,63 @@ async function removeByOwnerRepo(
       true,
     );
     const deployer = new Deployer(process.cwd());
-    const removed = removeSkillNamesGlobal(targetNames, deployer, agents);
+    const removedNames = removeSkillNamesGlobal(targetNames, deployer, agents);
 
-    if (!removed) {
+    if (removedNames.length === 0) {
       console.log(`No deployed skills found from '${ownerRepo}'`);
       process.exit(1);
     }
-    return targetNames;
+
+    cleanupGroupRefs(
+      repoSkills
+        .filter((skill) => removedNames.includes(skill.name))
+        .map((skill) => skillKeyOf(skill.source, skill.name)),
+    );
+    return removedNames;
   }
 
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
-  const matchedSkillNames = findMatchingRepoSkills(ownerRepo, scanner, skillsService);
+  const matchedSkills = findMatchingRepoSkills(ownerRepo, scanner, skillsService);
 
-  if (!matchedSkillNames) {
+  if (!matchedSkills) {
     console.log(`'${ownerRepo}' not found in central repository`);
     process.exit(1);
   }
 
-  if (matchedSkillNames.length === 0) {
+  if (matchedSkills.length === 0) {
     console.log(`No deployed skills found from '${ownerRepo}'`);
     process.exit(1);
   }
 
+  const resolvedSkills = resolveDeployedSkills(matchedSkills, skillsService);
   let selectedSkillNames: string[];
+
   if (explicitSkillNames.length > 0) {
-    selectedSkillNames = matchedSkillNames.filter((n) => explicitSkillNames.includes(n));
+    selectedSkillNames = resolvedSkills
+      .map((skill) => skill.name)
+      .filter((name) => explicitSkillNames.includes(name));
+
     if (selectedSkillNames.length === 0) {
       console.log(`No matching skills from '${ownerRepo}' for: ${explicitSkillNames.join(', ')}`);
       return [];
     }
   } else if (options.all) {
-    selectedSkillNames = matchedSkillNames;
+    selectedSkillNames = resolvedSkills.map((skill) => skill.name);
   } else {
-    const choices = matchedSkillNames.map((name) => ({
-      name,
-      value: name,
-    }));
+    const groupsService = new GroupsService();
     const selected = await interactiveCheckbox({
       message: `Select skills to remove from '${ownerRepo}':`,
-      choices,
+      choices: buildVirtualGroupChoices(
+        resolvedSkills.map((skill) => ({
+          ...skill,
+          source: skill.skillKey
+            ? skill.skillKey.slice(0, -(skill.name.length + 1))
+            : skill.source,
+        })),
+        loadGroupsData(groupsService),
+        { getValue: (skill) => skill.name },
+      ),
     });
     if (selected.length === 0) {
       console.log('No skills selected.');
@@ -162,23 +390,36 @@ async function removeByOwnerRepo(
   }
 
   removeSkillNames(selectedSkillNames, deployer);
+  cleanupGroupRefs(
+    resolvedSkills
+      .filter((skill) => selectedSkillNames.includes(skill.name))
+      .map((skill) => skill.skillKey),
+  );
   return selectedSkillNames;
 }
 
 async function interactiveRemove(): Promise<void> {
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
-  const deployedSkills = scanner.getDeployedSkills();
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  const groupsService = new GroupsService();
+  const deployedSkills = resolveDeployedSkills(scanner.getDeployedSkills(), skillsService);
 
   if (deployedSkills.length === 0) {
     console.log('No skills deployed in current project.');
     return;
   }
 
-  const choices = deployedSkills.map((s) => ({
-    name: s.name,
-    value: s.name,
-  }));
+  const choices = buildVirtualGroupChoices(
+    deployedSkills.map((skill) => ({
+      ...skill,
+      source: skill.skillKey
+        ? skill.skillKey.slice(0, -(skill.name.length + 1))
+        : skill.source,
+    })),
+    loadGroupsData(groupsService),
+    { getValue: (skill) => skill.name },
+  );
   const selected = await interactiveCheckbox({
     message: 'Select skills to remove:',
     choices,
@@ -190,6 +431,11 @@ async function interactiveRemove(): Promise<void> {
   }
 
   removeSkillNames(selected, deployer);
+  cleanupGroupRefs(
+    deployedSkills
+      .filter((skill) => selected.includes(skill.name))
+      .map((skill) => skill.skillKey),
+  );
 }
 
 export async function executeRemove(
@@ -204,6 +450,16 @@ export async function executeRemove(
 
   const skillNames = resolveSkillNames(name, options);
 
+  if (options.group && skillNames.length > 0) {
+    console.log('Cannot use --group with skill name argument.');
+    process.exit(1);
+  }
+
+  if (options.group) {
+    await removeByGroup(options.group, options);
+    return;
+  }
+
   if (skillNames.length === 0) {
     await interactiveRemove();
     return;
@@ -216,7 +472,7 @@ export async function executeRemove(
 
   for (const ownerRepo of ownerRepos) {
     const consumed = await removeByOwnerRepo(ownerRepo, options, plainSkillNames);
-    plainSkillNames = plainSkillNames.filter((n) => !consumed.includes(n));
+    plainSkillNames = plainSkillNames.filter((skillName) => !consumed.includes(skillName));
   }
 
   if (plainSkillNames.length === 0) {
@@ -230,19 +486,27 @@ export async function executeRemove(
       true,
     );
     const deployer = new Deployer(process.cwd());
+    const removedNames = removeSkillNamesGlobal(plainSkillNames, deployer, agents);
+
     for (const skillName of plainSkillNames) {
-      const removed = deployer.removeSkillGlobal(skillName, agents);
-      if (!removed) {
+      if (!removedNames.includes(skillName)) {
         console.log(`'${skillName}' not found in global agent directories`);
       }
     }
+
+    const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+    cleanupGroupRefs(
+      removedNames.flatMap((skillName) =>
+        skillsService.findSkillsByName(skillName).map((skill) => skillKeyOf(skill.source, skill.name))
+      ),
+    );
     return;
   }
 
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
-
-  const deployedSkills = scanner.getDeployedSkills();
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  const deployedSkills = resolveDeployedSkills(scanner.getDeployedSkills(), skillsService);
 
   if (deployedSkills.length === 0) {
     console.log('No skills deployed in current project.');
@@ -250,7 +514,7 @@ export async function executeRemove(
   }
 
   for (const skillName of plainSkillNames) {
-    const skillToRemove = deployedSkills.find((s) => s.name === skillName);
+    const skillToRemove = deployedSkills.find((skill) => skill.name === skillName);
 
     if (!skillToRemove) {
       console.log(`'${skillName}' not found in deployed skills`);
@@ -259,6 +523,11 @@ export async function executeRemove(
   }
 
   removeSkillNames(plainSkillNames, deployer);
+  cleanupGroupRefs(
+    deployedSkills
+      .filter((skill) => plainSkillNames.includes(skill.name))
+      .map((skill) => skill.skillKey),
+  );
 }
 
 export const removeCommand = new Command('remove')
@@ -268,6 +537,7 @@ export const removeCommand = new Command('remove')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
   .option('-g, --global', 'Remove from global agent directories')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
+  .option('--group <name>', 'Batch remove deployed skills from a group')
   .option('-y, --yes', 'Skip all prompts (equivalent to --all)')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);

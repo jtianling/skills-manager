@@ -4,7 +4,12 @@ vi.mock('./interactive-select.js', () => ({
   interactiveCheckbox: vi.fn().mockResolvedValue([]),
 }));
 
-import { promptSkills, promptSkillsToUninstall, resolveTargetAgents } from './prompts.js';
+import {
+  buildVirtualGroupChoices,
+  promptSkills,
+  promptSkillsToUninstall,
+  resolveTargetAgents,
+} from './prompts.js';
 import { interactiveCheckbox } from './interactive-select.js';
 import type { ToolName } from '../constants.js';
 
@@ -97,6 +102,162 @@ describe('prompts', () => {
       ],
       pageSize: 15,
     });
+  });
+
+  it('builds virtual group choices with ungrouped last', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        {
+          name: 'tool-a',
+          description: 'A',
+          path: '/skills/custom/tool-a',
+          source: 'custom',
+        },
+        {
+          name: 'tool-b',
+          description: 'B',
+          path: '/skills/custom/tool-b',
+          source: 'custom',
+        },
+        {
+          name: 'tool-c',
+          description: 'C',
+          path: '/skills/custom/tool-c',
+          source: 'custom',
+        },
+      ],
+      {
+        beta: ['custom/tool-b'],
+        alpha: ['custom/tool-a'],
+      },
+    );
+
+    expect(choices).toEqual([
+      {
+        name: 'tool-a',
+        description: 'A',
+        value: 'tool-a',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: 'alpha',
+      },
+      {
+        name: 'tool-b',
+        description: 'B',
+        value: 'tool-b',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: 'beta',
+      },
+      {
+        name: 'tool-c',
+        description: 'C',
+        value: 'tool-c',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: '(ungrouped)',
+      },
+    ]);
+  });
+
+  it('uses the first matching virtual group alphabetically', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        {
+          name: 'jt-codex',
+          description: 'Codex',
+          path: '/skills/custom/jt-codex',
+          source: 'custom',
+        },
+      ],
+      {
+        'jt-tools': ['custom/jt-codex'],
+        openspec: ['custom/jt-codex'],
+      },
+    );
+
+    expect(choices).toEqual([
+      {
+        name: 'jt-codex',
+        description: 'Codex',
+        value: 'jt-codex',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: 'jt-tools',
+      },
+    ]);
+  });
+
+  it('falls back to a flat list when no skills belong to any virtual group', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        {
+          name: 'flat-a',
+          description: 'A',
+          path: '/skills/custom/flat-a',
+          source: 'custom',
+        },
+        {
+          name: 'flat-b',
+          description: 'B',
+          path: '/skills/custom/flat-b',
+          source: 'custom',
+        },
+      ],
+      {
+        unused: ['custom/other'],
+      },
+    );
+
+    expect(choices).toEqual([
+      {
+        name: 'flat-a',
+        description: 'A',
+        value: 'flat-a',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: undefined,
+      },
+      {
+        name: 'flat-b',
+        description: 'B',
+        value: 'flat-b',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: undefined,
+      },
+    ]);
+  });
+
+  it('supports custom suffix and locked callbacks for virtual group choices', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        {
+          name: 'locked-skill',
+          description: 'Locked',
+          path: '/skills/custom/locked-skill',
+          source: 'custom',
+        },
+      ],
+      {
+        dev: ['custom/locked-skill'],
+      },
+      {
+        getSuffix: () => '[deployed]',
+        getLocked: () => true,
+      },
+    );
+
+    expect(choices).toEqual([
+      {
+        name: 'locked-skill',
+        description: 'Locked',
+        value: 'locked-skill',
+        suffix: '[deployed]',
+        locked: true,
+        subGroup: 'dev',
+      },
+    ]);
   });
 });
 

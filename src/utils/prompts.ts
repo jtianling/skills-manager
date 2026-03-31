@@ -4,7 +4,7 @@ import { Writable } from 'stream';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { SkillInfo } from '../types.js';
 import { SUPPORTED_TOOLS, ToolName } from '../constants.js';
-import { interactiveCheckbox } from './interactive-select.js';
+import { interactiveCheckbox, SelectChoice } from './interactive-select.js';
 
 /**
  * Handle Ctrl+C gracefully during prompts
@@ -157,6 +157,82 @@ function buildSkillChoices(
     for (const skill of sourceSkills) {
       choices.push(mapChoice(skill, category, effectiveGroupId));
     }
+  }
+
+  return choices;
+}
+
+export type VirtualGroupsData = Record<string, string[]>;
+
+export interface BuildVirtualGroupChoicesOptions<
+  T extends { name: string; source: string; description?: string },
+> {
+  getValue?: (skill: T) => string;
+  getDescription?: (skill: T) => string | undefined;
+  getSuffix?: (skill: T) => string | undefined;
+  getLocked?: (skill: T) => boolean | undefined;
+}
+
+export function buildVirtualGroupChoices<
+  T extends { name: string; source: string; description?: string },
+>(
+  skills: T[],
+  groupsData: VirtualGroupsData = {},
+  options: BuildVirtualGroupChoicesOptions<T> = {},
+): SelectChoice[] {
+  const groupNames = Object.keys(groupsData).sort((a, b) => a.localeCompare(b));
+  const skillToGroup = new Map<string, string>();
+
+  for (const groupName of groupNames) {
+    const skillKeys = groupsData[groupName] ?? [];
+    for (const skillKey of skillKeys) {
+      if (!skillToGroup.has(skillKey)) {
+        skillToGroup.set(skillKey, groupName);
+      }
+    }
+  }
+
+  const groupedSkills = new Map<string, T[]>();
+  const ungroupedSkills: T[] = [];
+  let hasNamedGroup = false;
+
+  for (const skill of skills) {
+    const skillKey = `${skill.source}/${skill.name}`;
+    const groupName = skillToGroup.get(skillKey);
+
+    if (groupName) {
+      hasNamedGroup = true;
+      const existing = groupedSkills.get(groupName) ?? [];
+      groupedSkills.set(groupName, [...existing, skill]);
+      continue;
+    }
+
+    ungroupedSkills.push(skill);
+  }
+
+  const toChoice = (skill: T, subGroup?: string): SelectChoice => ({
+    name: skill.name,
+    description: options.getDescription?.(skill) ?? skill.description,
+    value: options.getValue?.(skill) ?? skill.name,
+    suffix: options.getSuffix?.(skill),
+    locked: options.getLocked?.(skill),
+    subGroup,
+  });
+
+  if (!hasNamedGroup) {
+    return skills.map((skill) => toChoice(skill));
+  }
+
+  const orderedGroups = Array.from(groupedSkills.keys()).sort((a, b) => a.localeCompare(b));
+  const choices: SelectChoice[] = [];
+
+  for (const groupName of orderedGroups) {
+    const groupSkills = groupedSkills.get(groupName) ?? [];
+    choices.push(...groupSkills.map((skill) => toChoice(skill, groupName)));
+  }
+
+  if (ungroupedSkills.length > 0) {
+    choices.push(...ungroupedSkills.map((skill) => toChoice(skill, '(ungrouped)')));
   }
 
   return choices;

@@ -9,6 +9,7 @@ vi.mock('../utils/interactive-select.js', () => ({
 
 import * as constants from '../constants.js';
 import { executeRemove } from './remove.js';
+import { GroupsService } from '../services/groups.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import type { ToolName } from '../types.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
@@ -115,6 +116,44 @@ describe('remove command - owner/repo format', () => {
     expect(interactiveCheckbox).toHaveBeenCalled();
     expect(existsSync(deployedCommit)).toBe(false);
     expect(console.log).toHaveBeenCalledWith('  ✓ Removed commit');
+  });
+
+  it('uses virtual group choices in owner repo interactive remove', async () => {
+    const sourceA = createSkillInManager(testManagerDir, 'community/mattpocock/skills', 'skill-a');
+    const sourceB = createSkillInManager(testManagerDir, 'community/mattpocock/skills', 'skill-b');
+
+    deploySkillAsLink(testProjectDir, 'skill-a', sourceA);
+    deploySkillAsLink(testProjectDir, 'skill-b', sourceB);
+
+    const groupsService = new GroupsService();
+    groupsService.addSkill('alpha', 'community/mattpocock/skills/skill-a');
+
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce([]);
+
+    await executeRemove('mattpocock/skills', {});
+
+    expect(interactiveCheckbox).toHaveBeenCalledWith({
+      message: "Select skills to remove from 'mattpocock/skills':",
+      choices: [
+        {
+          name: 'skill-a',
+          description: undefined,
+          value: 'skill-a',
+          suffix: undefined,
+          locked: undefined,
+          subGroup: 'alpha',
+        },
+        {
+          name: 'skill-b',
+          description: undefined,
+          value: 'skill-b',
+          suffix: undefined,
+          locked: undefined,
+          subGroup: '(ungrouped)',
+        },
+      ],
+    });
+    expect(console.log).toHaveBeenCalledWith('No skills selected.');
   });
 
   it('does nothing when user selects nothing from checkbox', async () => {

@@ -25,6 +25,8 @@
 - `removeSkill(group, skillKey)`: 从 group 中移除 skill 引用
 - `removeSkillFromAll(skillKey)`: 从所有 group 中移除指定 skill 引用
 
+`remove` 命令移除 skill 后 SHALL 调用 `removeSkillFromAll(skillKey)` 清理引用, 与 `uninstall` 行为对齐.
+
 #### Scenario: listGroups 返回所有 group 名
 - **WHEN** groups.json 包含 python 和 rust 两个 group
 - **THEN** `listGroups()` SHALL 返回 `["python", "rust"]`
@@ -72,6 +74,12 @@
 #### Scenario: removeSkillFromAll 全局清理
 - **WHEN** `"custom/my-linter"` 存在于 python 和 rust 两个 group 中, 调用 `removeSkillFromAll("custom/my-linter")`
 - **THEN** 两个 group 中均移除该引用
+
+#### Scenario: remove 命令调用 removeSkillFromAll
+- **WHEN** 用户通过 `skillsmgr remove` 移除了 skill `my-linter`
+- **AND** 该 skill 的 key 为 `custom/my-linter`
+- **THEN** `removeSkillFromAll("custom/my-linter")` SHALL 被调用
+- **AND** `groups.json` 中所有对该 key 的引用被清除
 
 ### Requirement: group name 验证
 group name SHALL 仅允许字母, 数字, 连字符, 下划线.
