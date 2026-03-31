@@ -14,3 +14,4 @@ AGENTS.md
 CLAUDE.md
 .e2e-test/
 .worktrees/
+skills-lock.json
