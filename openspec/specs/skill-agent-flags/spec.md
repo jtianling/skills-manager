@@ -24,7 +24,7 @@ install, uninstall, add, remove 四个命令 SHALL 支持 `-s, --skill <name>` �
 
 ### Requirement: --agent 可重复参数
 
-install, add, remove 三个命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 用于精确指定目标 agent. uninstall 不支持 (操作中央仓库, 不涉及 agent).
+add, remove 两个命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 用于精确指定目标 agent. install 和 uninstall 不支持 (install 只操作中央仓库不涉及 agent 部署, uninstall 同理).
 
 #### Scenario: 单个 --agent
 - **WHEN** 用户执行 `skillsmgr add code-review -a claude-code`
@@ -43,10 +43,6 @@ install, add, remove 三个命令 SHALL 支持 `-a, --agent <name>` 可重复参
 
 当 `-s` 和 `-a` 都提供时, 命令 SHALL 完全跳过交互选择, 直接执行操作.
 
-#### Scenario: install 完全非交互
-- **WHEN** 用户执行 `skillsmgr install owner/repo -s frontend-design -a claude-code -a opencode`
-- **THEN** 安装 `frontend-design` 并部署到 claude-code 和 opencode, 无任何交互提示
-
 #### Scenario: add 完全非交互
 - **WHEN** 用户执行 `skillsmgr add owner/repo -s skill1 -s skill2 -a claude-code`
 - **THEN** 从 owner/repo 部署 skill1 和 skill2 到 claude-code, 无任何交互提示
@@ -58,10 +54,6 @@ install, add, remove 三个命令 SHALL 支持 `-a, --agent <name>` 可重复参
 ### Requirement: 仅 --skill 时只跳过 skill 选择
 
 当只提供 `-s` 不提供 `-a` 时, 跳过 skill 选择但仍交互选择 agent (对于需要 agent 的命令).
-
-#### Scenario: install 有 skill 无 agent
-- **WHEN** 用户执行 `skillsmgr install owner/repo -s frontend-design`
-- **THEN** 跳过 skill 选择, 直接进入 agent 选择交互
 
 #### Scenario: uninstall 有 skill
 - **WHEN** 用户执行 `skillsmgr uninstall -s skill1 -s skill2`
@@ -84,13 +76,17 @@ install, add, remove 三个命令 SHALL 支持 `-a, --agent <name>` 可重复参
 - **THEN** 系统将 `claude-code,opencode` 视为单个 agent 名称
 - **AND** 输出 `Unknown agent: 'claude-code,opencode'. Available agents: ...`
 
-### Requirement: install 命令的 --skill 与 --agent 参数
+### Requirement: install 命令的 --skill 参数
 
-install 命令 SHALL 同时支持 `--skill` 和 `--agent` 参数. `--skill` 过滤安装的 skill, `--agent` 指定部署目标.
+install 命令 SHALL 支持 `--skill` 参数过滤安装的 skill. install 命令 SHALL NOT 支持 `--agent` 参数, 因为 install 只将 skill 下载到中央仓库, 不涉及 agent 部署.
 
-#### Scenario: install 只装特定 skill 到特定 agent
-- **WHEN** 用户执行 `skillsmgr install anthropic -s code-review -a claude-code`
-- **THEN** 从 anthropic 源安装 code-review 并部署到 claude-code
+#### Scenario: install 只装特定 skill
+- **WHEN** 用户执行 `skillsmgr install anthropic -s code-review`
+- **THEN** 从 anthropic 源仅安装 code-review
+
+#### Scenario: install 不支持 --agent
+- **WHEN** 用户执行 `skillsmgr install anthropic -a claude-code`
+- **THEN** 命令报错: 未知选项 `-a`
 
 ### Requirement: remove 命令的 positional arg 与 --skill 合并
 

@@ -33,7 +33,6 @@ export interface InstallOptions {
   force?: boolean;
   group?: string;
   skill?: string[];
-  agent?: string[];
 }
 
 export interface DeployOptions {

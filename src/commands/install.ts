@@ -79,7 +79,6 @@ export const installCommand = new Command('install')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
   .option('--group <name>', 'Add installed skills to a virtual group')
   .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
-  .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .action(async (source: string, options: InstallOptions) => {
     await executeInstall(source, options);
   });
