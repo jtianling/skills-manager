@@ -101,9 +101,10 @@ export function getSourceSuffix(source: string): string | undefined {
   return `(${parts.slice(1).join('/')})`;
 }
 
-export function mergeSuffix(...parts: (string | undefined)[]): string | undefined {
-  const filtered = parts.filter(Boolean) as string[];
-  return filtered.length > 0 ? filtered.join(' ') : undefined;
+function getSourceInnerGroup(source: string): string | undefined {
+  const parts = source.split('/');
+  if (parts.length < 2) return undefined;
+  return parts.slice(1).join('/');
 }
 
 function parseSource(source: string): { category: string; groupId?: string } {
@@ -243,18 +244,20 @@ export function buildVirtualGroupChoices<
     }
   }
 
-  const toChoice = (skill: T, subGroup?: string): SelectChoice => ({
-    name: skill.name,
-    description: options.getDescription?.(skill) ?? skill.description,
-    value: options.getValue?.(skill) ?? skill.name,
-    checked: options.getChecked?.(skill),
-    suffix: mergeSuffix(
-      subGroup !== undefined ? getSourceSuffix(skill.source) : undefined,
-      options.getSuffix?.(skill),
-    ),
-    locked: options.getLocked?.(skill),
-    subGroup,
-  });
+  const toChoice = (skill: T, subGroup?: string): SelectChoice => {
+    const rawInnerGroup = subGroup !== undefined ? getSourceInnerGroup(skill.source) : undefined;
+    const innerGroup = rawInnerGroup === subGroup ? undefined : rawInnerGroup;
+    return {
+      name: skill.name,
+      description: options.getDescription?.(skill) ?? skill.description,
+      value: options.getValue?.(skill) ?? skill.name,
+      checked: options.getChecked?.(skill),
+      ...(innerGroup !== undefined ? { innerGroup } : {}),
+      suffix: options.getSuffix?.(skill),
+      locked: options.getLocked?.(skill),
+      subGroup,
+    };
+  };
 
   if (!hasNamedGroup) {
     return skills.map((skill) => toChoice(skill));
@@ -327,17 +330,21 @@ export function buildSourceGroupedChoices<
     skill: T,
     group?: string,
     subGroup?: string,
-    sourceSuffix?: string,
-  ): SelectChoice => ({
-    name: skill.name,
-    description: skill.description,
-    value: options.getValue?.(skill) ?? skill.name,
-    checked: options.getChecked?.(skill),
-    suffix: mergeSuffix(sourceSuffix, options.getSuffix?.(skill)),
-    locked: options.getLocked?.(skill),
-    group,
-    subGroup,
-  });
+    innerGroup?: string,
+  ): SelectChoice => {
+    const effectiveInnerGroup = innerGroup === subGroup ? undefined : innerGroup;
+    return {
+      name: skill.name,
+      description: skill.description,
+      value: options.getValue?.(skill) ?? skill.name,
+      checked: options.getChecked?.(skill),
+      suffix: options.getSuffix?.(skill),
+      locked: options.getLocked?.(skill),
+      group,
+      subGroup,
+      ...(effectiveInnerGroup !== undefined ? { innerGroup: effectiveInnerGroup } : {}),
+    };
+  };
 
   const choices: SelectChoice[] = [];
 
@@ -387,7 +394,7 @@ export function buildSourceGroupedChoices<
             });
           } else {
             choices.push(...gSkills.map(s =>
-              toChoice(s, group, gn, getSourceSuffix(s.source))
+              toChoice(s, group, gn, getSourceInnerGroup(s.source))
             ));
           }
         }
@@ -584,6 +591,27 @@ export async function promptGroupAddConflictResolution(
       },
     ],
   );
+}
+
+export interface ExpandYesFlagOptions {
+  yes?: boolean;
+  agent?: string[];
+  sameAgents?: boolean;
+  skill?: string[];
+  all?: boolean;
+}
+
+export function expandYesFlag<T extends ExpandYesFlagOptions>(options: T): T {
+  if (!options.yes) return options;
+
+  const hasAgent = (options.agent && options.agent.length > 0) || options.sameAgents;
+  const hasSkill = (options.skill && options.skill.length > 0) || options.all;
+
+  return {
+    ...options,
+    sameAgents: hasAgent ? options.sameAgents : true,
+    all: hasSkill ? options.all : true,
+  };
 }
 
 export interface ResolveAgentsOptions {

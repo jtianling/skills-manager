@@ -15,8 +15,8 @@ skillsmgr 的命令行交互体验: 命令结构, 交互式提示, 视觉反馈,
 | update | - | [source] (可选) | - | Update installed skills to latest version |
 | list | - | - | --deployed | List available or deployed skills |
 | deploy | - | - | --copy, -g/--global | Deploy skills to current project (or globally with -g) |
-| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group | Add a skill to the project |
-| remove | - | [name] (可选) | -s/--skill, -a/--agent | Remove a skill from the project |
+| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group, --all, -y/--yes | Add a skill to the project |
+| remove | - | [name] (可选) | -s/--skill, -a/--agent, --all, -y/--yes | Remove a skill from the project |
 | uninstall | - | [identifier] (可选) | -f, --force, --all, -s/--skill | Remove skills from ~/.skills-manager/ |
 
 #### Scenario: CLI help shows skills-only descriptions
@@ -57,8 +57,8 @@ The `install` command SHALL have alias `i`.
 |------|------|------|------|------|
 | install | i | \<source\> (必填) | --all, --custom, -f/--force, -g/--group, -s/--skill, -a/--agent | Install skills from a repository |
 | uninstall | - | [identifier] (可选) | -f, --force, --all, -s/--skill | Remove skills from ~/.skills-manager/ |
-| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group | Add a skill to the project |
-| remove | - | [name] (可选) | -s/--skill, -a/--agent | Remove a skill from the project |
+| add | - | [arg] (可选) | --copy, -a/--agent, --same-agents, -s/--skill, -g/--group, --all, -y/--yes | Add a skill to the project |
+| remove | - | [name] (可选) | -s/--skill, -a/--agent, --all, -y/--yes | Remove a skill from the project |
 
 #### Scenario: Alias i works
 - **WHEN** user runs `skillsmgr i anthropic`
@@ -72,11 +72,15 @@ The `install` command SHALL have alias `i`.
 - **WHEN** 用户执行 `skillsmgr add --help`
 - **THEN** `-s` 对应 `--skill`, 不再对应 `--same-agents`
 - **AND** `--same-agents` 无短参数
+- **AND** 输出包含 `--all` 选项
+- **AND** 输出包含 `-y, --yes` 选项
 
 #### Scenario: CLI help shows remove with optional name
 - **WHEN** 用户执行 `skillsmgr remove --help`
 - **THEN** name 参数显示为 `[name]` (可选), 而非 `<name>` (必填)
 - **AND** 输出包含 `-s, --skill <name>` 和 `-a, --agent <name>` 选项
+- **AND** 输出包含 `--all` 选项
+- **AND** 输出包含 `-y, --yes` 选项
 
 #### Scenario: CLI help shows uninstall with --skill
 - **WHEN** 用户执行 `skillsmgr uninstall --help`

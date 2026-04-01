@@ -47,23 +47,35 @@
 - **THEN** 该 skill 的 choice 包含 `locked: true`
 
 ### Requirement: 来源 suffix 标注
-虚拟 group 中的非 custom skill SHALL 在 suffix 中显示来源信息, 格式为 `(owner/repo)`.
+虚拟 group 中的非平铺 custom skill SHALL 通过 `innerGroup` 嵌套分组显示来源.  有子路径的 custom source (如 `custom/openspec`) 也 SHALL 生成 innerGroup.  当计算出的 `innerGroup` 与 `subGroup` (虚拟组名) 相同时 SHALL 跳过, 不设置 `innerGroup`.
 
-#### Scenario: official skill 显示来源 suffix
+#### Scenario: official skill 用 innerGroup 嵌套显示
 - **WHEN** 虚拟 group `my-tools` 包含 `official/anthropic/skills/commit`
-- **THEN** 该 skill 的 suffix 包含 `(anthropic/skills)`
+- **THEN** 该 skill 的 `innerGroup` 为 `anthropic/skills`, `suffix` 中不包含 `(anthropic/skills)`
 
-#### Scenario: community skill 显示来源 suffix
+#### Scenario: community skill 用 innerGroup 嵌套显示
 - **WHEN** 虚拟 group `my-tools` 包含 `community/bob/cool-tools/linter`
-- **THEN** 该 skill 的 suffix 包含 `(bob/cool-tools)`
+- **THEN** 该 skill 的 `innerGroup` 为 `bob/cool-tools`, `suffix` 中不包含 `(bob/cool-tools)`
 
-#### Scenario: custom skill 不显示来源 suffix
+#### Scenario: custom 子路径 skill 用 innerGroup 嵌套显示
+- **WHEN** 虚拟 group `develop` 包含 `custom/openspec/openspec-apply-change`
+- **THEN** 该 skill 的 `innerGroup` 为 `openspec`
+
+#### Scenario: 平铺 custom skill 不嵌套
 - **WHEN** 虚拟 group `my-tools` 包含 `custom/my-linter`
-- **THEN** 该 skill 不附加来源 suffix
+- **THEN** 该 skill 不设置 `innerGroup`, 直接平铺在 group-header 下
 
-#### Scenario: 来源 suffix 与功能 suffix 共存
-- **WHEN** 虚拟 group 中的 official skill `commit` 同时通过 `getSuffix` 返回 `[deployed]`
-- **THEN** 该 skill 的 suffix 为 `(anthropic/skills) [deployed]` (来源在前, 功能在后)
+#### Scenario: innerGroup 与 subGroup 同名时跳过
+- **WHEN** 虚拟 group `openspec` 包含 `custom/openspec/openspec-apply-change`
+- **THEN** 计算出的 innerGroup `"openspec"` 与 subGroup `"openspec"` 相同, 不设置 `innerGroup`, skill 平铺在 group-header 下
+
+#### Scenario: 功能 suffix 保留
+- **WHEN** 虚拟 group 中的 official skill `commit` 通过 `getSuffix` 返回 `[deployed]`
+- **THEN** 该 skill 的 `suffix` 为 `[deployed]` (不再拼接来源 suffix)
+
+#### Scenario: 始终嵌套, 即使只有一个 source
+- **WHEN** 虚拟 group `python` 内的所有非平铺 custom skill 都来自 `official/anthropic/skills`
+- **THEN** 仍然生成 `innerGroup: "anthropic/skills"` 嵌套 header
 
 ### Requirement: buildSourceGroupedChoices 虚拟 group 跨 source 支持
 `buildSourceGroupedChoices` SHALL 将属于虚拟 group 的 skill 同时保留在原始 source 分组和所有归属虚拟 group 下显示.  非 custom skill 不再从 source 分类中移除.
@@ -76,13 +88,21 @@
 - **WHEN** `official/anthropic/skills/commit` 同时属于 `develop` 和 `openspec` 两个虚拟 group
 - **THEN** `commit` 出现在 official 分类的 `anthropic/skills` sub-group 下, 以及 custom 分类的 `develop` 和 `openspec` 两个虚拟 group 下 (共 3 处)
 
-#### Scenario: 非 custom skill 虚拟 group 副本带来源 suffix
+#### Scenario: 非 custom skill 虚拟 group 副本用 innerGroup 嵌套
 - **WHEN** `official/anthropic/skills/commit` 属于虚拟 group `my-tools`
-- **THEN** `my-tools` 下的 `commit` 带 suffix `(anthropic/skills)`, official 分类下的 `commit` 不带来源 suffix
+- **THEN** `my-tools` 下的 `commit` 设置 `innerGroup: "anthropic/skills"`, official 分类下的 `commit` 不设置 `innerGroup`
+
+#### Scenario: custom 子路径 skill 在虚拟 group 中嵌套
+- **WHEN** `custom/openspec/openspec-apply-change` 属于虚拟 group `develop`
+- **THEN** `develop` 下的 `openspec-apply-change` 设置 `innerGroup: "openspec"`
+
+#### Scenario: custom 子路径 skill 同名 group 中平铺
+- **WHEN** `custom/openspec/openspec-apply-change` 属于虚拟 group `openspec`
+- **THEN** `openspec` 下的 `openspec-apply-change` 不设置 `innerGroup` (同名跳过)
 
 #### Scenario: custom skill 属于多个虚拟 group
 - **WHEN** `custom/my-linter` 同时属于 `develop` 和 `python` 两个虚拟 group
-- **THEN** `my-linter` 在 custom 分类的 `develop` 和 `python` 两个虚拟 group 下各出现一次
+- **THEN** `my-linter` 在 custom 分类的 `develop` 和 `python` 两个虚拟 group 下各出现一次, 无 `innerGroup`
 
 #### Scenario: 无虚拟 group 时行为不变
 - **WHEN** `groupsData` 为空
@@ -152,7 +172,19 @@
 - **THEN** 返回 `{ develop: [...], openspec: [...] }`
 
 ### Requirement: add 交互式使用虚拟组
-`executeAdd` 的无参交互路径 (调用 `executeDeploy`) 和 repo skill 选择路径 SHALL 传入 `groupsData` 给 `promptSkills`.
+`promptSkillsFromRepo` SHALL 使用 `buildSourceGroupedChoices` 构建 choices, 同时保留 source 层级分组(official/community/custom + owner/repo)和虚拟组分组.  已部署 skill SHALL 设置 `locked: true` 和 `suffix: '[deployed]'`.
+
+#### Scenario: 有虚拟组时保留 owner/repo 分组
+- **WHEN** 用户运行 `skillsmgr add` (无参), `groups.json` 包含 `openspec` group, 且存在 official skills (如 `anthropic/skills`)
+- **THEN** 交互列表中 official skills 按 owner/repo 分组显示(如 `anthropic/skills` sub-group), 同时虚拟组 `openspec` 正常显示
+
+#### Scenario: 无虚拟组时 owner/repo 分组仍正常
+- **WHEN** 用户运行 `skillsmgr add` (无参), `groups.json` 为空或不存在
+- **THEN** 交互列表中 skills 按 source 分类和 owner/repo 分组显示
+
+#### Scenario: 已部署 skill 锁定不可取消
+- **WHEN** 用户运行 `skillsmgr add`, 某 skill 已部署
+- **THEN** 该 skill 显示 `checked: true`, `locked: true`, `suffix: '[deployed]'`
 
 #### Scenario: skillsmgr add 交互式显示虚拟组
 - **WHEN** 用户运行 `skillsmgr add` (无参) 且 `groups.json` 包含 `develop` group

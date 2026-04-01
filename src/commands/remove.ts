@@ -11,6 +11,7 @@ import { ensureSetup } from './setup.js';
 import {
   buildSourceGroupedChoices,
   buildVirtualGroupChoices,
+  expandYesFlag,
   loadGroupsData,
   resolveTargetAgents,
 } from '../utils/prompts.js';
@@ -212,7 +213,7 @@ async function removeByGroup(
 
   if (options.global) {
     const agents = await resolveTargetAgents(
-      { agent: options.agent },
+      { agent: options.agent, sameAgents: options.sameAgents },
       () => [] as ToolName[],
       true,
     );
@@ -310,7 +311,7 @@ async function removeByOwnerRepo(
       : allNames;
 
     const agents = await resolveTargetAgents(
-      { agent: options.agent },
+      { agent: options.agent, sameAgents: options.sameAgents },
       () => [] as ToolName[],
       true,
     );
@@ -434,9 +435,7 @@ export async function executeRemove(
   name: string | undefined,
   options: RemoveOptions = {},
 ): Promise<void> {
-  if (options.yes) {
-    options.all = true;
-  }
+  options = expandYesFlag(options);
 
   await ensureSetup();
 
@@ -473,7 +472,7 @@ export async function executeRemove(
 
   if (options.global) {
     const agents = await resolveTargetAgents(
-      { agent: options.agent },
+      { agent: options.agent, sameAgents: options.sameAgents },
       () => [] as ToolName[],
       true,
     );
@@ -529,8 +528,9 @@ export const removeCommand = new Command('remove')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
   .option('-g, --global', 'Remove from global agent directories')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
+  .option('--same-agents', 'Use currently configured agents')
   .option('--group <name>', 'Batch remove deployed skills from a group')
-  .option('-y, --yes', 'Skip all prompts (equivalent to --all)')
+  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);
   });

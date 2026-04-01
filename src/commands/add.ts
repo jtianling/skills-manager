@@ -8,16 +8,16 @@ import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
 import { AddOptions, SkillInfo, ToolName, collect } from '../types.js';
 import {
-  buildVirtualGroupChoices,
+  buildSourceGroupedChoices,
+  expandYesFlag,
   loadGroupsData,
   resolveTargetAgents,
   type VirtualGroupsData,
 } from '../utils/prompts.js';
-import { interactiveCheckbox, SelectChoice } from '../utils/interactive-select.js';
+import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ensureSetup } from './setup.js';
-import { executeDeploy } from './deploy.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
 
 async function promptSkillsFromRepo(
@@ -25,29 +25,16 @@ async function promptSkillsFromRepo(
   deployedSkillNames: string[],
   groupsData?: VirtualGroupsData,
 ): Promise<string[]> {
-  const choices: SelectChoice[] = groupsData
-    ? buildVirtualGroupChoices(repoSkills, groupsData, {
-        getValue: (skill) => skill.name,
-        getChecked: (skill) => deployedSkillNames.includes(skill.name),
-        getLocked: (skill) => deployedSkillNames.includes(skill.name),
-        getSuffix: (skill) => deployedSkillNames.includes(skill.name)
-          ? '[deployed]'
-          : undefined,
-      })
-    : repoSkills.map((skill) => {
-        const isDeployed = deployedSkillNames.includes(skill.name);
-        return {
-          name: skill.name,
-          description: skill.description,
-          value: skill.name,
-          checked: isDeployed,
-          locked: isDeployed,
-          suffix: isDeployed ? '[deployed]' : undefined,
-        };
-      });
+  const choices = buildSourceGroupedChoices(repoSkills, groupsData ?? {}, {
+    getChecked: (skill) => deployedSkillNames.includes(skill.name) ? true : undefined,
+    getLocked: (skill) => deployedSkillNames.includes(skill.name) ? true : undefined,
+    getSuffix: (skill) => deployedSkillNames.includes(skill.name)
+      ? '[deployed]'
+      : undefined,
+  });
 
   return interactiveCheckbox({
-    message: 'Select skills to add:',
+    message: 'Select skills to add (use deploy/remove to remove):',
     choices,
     pageSize: 15,
   });
@@ -212,6 +199,12 @@ async function handleRepoSkillSelection(
     return;
   }
 
+  const selectedAgents = await resolveTargetAgents(
+    options,
+    () => scanner.getConfiguredTools(),
+    options.global,
+  );
+
   const groupsData = loadGroupsData(new GroupsService());
   const selectedNames = (options.skill && options.skill.length > 0)
     ? filterSkillsByFlag(repoSkills, options.skill)
@@ -227,15 +220,12 @@ async function handleRepoSkillSelection(
     return;
   }
 
+  const deployMode = options.copy ? 'copy' : 'link';
+
   if (options.global) {
-    const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
-    const deployMode = options.copy ? 'copy' : 'link';
     await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
     return;
   }
-
-  const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
-  const deployMode = options.copy ? 'copy' : 'link';
 
   await deploySkills(newSkills, skillsService, deployer, scanner, deployMode);
   ensureSymlinkBridges(selectedAgents, deployer);
@@ -266,6 +256,18 @@ async function handleRemoteInstallAndDeploy(
     installResult.installedPaths,
     installResult.sourceKeys,
   );
+
+  let selectedAgents: ToolName[];
+  try {
+    selectedAgents = await resolveTargetAgents(
+      options,
+      () => scanner.getConfiguredTools(),
+      options.global,
+    );
+  } catch {
+    rollback();
+    return;
+  }
 
   // Re-read skills after install
   const freshSkillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -309,38 +311,15 @@ async function handleRemoteInstallAndDeploy(
     return;
   }
 
-  if (options.global) {
-    let selectedAgents: ToolName[];
-    try {
-      selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
-    } catch {
-      rollback();
-      return;
-    }
-
-    const deployMode = options.copy ? 'copy' : 'link';
-    try {
-      await deploySkillsGlobal(newSkills, freshSkillsService, deployer, selectedAgents, deployMode);
-    } catch (error) {
-      rollback();
-      throw error;
-    }
-    return;
-  }
-
-  let selectedAgents: ToolName[];
-  try {
-    selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
-  } catch {
-    rollback();
-    return;
-  }
-
   const deployMode = options.copy ? 'copy' : 'link';
 
   try {
-    await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode);
-    ensureSymlinkBridges(selectedAgents, deployer);
+    if (options.global) {
+      await deploySkillsGlobal(newSkills, freshSkillsService, deployer, selectedAgents, deployMode);
+    } else {
+      await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode);
+      ensureSymlinkBridges(selectedAgents, deployer);
+    }
   } catch (error) {
     rollback();
     throw error;
@@ -380,6 +359,12 @@ async function handleGroupBatchDeploy(
     process.exit(1);
   }
 
+  const selectedAgents = await resolveTargetAgents(
+    options,
+    () => scanner.getConfiguredTools(),
+    options.global,
+  );
+
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
   const groupsData = loadGroupsData(groupsService);
   const selectedNames = options.all
@@ -394,15 +379,12 @@ async function handleGroupBatchDeploy(
     return;
   }
 
+  const deployMode = options.copy ? 'copy' : 'link';
+
   if (options.global) {
-    const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools(), true);
-    const deployMode = options.copy ? 'copy' : 'link';
     await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
     return;
   }
-
-  const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
-  const deployMode = options.copy ? 'copy' : 'link';
 
   await deploySkills(newSkills, skillsService, deployer, scanner, deployMode);
   ensureSymlinkBridges(selectedAgents, deployer);
@@ -412,9 +394,7 @@ export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
 ): Promise<void> {
-  if (options.yes) {
-    options.all = true;
-  }
+  options = expandYesFlag(options);
 
   if (options.group && arg) {
     console.log('Cannot use --group with a skill argument.');
@@ -430,9 +410,14 @@ export async function executeAdd(
     return;
   }
 
-  // No argument → deploy flow
+  // No argument → add-only flow (locked deployed skills, only new additions)
   if (!arg) {
-    await executeDeploy({ copy: options.copy, global: options.global });
+    await ensureSetup();
+    const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+    const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+    const deployer = new Deployer(process.cwd());
+    const allSkills = skillsService.getAllSkills();
+    await handleRepoSkillSelection(allSkills, options, skillsService, scanner, deployer);
     return;
   }
 
@@ -466,7 +451,7 @@ export const addCommand = new Command('add')
   .option('-g, --global', 'Install globally to agent user-level directories')
   .option('--group <name>', 'Batch deploy all skills from a group')
   .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
-  .option('-y, --yes', 'Skip all prompts (equivalent to --all)')
+  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
   .option('--same-agents', 'Use currently configured agents')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);

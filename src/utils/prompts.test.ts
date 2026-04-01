@@ -7,9 +7,9 @@ vi.mock('./interactive-select.js', () => ({
 import {
   buildVirtualGroupChoices,
   buildSourceGroupedChoices,
+  expandYesFlag,
   getSourceSuffix,
   loadGroupsData,
-  mergeSuffix,
   promptSkills,
   promptSkillsToUninstall,
   resolveTargetAgents,
@@ -154,7 +154,8 @@ describe('prompts', () => {
           description: 'Commit skill',
           value: 'commit',
           checked: true,
-          suffix: '(anthropic/skills) [deployed]',
+          innerGroup: 'anthropic/skills',
+          suffix: '[deployed]',
           locked: undefined,
           group: 'custom',
           subGroup: 'develop',
@@ -207,7 +208,8 @@ describe('prompts', () => {
           description: 'Commit skill',
           value: '/skills/official/anthropic/skills/commit',
           checked: undefined,
-          suffix: '(anthropic/skills)',
+          innerGroup: 'anthropic/skills',
+          suffix: undefined,
           locked: undefined,
           group: 'custom',
           subGroup: 'develop',
@@ -419,23 +421,8 @@ describe('getSourceSuffix', () => {
   });
 });
 
-describe('mergeSuffix', () => {
-  it('merges multiple parts', () => {
-    expect(mergeSuffix('(anthropic/skills)', '[deployed]')).toBe('(anthropic/skills) [deployed]');
-  });
-
-  it('filters undefined parts', () => {
-    expect(mergeSuffix(undefined, '[deployed]')).toBe('[deployed]');
-    expect(mergeSuffix('(a/b)', undefined)).toBe('(a/b)');
-  });
-
-  it('returns undefined when all parts are undefined', () => {
-    expect(mergeSuffix(undefined, undefined)).toBeUndefined();
-  });
-});
-
-describe('buildVirtualGroupChoices source suffix', () => {
-  it('adds source suffix for official skill in virtual group', () => {
+describe('buildVirtualGroupChoices innerGroup', () => {
+  it('adds innerGroup for official skill in virtual group', () => {
     const choices = buildVirtualGroupChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -449,7 +436,8 @@ describe('buildVirtualGroupChoices source suffix', () => {
         name: 'commit',
         description: 'Commit',
         value: 'commit',
-        suffix: '(anthropic/skills)',
+        innerGroup: 'anthropic/skills',
+        suffix: undefined,
         locked: undefined,
         subGroup: 'dev',
       },
@@ -464,7 +452,7 @@ describe('buildVirtualGroupChoices source suffix', () => {
     ]);
   });
 
-  it('combines source suffix with functional suffix', () => {
+  it('keeps functional suffix while using innerGroup', () => {
     const choices = buildVirtualGroupChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -473,10 +461,11 @@ describe('buildVirtualGroupChoices source suffix', () => {
       { getSuffix: () => '[deployed]' },
     );
 
-    expect(choices[0].suffix).toBe('(anthropic/skills) [deployed]');
+    expect(choices[0].innerGroup).toBe('anthropic/skills');
+    expect(choices[0].suffix).toBe('[deployed]');
   });
 
-  it('does not add source suffix for ungrouped skills', () => {
+  it('does not add innerGroup for ungrouped skills', () => {
     const choices = buildVirtualGroupChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -487,7 +476,32 @@ describe('buildVirtualGroupChoices source suffix', () => {
 
     const review = choices.find(c => c.name === 'review')!;
     expect(review.suffix).toBeUndefined();
+    expect(review.innerGroup).toBeUndefined();
     expect(review.subGroup).toBeUndefined();
+  });
+
+  it('adds innerGroup for custom sub-path skill in virtual group', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        { name: 'openspec-apply', source: 'custom/openspec', description: 'Apply' },
+      ],
+      { develop: ['custom/openspec/openspec-apply'] },
+    );
+
+    expect(choices[0].innerGroup).toBe('openspec');
+    expect(choices[0].subGroup).toBe('develop');
+  });
+
+  it('skips innerGroup when it equals subGroup for custom sub-path skill', () => {
+    const choices = buildVirtualGroupChoices(
+      [
+        { name: 'openspec-apply', source: 'custom/openspec', description: 'Apply' },
+      ],
+      { openspec: ['custom/openspec/openspec-apply'] },
+    );
+
+    expect(choices[0].innerGroup).toBeUndefined();
+    expect(choices[0].subGroup).toBe('openspec');
   });
 });
 
@@ -507,18 +521,22 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
 
     const commitOfficial = commitChoices.find(c => c.group === 'official')!;
     expect(commitOfficial.subGroup).toBe('anthropic/skills');
+    expect(commitOfficial.innerGroup).toBeUndefined();
     expect(commitOfficial.suffix).toBeUndefined();
 
     const commitVg = commitChoices.find(c => c.subGroup === 'dev')!;
-    expect(commitVg.suffix).toBe('(anthropic/skills)');
+    expect(commitVg.innerGroup).toBe('anthropic/skills');
+    expect(commitVg.suffix).toBeUndefined();
 
     const review = choices.find(c => c.name === 'review')!;
     expect(review.subGroup).toBe('anthropic/skills');
     expect(review.group).toBe('official');
+    expect(review.innerGroup).toBeUndefined();
     expect(review.suffix).toBeUndefined();
 
     const myTool = choices.find(c => c.name === 'my-tool')!;
     expect(myTool.subGroup).toBe('dev');
+    expect(myTool.innerGroup).toBeUndefined();
     expect(myTool.suffix).toBeUndefined();
   });
 
@@ -537,6 +555,7 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
     expect(commitChoices[0].subGroup).toBe('anthropic/skills');
     expect(commitChoices[1].group).toBe('custom');
     expect(commitChoices[1].subGroup).toBe('dev');
+    expect(commitChoices[1].innerGroup).toBe('anthropic/skills');
   });
 
   it('official source sub-group remains when skills belong to virtual group', () => {
@@ -583,6 +602,34 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
 
     const myTool = choices.find(c => c.name === 'my-tool')!;
     expect(myTool.group).toBe('custom');
+  });
+
+  it('custom sub-path skill gets innerGroup in virtual group', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'openspec-apply', source: 'custom/openspec', description: 'Apply' },
+      ],
+      { develop: ['custom/openspec/openspec-apply'] },
+    );
+
+    const inDevelop = choices.find(c => c.subGroup === 'develop')!;
+    expect(inDevelop.innerGroup).toBe('openspec');
+    expect(inDevelop.group).toBe('custom');
+  });
+
+  it('custom sub-path skill skips innerGroup when same as subGroup', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'openspec-apply', source: 'custom/openspec', description: 'Apply' },
+      ],
+      { openspec: ['custom/openspec/openspec-apply'] },
+    );
+
+    const inOpenspec = choices.find(c => c.subGroup === 'openspec')!;
+    expect(inOpenspec.innerGroup).toBeUndefined();
+    expect(inOpenspec.group).toBe('custom');
   });
 });
 
@@ -683,5 +730,65 @@ describe('resolveTargetAgents', () => {
       true,
     );
     expect(result).toEqual(['amp']);
+  });
+});
+
+describe('expandYesFlag', () => {
+  it('does nothing when yes is false', () => {
+    const options = { yes: false, agent: [], skill: [] };
+    expect(expandYesFlag(options)).toEqual(options);
+  });
+
+  it('does nothing when yes is undefined', () => {
+    const options = { agent: [], skill: [] };
+    expect(expandYesFlag(options)).toEqual(options);
+  });
+
+  it('sets sameAgents and all when -y alone', () => {
+    const result = expandYesFlag({ yes: true });
+    expect(result.sameAgents).toBe(true);
+    expect(result.all).toBe(true);
+  });
+
+  it('does not set sameAgents when -a is specified', () => {
+    const result = expandYesFlag({ yes: true, agent: ['claude-code'] });
+    expect(result.sameAgents).toBeUndefined();
+    expect(result.all).toBe(true);
+  });
+
+  it('does not set sameAgents when --same-agents is already set', () => {
+    const result = expandYesFlag({ yes: true, sameAgents: true });
+    expect(result.sameAgents).toBe(true);
+    expect(result.all).toBe(true);
+  });
+
+  it('does not set all when -s is specified', () => {
+    const result = expandYesFlag({ yes: true, skill: ['my-skill'] });
+    expect(result.sameAgents).toBe(true);
+    expect(result.all).toBeUndefined();
+  });
+
+  it('does not set all when --all is already set', () => {
+    const result = expandYesFlag({ yes: true, all: true });
+    expect(result.sameAgents).toBe(true);
+    expect(result.all).toBe(true);
+  });
+
+  it('does not expand anything when -a and -s both specified', () => {
+    const result = expandYesFlag({ yes: true, agent: ['claude-code'], skill: ['my-skill'] });
+    expect(result.sameAgents).toBeUndefined();
+    expect(result.all).toBeUndefined();
+  });
+
+  it('does not expand agent when -a set, expands all when no -s', () => {
+    const result = expandYesFlag({ yes: true, agent: ['claude-code'] });
+    expect(result.sameAgents).toBeUndefined();
+    expect(result.all).toBe(true);
+  });
+
+  it('does not expand all when --all set, expands sameAgents when no -a', () => {
+    const result = expandYesFlag({ yes: true, all: true });
+    expect(result.sameAgents).toBe(true);
+    expect(result.all).toBe(true);
   });
 });

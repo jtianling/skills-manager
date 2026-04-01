@@ -55,6 +55,7 @@ export interface RemoveOptions {
   skill?: string[];
   global?: boolean;
   agent?: string[];
+  sameAgents?: boolean;
   all?: boolean;
   group?: string;
   yes?: boolean;

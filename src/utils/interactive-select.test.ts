@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildDisplayItems, getGroupState, SelectChoice } from './interactive-select.js';
+import {
+  buildDisplayItems,
+  getDisplayIndexForLineNumber,
+  getGroupState,
+  SelectChoice,
+} from './interactive-select.js';
 
 describe('buildDisplayItems', () => {
   it('builds flat items without subGroup (backward compatible)', () => {
@@ -113,6 +118,165 @@ describe('buildDisplayItems', () => {
     const groupHeader = displayItems.find((d) => d.type === 'group-header')!;
     expect(groupHeader.childIndices).toEqual([0, 1, 2]);
     expect(displayItems.filter((d) => d.type === 'choice')).toEqual([]);
+  });
+
+  it('renders empty group header with zero children for placeholder choices', () => {
+    const choices: SelectChoice[] = [
+      { name: '(empty)', value: '__empty_unused', locked: true, subGroup: 'unused' },
+      { name: 'alpha', value: 'alpha', group: 'custom', subGroup: 'dev' },
+    ];
+    const { displayItems } = buildDisplayItems(choices, '');
+
+    const headers = displayItems.filter((d) => d.type === 'group-header');
+    expect(headers).toHaveLength(2);
+
+    const unusedHeader = headers.find((h) => h.subGroupName === 'unused')!;
+    expect(unusedHeader.childIndices).toEqual([]);
+
+    const devHeader = headers.find((h) => h.subGroupName === 'dev')!;
+    expect(devHeader.childIndices).toEqual([1]);
+
+    const choiceItems = displayItems.filter((d) => d.type === 'choice');
+    expect(choiceItems).toHaveLength(1);
+    expect(choiceItems[0].choiceIndex).toBe(1);
+  });
+
+  it('builds nested inner-group headers inside subgroup', () => {
+    const choices: SelectChoice[] = [
+      {
+        name: 'commit',
+        value: 'commit',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      {
+        name: 'review',
+        value: 'review',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      {
+        name: 'lint',
+        value: 'lint',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'mattpocock/skills',
+      },
+      {
+        name: 'local-tool',
+        value: 'local-tool',
+        group: 'custom',
+        subGroup: 'python',
+      },
+    ];
+
+    const { displayItems, filteredIndices } = buildDisplayItems(choices, '');
+
+    expect(filteredIndices).toEqual([0, 1, 2, 3]);
+    expect(displayItems).toEqual([
+      { type: 'separator', text: '── custom ──' },
+      { type: 'group-header', subGroupName: 'python', childIndices: [0, 1, 2, 3] },
+      {
+        type: 'inner-group-header',
+        parentSubGroup: 'python',
+        innerGroupName: 'anthropic/skills',
+        childIndices: [0, 1],
+      },
+      { type: 'choice', choiceIndex: 0 },
+      { type: 'choice', choiceIndex: 1 },
+      {
+        type: 'inner-group-header',
+        parentSubGroup: 'python',
+        innerGroupName: 'mattpocock/skills',
+        childIndices: [2],
+      },
+      { type: 'choice', choiceIndex: 2 },
+      { type: 'choice', choiceIndex: 3 },
+    ]);
+  });
+
+  it('merges non-contiguous same-innerGroup choices into one header', () => {
+    const choices: SelectChoice[] = [
+      { name: 'commit', value: 'commit', group: 'custom', subGroup: 'python', innerGroup: 'anthropic/skills' },
+      { name: 'my-linter', value: 'my-linter', group: 'custom', subGroup: 'python' },
+      { name: 'review', value: 'review', group: 'custom', subGroup: 'python', innerGroup: 'anthropic/skills' },
+    ];
+
+    const { displayItems } = buildDisplayItems(choices, '');
+
+    const innerHeaders = displayItems.filter((d) => d.type === 'inner-group-header');
+    expect(innerHeaders).toHaveLength(1);
+    expect(innerHeaders[0].innerGroupName).toBe('anthropic/skills');
+    expect(innerHeaders[0].childIndices).toEqual([0, 2]);
+
+    const groupHeader = displayItems.find((d) => d.type === 'group-header')!;
+    expect(groupHeader.childIndices).toEqual([0, 2, 1]);
+  });
+
+  it('hides only inner-group choices when inner group is collapsed', () => {
+    const choices: SelectChoice[] = [
+      {
+        name: 'commit',
+        value: 'commit',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      {
+        name: 'review',
+        value: 'review',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      { name: 'local-tool', value: 'local-tool', group: 'custom', subGroup: 'python' },
+    ];
+
+    const { displayItems } = buildDisplayItems(
+      choices,
+      '',
+      new Set<string>(),
+      new Set(['python/anthropic/skills']),
+    );
+
+    expect(displayItems).toEqual([
+      { type: 'separator', text: '── custom ──' },
+      { type: 'group-header', subGroupName: 'python', childIndices: [0, 1, 2] },
+      {
+        type: 'inner-group-header',
+        parentSubGroup: 'python',
+        innerGroupName: 'anthropic/skills',
+        childIndices: [0, 1],
+      },
+      { type: 'choice', choiceIndex: 2 },
+    ]);
+  });
+
+  it('hides inner-group headers and choices when outer subgroup is collapsed', () => {
+    const choices: SelectChoice[] = [
+      {
+        name: 'commit',
+        value: 'commit',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      { name: 'local-tool', value: 'local-tool', group: 'custom', subGroup: 'python' },
+    ];
+
+    const { displayItems } = buildDisplayItems(
+      choices,
+      '',
+      new Set(['python']),
+      new Set(['python/anthropic/skills']),
+    );
+
+    expect(displayItems).toEqual([
+      { type: 'separator', text: '── custom ──' },
+      { type: 'group-header', subGroupName: 'python', childIndices: [0, 1] },
+    ]);
   });
 });
 
@@ -239,5 +403,57 @@ describe('getGroupState', () => {
 
     expect(getGroupState(groupHeader.childIndices!, new Set([0, 2]))).toBe('partial');
     expect(getGroupState(groupHeader.childIndices!, new Set([0, 1, 2]))).toBe('all');
+  });
+});
+
+describe('getDisplayIndexForLineNumber', () => {
+  it('counts all focusable items and skips separators', () => {
+    const choices: SelectChoice[] = [
+      {
+        name: 'commit',
+        value: 'commit',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      { name: 'local-tool', value: 'local-tool', group: 'custom', subGroup: 'python' },
+    ];
+    const { displayItems } = buildDisplayItems(choices, '');
+
+    expect(getDisplayIndexForLineNumber(displayItems, 1)).toBe(1);
+    expect(getDisplayIndexForLineNumber(displayItems, 2)).toBe(2);
+    expect(getDisplayIndexForLineNumber(displayItems, 3)).toBe(3);
+    expect(getDisplayIndexForLineNumber(displayItems, 4)).toBe(4);
+  });
+
+  it('ignores hidden items when groups are collapsed', () => {
+    const choices: SelectChoice[] = [
+      {
+        name: 'commit',
+        value: 'commit',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      {
+        name: 'review',
+        value: 'review',
+        group: 'custom',
+        subGroup: 'python',
+        innerGroup: 'anthropic/skills',
+      },
+      { name: 'local-tool', value: 'local-tool', group: 'custom', subGroup: 'python' },
+    ];
+    const { displayItems } = buildDisplayItems(
+      choices,
+      '',
+      new Set<string>(),
+      new Set(['python/anthropic/skills']),
+    );
+
+    expect(getDisplayIndexForLineNumber(displayItems, 1)).toBe(1);
+    expect(getDisplayIndexForLineNumber(displayItems, 2)).toBe(2);
+    expect(getDisplayIndexForLineNumber(displayItems, 3)).toBe(3);
+    expect(getDisplayIndexForLineNumber(displayItems, 4)).toBe(3);
   });
 });

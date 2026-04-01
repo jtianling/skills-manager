@@ -91,15 +91,42 @@ describe('add command', () => {
     symlinkSync(sourcePath, targetPath);
   }
 
-  describe('no argument → deploy flow', () => {
-    it('calls executeDeploy when no arg provided', async () => {
+  describe('no argument → add-only flow with locked deployed skills', () => {
+    it('shows all skills with deployed ones locked', async () => {
+      createSkill('official/anthropic/skills', 'commit', 'Commit skill');
+      createSkill('official/anthropic/skills', 'review', 'Review skill');
+      const commitPath = join(testManagerDir, 'official/anthropic/skills/commit');
+      deploySkillAsLink('commit', commitPath);
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['review']);
+
       await executeAdd(undefined, {});
-      expect(executeDeploy).toHaveBeenCalledWith({ copy: undefined });
+
+      const call = vi.mocked(interactiveCheckbox).mock.calls[1];
+      expect(call[0].message).toBe('Select skills to add (use deploy/remove to remove):');
+      const commitChoice = call[0].choices.find((c: { name: string }) => c.name === 'commit');
+      const reviewChoice = call[0].choices.find((c: { name: string }) => c.name === 'review');
+      expect(commitChoice?.locked).toBe(true);
+      expect(commitChoice?.checked).toBe(true);
+      expect(reviewChoice?.locked).toBeFalsy();
     });
 
-    it('passes --copy to executeDeploy', async () => {
-      await executeAdd(undefined, { copy: true });
-      expect(executeDeploy).toHaveBeenCalledWith({ copy: true });
+    it('only deploys new skills, not already deployed ones', async () => {
+      createSkill('official/anthropic/skills', 'commit', 'Commit');
+      createSkill('official/anthropic/skills', 'review', 'Review');
+      const commitPath = join(testManagerDir, 'official/anthropic/skills/commit');
+      deploySkillAsLink('commit', commitPath);
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['commit', 'review']);
+
+      await executeAdd(undefined, {});
+
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('✓ review'));
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('✓ commit'));
     });
   });
 
@@ -150,8 +177,8 @@ describe('add command', () => {
       createSkill('community/someuser/somerepo', 'skill-b', 'Skill B');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd('someuser/somerepo', {});
 
@@ -166,13 +193,13 @@ describe('add command', () => {
       groupsService.addSkill('dev', 'community/someuser/somerepo/skill-a');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd('someuser/somerepo', {});
 
       expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'Select skills to add:',
+        message: 'Select skills to add (use deploy/remove to remove):',
         choices: expect.arrayContaining([
           expect.objectContaining({
             name: 'skill-a',
@@ -187,8 +214,8 @@ describe('add command', () => {
       createSkill('official/anthropic/skills', 'tdd', 'TDD');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['tdd'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['tdd']);
 
       await executeAdd('anthropics/skills', {});
 
@@ -225,8 +252,8 @@ describe('add command', () => {
       });
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['remote-skill'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['remote-skill']);
 
       await executeAdd('unknown/repo', {});
 
@@ -250,8 +277,8 @@ describe('add command', () => {
       });
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['url-skill'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['url-skill']);
 
       await executeAdd('https://github.com/owner/repo', {});
 
@@ -272,13 +299,13 @@ describe('add command', () => {
       });
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['url-skill'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['url-skill']);
 
       await executeAdd('https://github.com/owner/repo', {});
 
       expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'Select skills to add:',
+        message: 'Select skills to add (use deploy/remove to remove):',
         choices: expect.arrayContaining([
           expect.objectContaining({
             name: 'url-skill',
@@ -359,8 +386,8 @@ describe('add command', () => {
       groupsService.addSkill('dev', 'custom/skill-b');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd(undefined, { group: 'dev' });
 
@@ -377,13 +404,13 @@ describe('add command', () => {
       groupsService.addSkill('dev', 'custom/skill-a');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd(undefined, { group: 'dev' });
 
       expect(interactiveCheckbox).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'Select skills to add:',
+        message: 'Select skills to add (use deploy/remove to remove):',
         choices: expect.arrayContaining([
           expect.objectContaining({
             name: 'skill-a',
@@ -410,8 +437,8 @@ describe('add command', () => {
       groupsService.addSkill('dev', 'custom/deleted-skill');
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce(['agents-skills-standard']);
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd(undefined, { group: 'dev' });
 
@@ -425,11 +452,17 @@ describe('add command', () => {
   });
 
   describe('-g / --global flag', () => {
-    it('-g without arg delegates to deploy with global flag', async () => {
+    it('-g without arg shows add-only flow with global mode', async () => {
+      createSkill('official/anthropic/skills', 'commit', 'Commit');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['claude-code'])
+        .mockResolvedValueOnce(['commit']);
+
       await executeAdd(undefined, { global: true });
 
-      const { executeDeploy } = await import('./deploy.js');
-      expect(executeDeploy).toHaveBeenCalledWith({ copy: undefined, global: true });
+      const call = vi.mocked(interactiveCheckbox).mock.calls[1];
+      expect(call[0].message).toBe('Select skills to add (use deploy/remove to remove):');
     });
 
     it('add -g deploys and remove -g cleans up', async () => {
@@ -477,8 +510,8 @@ describe('add command', () => {
       const globalDir = TOOL_CONFIGS[agent].globalSkillsDir;
 
       vi.mocked(interactiveCheckbox)
-        .mockResolvedValueOnce(['skill-a'])
-        .mockResolvedValueOnce([agent]);
+        .mockResolvedValueOnce([agent])
+        .mockResolvedValueOnce(['skill-a']);
 
       await executeAdd(undefined, { global: true, group: 'dev' });
 
@@ -503,8 +536,10 @@ describe('add command', () => {
         };
       });
 
-      // User selects no skills
-      vi.mocked(interactiveCheckbox).mockResolvedValueOnce([]);
+      // Agent selection then user selects no skills
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['agents-skills-standard'])
+        .mockResolvedValueOnce([]);
 
       await executeAdd('owner/repo', {});
 
