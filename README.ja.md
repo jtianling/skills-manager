@@ -7,7 +7,7 @@ AIコーディングツールのための統合スキルマネージャーです
 ## 特徴
 
 - **中央リポジトリからどこにでもデプロイ** — スキルは `~/.skills-manager/` に一度だけインストールされます. その後, `add` を使ってインストール済みの全スキルからインタラクティブに選択し, 任意のプロジェクトまたはグローバルにデプロイできます. 毎回元のリポジトリURLやパスを覚えておく必要はありません.
-- **カスタムグループによる一括管理** — 独自のスキルを名前付きグループ (例: `--group my-tools`) にまとめることができます. `add --group` コマンド1つでグループ全体をプロジェクトにデプロイでき, 個人のスキルコレクションの管理と共有が容易になります.
+- **カスタムグループによる一括管理** — スキルを名前付きグループ (例: `--group my-tools`) にまとめることができます. `skillsmgr add group-name` でグループ全体をデプロイできます. 複数の方法でグループを構成: `group add my-group skill-name` で個別のスキルを追加, `group add my-group owner/repo` でリポジトリ全体のスキルを追加, `group add my-group another-group` でグループのネストが可能です.
 - **Zipアーカイブ対応** — `.zip` ファイルや Anthropic の `.skill` パッケージから直接スキルをインストールできます. GitHub以外でのスキルバンドルのパッケージングと共有が簡単になります.
 
 ## 要件
@@ -16,7 +16,7 @@ AIコーディングツールのための統合スキルマネージャーです
 
 ## サポートされているツール
 
-すべてのスキルは `.agents/skills/` にデプロイされます. ネイティブツールはそのディレクトリを直接読み取ります. 非ネイティブツールはレガシーのスキルパスへのシンボリックリンクブリッジを使用します. 以下の表はインタラクティブセレクターに表示される16のツールの一覧です. さらに28のエージェントもサポートされており, 非インタラクティブコマンドで `-a` フラグを使って直接指定できます (例: `skillsmgr add code-review -a amp`). 完全なリストは [docs/supported-agents.md](docs/supported-agents.md) を参照してください.
+すべてのスキルは `.agents/skills/` にデプロイされます. ネイティブツールはそのディレクトリを直接読み取ります. 非ネイティブツールはレガシーのスキルパスへのシンボリックリンクブリッジを使用します. 以下の表はインタラクティブセレクターに表示される17のツールの一覧です. さらに27のエージェントもサポートされており, 非インタラクティブコマンドで `-a` フラグを使って直接指定できます (例: `skillsmgr add code-review -a amp`). 完全なリストは [docs/supported-agents.md](docs/supported-agents.md) を参照してください.
 
 | ツール | タイプ | プロジェクトパス |
 |--------|--------|------------------|
@@ -25,6 +25,7 @@ AIコーディングツールのための統合スキルマネージャーです
 | Cursor | ネイティブ | `.agents/skills` |
 | OpenClaw | シンボリックリンクブリッジ | `skills -> .agents/skills` |
 | OpenCode | ネイティブ | `.agents/skills` |
+| Antigravity | ネイティブ | `.agents/skills` |
 | Gemini CLI | ネイティブ | `.agents/skills` |
 | GitHub Copilot | ネイティブ | `.agents/skills` |
 | Cline | ネイティブ | `.agents/skills` |
@@ -80,8 +81,8 @@ project/
 | `skillsmgr list` | - | `~/.skills-manager/` のインストール済みスキルを一覧表示 |
 | `skillsmgr list --deployed` | - | 現在のプロジェクトのデプロイ済みスキルと設定済みツールを一覧表示 |
 | `skillsmgr deploy` | - | 現在のプロジェクトへのインタラクティブデプロイ |
-| `skillsmgr add [name]` | - | プロジェクトにスキルを追加 |
-| `skillsmgr remove [name]` | - | プロジェクトからデプロイ済みスキルを削除 |
+| `skillsmgr add [name]` | - | プロジェクトにスキルを追加 (名前, `owner/repo`, またはグループ名) |
+| `skillsmgr remove [name]` | - | プロジェクトからデプロイ済みスキルを削除 (名前, `owner/repo`, またはグループ名) |
 | `skillsmgr group <subcommand>` | - | 仮想スキルグループを管理 |
 
 ### コマンドフラグ
@@ -143,8 +144,8 @@ project/
 | `group list [name]` | 全グループの一覧表示またはグループの詳細表示 |
 | `group create <name>` | 新しい空のグループを作成 |
 | `group delete <name>` | グループを削除 (スキルには影響しない) |
-| `group add <group> <skill>` | グループにスキルを追加 |
-| `group remove <group> <skill>` | グループからスキルを削除 |
+| `group add <group> <identifier>` | グループにスキル, `owner/repo` ソース, または別のグループを追加 |
+| `group remove <group> <identifier>` | グループからスキル, `owner/repo` ソース, または別のグループを削除 |
 | `group rename <old> <new>` | グループの名前を変更 |
 
 ## スキルのインストール

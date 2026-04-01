@@ -7,7 +7,7 @@ Unified skills manager for AI coding tools. Install skills into `~/.skills-manag
 ## Highlights
 
 - **Central repository, deploy anywhere** — Skills are installed once into `~/.skills-manager/`. After that, `add` lets you interactively pick from all locally installed skills and deploy them to any project or globally — no need to remember the original repo URL or path every time.
-- **Custom groups for batch management** — Organize your own skills into named groups (e.g., `--group my-tools`). Deploy an entire group to a project with a single `add --group` command, making it easy to maintain and share personal skill collections.
+- **Custom groups for batch management** — Organize skills into named groups (e.g., `--group my-tools`). Deploy an entire group with `skillsmgr add group-name`. Populate groups from multiple sources: add individual skills with `group add my-group skill-name`, all skills from a repo with `group add my-group owner/repo`, or nest groups with `group add my-group another-group`.
 - **Zip archive support** — Install skills directly from `.zip` files or Anthropic's `.skill` packages, which makes it simple to package and share skill bundles outside of GitHub.
 
 ## Requirements
@@ -16,7 +16,7 @@ Unified skills manager for AI coding tools. Install skills into `~/.skills-manag
 
 ## Supported Tools
 
-All skills deploy to `.agents/skills/`. Native tools read that directory directly. Non-native tools use a symlink bridge to their legacy skill path. The table below lists the 16 tools shown in the interactive selector. An additional 28 agents are also supported and can be targeted directly via the `-a` flag in non-interactive commands (e.g., `skillsmgr add code-review -a amp`). See [docs/supported-agents.md](docs/supported-agents.md) for the full list.
+All skills deploy to `.agents/skills/`. Native tools read that directory directly. Non-native tools use a symlink bridge to their legacy skill path. The table below lists the 17 tools shown in the interactive selector. An additional 27 agents are also supported and can be targeted directly via the `-a` flag in non-interactive commands (e.g., `skillsmgr add code-review -a amp`). See [docs/supported-agents.md](docs/supported-agents.md) for the full list.
 
 | Tool | Type | Project Path |
 |------|------|--------------|
@@ -25,6 +25,7 @@ All skills deploy to `.agents/skills/`. Native tools read that directory directl
 | Cursor | Native | `.agents/skills` |
 | OpenClaw | Symlink bridge | `skills -> .agents/skills` |
 | OpenCode | Native | `.agents/skills` |
+| Antigravity | Native | `.agents/skills` |
 | Gemini CLI | Native | `.agents/skills` |
 | GitHub Copilot | Native | `.agents/skills` |
 | Cline | Native | `.agents/skills` |
@@ -80,8 +81,8 @@ project/
 | `skillsmgr list` | - | List installed skills in `~/.skills-manager/` |
 | `skillsmgr list --deployed` | - | List deployed skills and configured tools in the current project |
 | `skillsmgr deploy` | - | Interactive deployment to the current project |
-| `skillsmgr add [name]` | - | Add a skill to the project |
-| `skillsmgr remove [name]` | - | Remove a deployed skill from the project |
+| `skillsmgr add [name]` | - | Add a skill to the project (name, `owner/repo`, or group name) |
+| `skillsmgr remove [name]` | - | Remove a deployed skill from the project (name, `owner/repo`, or group name) |
 | `skillsmgr group <subcommand>` | - | Manage virtual skill groups |
 
 ### Command Flags
@@ -143,8 +144,8 @@ project/
 | `group list [name]` | List all groups or show group details |
 | `group create <name>` | Create a new empty group |
 | `group delete <name>` | Delete a group (skills are not affected) |
-| `group add <group> <skill>` | Add a skill to a group |
-| `group remove <group> <skill>` | Remove a skill from a group |
+| `group add <group> <identifier>` | Add a skill, `owner/repo` source, or another group to a group |
+| `group remove <group> <identifier>` | Remove a skill, `owner/repo` source, or another group from a group |
 | `group rename <old> <new>` | Rename a group |
 
 ## Installing Skills

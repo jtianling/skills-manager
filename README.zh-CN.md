@@ -7,7 +7,7 @@
 ## 亮点
 
 - **中央仓库, 随处部署** — Skills 只需安装一次到 `~/.skills-manager/`.  之后通过 `add` 命令可以交互式地从所有本地已安装的 skills 中选择, 部署到任意项目或全局 — 不用每次都去翻原始仓库地址或路径.
-- **自定义分组, 批量管理** — 将自己的 skills 组织到命名分组中 (如 `--group my-tools`).  一条 `add --group` 命令即可将整组 skills 部署到项目, 方便维护和分享个人技能集合.
+- **自定义分组, 批量管理** — 将 skills 组织到命名分组中 (如 `--group my-tools`).  `skillsmgr add group-name` 一条命令即可部署整组 skills.  支持多种方式填充分组: `group add my-group skill-name` 添加单个 skill, `group add my-group owner/repo` 添加整个仓库的 skills, `group add my-group another-group` 嵌套引用其他分组.
 - **支持 zip 包安装** — 可以直接从 `.zip` 文件或 Anthropic 的 `.skill` 包安装 skills, 方便在 GitHub 之外打包和分享技能.
 
 ## 环境要求
@@ -16,7 +16,7 @@
 
 ## 支持的工具
 
-所有 skill 统一部署到 `.agents/skills/`.  原生工具直接读取该目录, 非原生工具通过符号链接桥接到旧目录.  下表列出交互选择器中显示的 16 个工具.  另有 28 个 agent 也受支持, 可通过非交互命令的 `-a` 参数直接指定 (如 `skillsmgr add code-review -a amp`).  完整列表见 [docs/supported-agents.md](docs/supported-agents.md).
+所有 skill 统一部署到 `.agents/skills/`.  原生工具直接读取该目录, 非原生工具通过符号链接桥接到旧目录.  下表列出交互选择器中显示的 17 个工具.  另有 27 个 agent 也受支持, 可通过非交互命令的 `-a` 参数直接指定 (如 `skillsmgr add code-review -a amp`).  完整列表见 [docs/supported-agents.md](docs/supported-agents.md).
 
 | 工具 | 类型 | 项目中的路径 |
 |------|------|-------------|
@@ -25,6 +25,7 @@
 | Cursor | 原生 | `.agents/skills` |
 | OpenClaw | Symlink bridge | `skills -> .agents/skills` |
 | OpenCode | 原生 | `.agents/skills` |
+| Antigravity | 原生 | `.agents/skills` |
 | Gemini CLI | 原生 | `.agents/skills` |
 | GitHub Copilot | 原生 | `.agents/skills` |
 | Cline | 原生 | `.agents/skills` |
@@ -80,8 +81,8 @@ project/
 | `skillsmgr list` | - | 列出 `~/.skills-manager/` 中已安装的 skills |
 | `skillsmgr list --deployed` | - | 列出当前项目中已部署的 skills 和已配置工具 |
 | `skillsmgr deploy` | - | 交互式部署到当前项目 |
-| `skillsmgr add [name]` | - | 添加 skill 到项目 |
-| `skillsmgr remove [name]` | - | 从项目中移除已部署的 skill |
+| `skillsmgr add [name]` | - | 添加 skill 到项目 (name, `owner/repo` 或 group 名) |
+| `skillsmgr remove [name]` | - | 从项目中移除已部署的 skill (name, `owner/repo` 或 group 名) |
 | `skillsmgr group <subcommand>` | - | 管理虚拟 skill 分组 |
 
 ### 命令选项
@@ -143,8 +144,8 @@ project/
 | `group list [name]` | 列出所有分组或查看分组详情 |
 | `group create <name>` | 创建一个空分组 |
 | `group delete <name>` | 删除分组 (不影响 skills 本身) |
-| `group add <group> <skill>` | 将 skill 添加到分组 |
-| `group remove <group> <skill>` | 从分组中移除 skill |
+| `group add <group> <identifier>` | 将 skill, `owner/repo` 来源或其他分组添加到分组 |
+| `group remove <group> <identifier>` | 从分组中移除 skill, `owner/repo` 来源或其他分组的 skills |
 | `group rename <old> <new>` | 重命名分组 |
 
 ## 安装 Skills

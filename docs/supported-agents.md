@@ -1,6 +1,6 @@
 # All Supported Agents
 
-44 agents in total. 16 are shown in the interactive selector; the remaining 28 can be used via `-a` flag in non-interactive commands.
+44 agents in total. 17 are shown in the interactive selector; the remaining 27 can be used via `-a` flag in non-interactive commands.
 
 | Agent ID | Display Name | Type | Project Path | Global Path | Interactive |
 |----------|-------------|------|--------------|-------------|:-----------:|
@@ -22,7 +22,7 @@
 | `goose` | Goose | Symlink bridge | `.goose/skills` | `~/.config/goose/skills` | Yes |
 | `adal` | AdaL | Symlink bridge | `.adal/skills` | `~/.adal/skills` | - |
 | `amp` | Amp | Native | `.agents/skills` | `~/.config/agents/skills` | - |
-| `antigravity` | Antigravity | Native | `.agents/skills` | `~/.gemini/antigravity/skills` | - |
+| `antigravity` | Antigravity | Native | `.agents/skills` | `~/.gemini/antigravity/skills` | Yes |
 | `augment` | Augment | Symlink bridge | `.augment/skills` | `~/.augment/skills` | - |
 | `command-code` | Command Code | Symlink bridge | `.commandcode/skills` | `~/.commandcode/skills` | - |
 | `continue` | Continue | Symlink bridge | `.continue/skills` | `~/.continue/skills` | - |

@@ -7,7 +7,7 @@ Gerenciador unificado de skills para ferramentas de programação com IA. Instal
 ## Destaques
 
 - **Repositório central, implante em qualquer lugar** — As skills são instaladas uma única vez em `~/.skills-manager/`. Depois disso, `add` permite que você escolha interativamente entre todas as skills instaladas localmente e as implante em qualquer projeto ou globalmente — sem precisar lembrar a URL ou o caminho do repositório original toda vez.
-- **Grupos personalizados para gerenciamento em lote** — Organize suas próprias skills em grupos nomeados (ex.: `--group my-tools`). Implante um grupo inteiro em um projeto com um único comando `add --group`, facilitando a manutenção e o compartilhamento de coleções pessoais de skills.
+- **Grupos personalizados para gerenciamento em lote** — Organize skills em grupos nomeados (ex.: `--group my-tools`). Implante um grupo inteiro com `skillsmgr add group-name`. Preencha grupos de múltiplas fontes: adicione skills individuais com `group add my-group skill-name`, todas as skills de um repositório com `group add my-group owner/repo`, ou aninhe grupos com `group add my-group another-group`.
 - **Suporte a arquivos zip** — Instale skills diretamente de arquivos `.zip` ou pacotes `.skill` da Anthropic, o que simplifica o empacotamento e compartilhamento de conjuntos de skills fora do GitHub.
 
 ## Requisitos
@@ -16,7 +16,7 @@ Gerenciador unificado de skills para ferramentas de programação com IA. Instal
 
 ## Ferramentas Suportadas
 
-Todas as skills são implantadas em `.agents/skills/`. Ferramentas nativas leem esse diretório diretamente. Ferramentas não nativas usam uma ponte de symlink para seu caminho legado de skills. A tabela abaixo lista as 16 ferramentas exibidas no seletor interativo. Outras 28 agentes também são suportados e podem ser direcionados diretamente via flag `-a` em comandos não interativos (ex.: `skillsmgr add code-review -a amp`). Consulte [docs/supported-agents.md](docs/supported-agents.md) para a lista completa.
+Todas as skills são implantadas em `.agents/skills/`. Ferramentas nativas leem esse diretório diretamente. Ferramentas não nativas usam uma ponte de symlink para seu caminho legado de skills. A tabela abaixo lista as 17 ferramentas exibidas no seletor interativo. Outras 27 agentes também são suportados e podem ser direcionados diretamente via flag `-a` em comandos não interativos (ex.: `skillsmgr add code-review -a amp`). Consulte [docs/supported-agents.md](docs/supported-agents.md) para a lista completa.
 
 | Ferramenta | Tipo | Caminho no Projeto |
 |------------|------|-------------------|
@@ -25,6 +25,7 @@ Todas as skills são implantadas em `.agents/skills/`. Ferramentas nativas leem 
 | Cursor | Nativo | `.agents/skills` |
 | OpenClaw | Ponte de symlink | `skills -> .agents/skills` |
 | OpenCode | Nativo | `.agents/skills` |
+| Antigravity | Nativo | `.agents/skills` |
 | Gemini CLI | Nativo | `.agents/skills` |
 | GitHub Copilot | Nativo | `.agents/skills` |
 | Cline | Nativo | `.agents/skills` |
@@ -80,8 +81,8 @@ project/
 | `skillsmgr list` | - | Listar skills instaladas em `~/.skills-manager/` |
 | `skillsmgr list --deployed` | - | Listar skills implantadas e ferramentas configuradas no projeto atual |
 | `skillsmgr deploy` | - | Implantação interativa no projeto atual |
-| `skillsmgr add [name]` | - | Adicionar uma skill ao projeto |
-| `skillsmgr remove [name]` | - | Remover uma skill implantada do projeto |
+| `skillsmgr add [name]` | - | Adicionar uma skill ao projeto (nome, `owner/repo` ou nome do grupo) |
+| `skillsmgr remove [name]` | - | Remover uma skill implantada do projeto (nome, `owner/repo` ou nome do grupo) |
 | `skillsmgr group <subcommand>` | - | Gerenciar grupos virtuais de skills |
 
 ### Flags dos Comandos
@@ -143,8 +144,8 @@ project/
 | `group list [name]` | Listar todos os grupos ou mostrar detalhes de um grupo |
 | `group create <name>` | Criar um novo grupo vazio |
 | `group delete <name>` | Excluir um grupo (as skills não são afetadas) |
-| `group add <group> <skill>` | Adicionar uma skill a um grupo |
-| `group remove <group> <skill>` | Remover uma skill de um grupo |
+| `group add <group> <identifier>` | Adicionar uma skill, fonte `owner/repo` ou outro grupo a um grupo |
+| `group remove <group> <identifier>` | Remover uma skill, fonte `owner/repo` ou outro grupo de um grupo |
 | `group rename <old> <new>` | Renomear um grupo |
 
 ## Instalando Skills

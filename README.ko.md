@@ -7,7 +7,7 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 ## 주요 특징
 
 - **중앙 저장소, 어디서나 배포** — 스킬은 `~/.skills-manager/`에 한 번만 설치됩니다. 이후 `add` 명령으로 로컬에 설치된 모든 스킬을 대화형으로 선택하여 프로젝트 또는 전역에 배포할 수 있습니다. 매번 원본 저장소 URL이나 경로를 기억할 필요가 없습니다.
-- **사용자 정의 그룹으로 일괄 관리** — 스킬을 명명된 그룹으로 구성합니다(예: `--group my-tools`). `add --group` 명령 하나로 전체 그룹을 프로젝트에 배포할 수 있어, 개인 스킬 컬렉션을 유지하고 공유하기 쉽습니다.
+- **사용자 정의 그룹으로 일괄 관리** — 스킬을 명명된 그룹으로 구성합니다(예: `--group my-tools`). `skillsmgr add group-name`으로 전체 그룹을 배포할 수 있습니다. 다양한 방법으로 그룹을 구성: `group add my-group skill-name`으로 개별 스킬 추가, `group add my-group owner/repo`로 저장소 전체 스킬 추가, `group add my-group another-group`으로 그룹 중첩이 가능합니다.
 - **Zip 아카이브 지원** — `.zip` 파일이나 Anthropic의 `.skill` 패키지에서 직접 스킬을 설치할 수 있어, GitHub 외부에서도 스킬 번들을 패키징하고 공유하기 간편합니다.
 
 ## 요구 사항
@@ -16,7 +16,7 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 
 ## 지원 도구
 
-모든 스킬은 `.agents/skills/`에 배포됩니다. 네이티브 도구는 해당 디렉토리를 직접 읽습니다. 비네이티브 도구는 레거시 스킬 경로에 대한 심볼릭 링크 브리지를 사용합니다. 아래 표는 대화형 선택기에 표시되는 16개 도구 목록입니다. 추가로 28개의 에이전트도 지원되며, 비대화형 명령에서 `-a` 플래그를 통해 직접 지정할 수 있습니다(예: `skillsmgr add code-review -a amp`). 전체 목록은 [docs/supported-agents.md](docs/supported-agents.md)를 참조하세요.
+모든 스킬은 `.agents/skills/`에 배포됩니다. 네이티브 도구는 해당 디렉토리를 직접 읽습니다. 비네이티브 도구는 레거시 스킬 경로에 대한 심볼릭 링크 브리지를 사용합니다. 아래 표는 대화형 선택기에 표시되는 17개 도구 목록입니다. 추가로 27개의 에이전트도 지원되며, 비대화형 명령에서 `-a` 플래그를 통해 직접 지정할 수 있습니다(예: `skillsmgr add code-review -a amp`). 전체 목록은 [docs/supported-agents.md](docs/supported-agents.md)를 참조하세요.
 
 | 도구 | 유형 | 프로젝트 경로 |
 |------|------|---------------|
@@ -25,6 +25,7 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 | Cursor | 네이티브 | `.agents/skills` |
 | OpenClaw | 심볼릭 링크 브리지 | `skills -> .agents/skills` |
 | OpenCode | 네이티브 | `.agents/skills` |
+| Antigravity | 네이티브 | `.agents/skills` |
 | Gemini CLI | 네이티브 | `.agents/skills` |
 | GitHub Copilot | 네이티브 | `.agents/skills` |
 | Cline | 네이티브 | `.agents/skills` |
@@ -80,8 +81,8 @@ project/
 | `skillsmgr list` | - | `~/.skills-manager/`에 설치된 스킬 목록 조회 |
 | `skillsmgr list --deployed` | - | 현재 프로젝트의 배포된 스킬 및 설정된 도구 목록 조회 |
 | `skillsmgr deploy` | - | 현재 프로젝트에 대화형 배포 |
-| `skillsmgr add [name]` | - | 프로젝트에 스킬 추가 |
-| `skillsmgr remove [name]` | - | 프로젝트에서 배포된 스킬 제거 |
+| `skillsmgr add [name]` | - | 프로젝트에 스킬 추가 (이름, `owner/repo` 또는 그룹 이름) |
+| `skillsmgr remove [name]` | - | 프로젝트에서 배포된 스킬 제거 (이름, `owner/repo` 또는 그룹 이름) |
 | `skillsmgr group <subcommand>` | - | 가상 스킬 그룹 관리 |
 
 ### 명령어 플래그
@@ -143,8 +144,8 @@ project/
 | `group list [name]` | 모든 그룹 목록 조회 또는 그룹 상세 조회 |
 | `group create <name>` | 새 빈 그룹 생성 |
 | `group delete <name>` | 그룹 삭제 (스킬에는 영향 없음) |
-| `group add <group> <skill>` | 그룹에 스킬 추가 |
-| `group remove <group> <skill>` | 그룹에서 스킬 제거 |
+| `group add <group> <identifier>` | 그룹에 스킬, `owner/repo` 소스 또는 다른 그룹 추가 |
+| `group remove <group> <identifier>` | 그룹에서 스킬, `owner/repo` 소스 또는 다른 그룹 제거 |
 | `group rename <old> <new>` | 그룹 이름 변경 |
 
 ## 스킬 설치
