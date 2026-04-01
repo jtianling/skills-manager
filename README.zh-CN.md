@@ -41,7 +41,7 @@
 
 ```bash
 # 1. 安装官方 Anthropic skills
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. 部署到当前项目
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### 安装官方 Anthropic skills
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### 从 GitHub 安装
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # 不交互, 安装发现到的全部 skills
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # 只安装指定名称的 skills
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

@@ -41,7 +41,7 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 
 ```bash
 # 1. Anthropic 공식 저장소에서 스킬 설치
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. 현재 프로젝트에 스킬 배포
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### Anthropic 공식 스킬
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### GitHub 저장소
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # 프롬프트 없이 발견된 모든 스킬 설치
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # 이름으로 특정 스킬만 설치
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

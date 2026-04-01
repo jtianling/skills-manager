@@ -62,7 +62,7 @@ The `install` command SHALL have alias `i`.
 
 #### Scenario: Alias i works
 - **WHEN** user runs `skillsmgr i anthropic`
-- **THEN** the system behaves identically to `skillsmgr install anthropic`
+- **THEN** the system behaves identically to `skillsmgr install anthropics/skills`
 
 #### Scenario: CLI help shows install options including --skill and --agent
 - **WHEN** 用户执行 `skillsmgr install --help`
@@ -755,7 +755,7 @@ Downloading 3 skills...
 | list | 有可用 skill (仅 available 模式) | 输出提示信息, 正常返回 |
 | list --deployed | 有部署 | 输出 "No skills deployed in current project.", 正常返回 |
 | deploy | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 deploy 流程 |
-| deploy | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropic" |
+| deploy | 有可用 skill | process.exit(1), 提示 "No skills found. Run: skillsmgr install anthropics/skills" |
 | add | `~/.skills-manager/` 存在 | 自动执行 `ensureSetup()`, 然后继续 add 流程 |
 | add (无参数) | 同 deploy 的前置条件 | 同 deploy |
 | add (skill name) | name 未找到 | exit(1), 提示 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote." |
@@ -779,7 +779,7 @@ Downloading 3 skills...
 
 #### Scenario: no available skills message
 - **WHEN** deploy 时没有可用 skill
-- **THEN** 输出 "No skills found. Run: skillsmgr install anthropic"
+- **THEN** 输出 "No skills found. Run: skillsmgr install anthropics/skills"
 
 #### Scenario: skill name 未找到提示改进
 - **WHEN** `skillsmgr add xxx` 未找到 skill

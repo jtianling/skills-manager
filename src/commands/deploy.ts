@@ -80,7 +80,7 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const allSkills = skillsService.getAllSkills();
 
   if (allSkills.length === 0) {
-    console.log('No skills found. Run: skillsmgr install anthropic');
+    console.log('No skills found. Run: skillsmgr install anthropics/skills');
     process.exit(1);
   }
 

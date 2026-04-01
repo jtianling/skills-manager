@@ -8,7 +8,7 @@
 所有依赖 `~/.skills-manager/` 目录的 CLI 命令 SHALL 在执行前自动检查并创建目录结构.  提供共享的 `ensureSetup()` 函数, 封装检查和初始化逻辑.
 
 #### Scenario: 首次使用 install 命令自动初始化
-- **WHEN** `~/.skills-manager/` 不存在, 用户执行 `skillsmgr install anthropic`
+- **WHEN** `~/.skills-manager/` 不存在, 用户执行 `skillsmgr install anthropics/skills`
 - **THEN** 自动创建 `~/.skills-manager/` 目录结构, 然后继续执行 install 流程
 
 #### Scenario: 首次使用 list 命令自动初始化

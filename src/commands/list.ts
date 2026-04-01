@@ -22,7 +22,7 @@ async function listAvailable(): Promise<void> {
 
   if (skills.length === 0) {
     console.log('No skills found in ~/.skills-manager/');
-    console.log('\nRun: skillsmgr install anthropic');
+    console.log('\nRun: skillsmgr install anthropics/skills');
     return;
   }
 

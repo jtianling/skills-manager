@@ -41,7 +41,7 @@ AIコーディングツールのための統合スキルマネージャーです
 
 ```bash
 # 1. 公式 Anthropic リポジトリからスキルをインストール
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. 現在のプロジェクトにスキルをデプロイ
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### 公式 Anthropic スキル
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### GitHub リポジトリ
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # プロンプトなしで検出された全スキルをインストール
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # 名前で特定のスキルのみインストール
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

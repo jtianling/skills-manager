@@ -13,7 +13,7 @@ export async function executeSetup(): Promise<void> {
 
   console.log('\nSetup complete!\n');
   console.log('Next steps:');
-  console.log('  skillsmgr install anthropic    # Download official Anthropic skills');
+  console.log('  skillsmgr install anthropics/skills  # Download official Anthropic skills');
   console.log('  skillsmgr list                 # View available skills');
   console.log('  skillsmgr deploy               # Deploy skills to your project');
 }

@@ -41,7 +41,7 @@ Todas as skills são implantadas em `.agents/skills/`. Ferramentas nativas leem 
 
 ```bash
 # 1. Instalar skills do repositório oficial da Anthropic
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. Implantar skills no projeto atual
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### Skills oficiais da Anthropic
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### Repositório GitHub
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # instalar todas as skills descobertas sem solicitar confirmação
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # instalar apenas skills específicas pelo nome
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

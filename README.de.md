@@ -41,7 +41,7 @@ Alle Skills werden in `.agents/skills/` bereitgestellt. Native Tools lesen diese
 
 ```bash
 # 1. Skills aus dem offiziellen Anthropic-Repository installieren
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. Skills im aktuellen Projekt bereitstellen
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### Offizielle Anthropic-Skills
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### GitHub-Repository
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # alle erkannten Skills ohne Rückfrage installieren
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # nur bestimmte Skills nach Name installieren
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

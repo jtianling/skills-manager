@@ -41,7 +41,7 @@
 
 ```bash
 # 1. Установка навыков из официального репозитория Anthropic
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. Развёртывание навыков в текущий проект
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### Официальные навыки Anthropic
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### Репозиторий GitHub
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # установить все обнаруженные навыки без запроса подтверждения
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # установить только конкретные навыки по имени
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

@@ -28,7 +28,7 @@ install 命令 SHALL 使用 `findInstalledCustomSkill(skillName)` 检测 skill �
 - **AND** `custom/my-linter` 被添加到 groups.json 的 python group
 
 #### Scenario: install 远程 skill 并入组
-- **WHEN** 用户执行 `skillsmgr install anthropic --group python`
+- **WHEN** 用户执行 `skillsmgr install anthropics/skills --group python`
 - **THEN** skill 安装到 `official/anthropic/skills/` 下
 - **AND** 每个安装的 skill key 被添加到 python group
 

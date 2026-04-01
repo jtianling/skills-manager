@@ -14,14 +14,14 @@ setup 命令 SHALL 有 E2E 测试验证真实 CLI 执行.
 install 命令 SHALL 有 E2E 测试验证真实下载和交互选择.
 
 #### Scenario: install --all 非交互下载
-- **WHEN** 执行 `skillsmgr install anthropic --all`
+- **WHEN** 执行 `skillsmgr install anthropics/skills --all`
 - **THEN** 输出包含 "Fetching available skills"
 - **THEN** 输出包含 "Installed"
 - **THEN** ~/.skills-manager/official/anthropic/ 目录下有 skill 子目录
 - **THEN** sources.json 有 anthropic 的记录
 
 #### Scenario: install 交互选择 (interactiveCheckbox)
-- **WHEN** 执行 `skillsmgr install anthropic`
+- **WHEN** 执行 `skillsmgr install anthropics/skills`
 - **THEN** 出现 "Select skills to install" 提示
 - **WHEN** 按 Space 选择当前 skill, 然后按 Enter 确认
 - **THEN** 只下载选中的 skill
