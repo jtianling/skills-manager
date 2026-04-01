@@ -190,7 +190,7 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     globalSkillsDir: join(home, '.gemini/antigravity/skills'),
     supportsLink: true,
     native: true,
-    showInList: false,
+    showInList: true,
   },
   'augment': {
     name: 'augment',

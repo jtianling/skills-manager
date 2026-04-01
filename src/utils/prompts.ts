@@ -23,7 +23,7 @@ function handlePromptError(error: unknown): never {
 const AGENTS_SKILLS_STANDARD_VALUE = 'agents-skills-standard';
 
 export const DISPLAY_ORDER: ToolName[] = [
-  'claude-code', 'codex', 'cursor', 'openclaw', 'opencode', 'gemini-cli',
+  'claude-code', 'codex', 'cursor', 'openclaw', 'opencode', 'antigravity', 'gemini-cli',
   'github-copilot', 'cline', 'kilo', 'roo', 'kiro-cli', 'trae',
   'trae-cn', 'codebuddy', 'windsurf', 'goose',
 ];

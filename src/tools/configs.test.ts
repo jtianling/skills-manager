@@ -35,7 +35,7 @@ describe('TOOL_CONFIGS', () => {
 
   it('16 tools have showInList=true', () => {
     const listedTools = SUPPORTED_TOOLS.filter((t) => TOOL_CONFIGS[t].showInList);
-    expect(listedTools.length).toBe(16);
+    expect(listedTools.length).toBe(17);
   });
 
   it('native tools have native=true and no symlinkDir', () => {
