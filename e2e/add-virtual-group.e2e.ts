@@ -59,7 +59,7 @@ describe('add interactive virtual group display E2E', () => {
     await tmux.pressEnter();
 
     // Second prompt: select skills — should show virtual group
-    const output = await tmux.waitForText(/Select skills to deploy/, 10_000);
+    const output = await tmux.waitForText(/Select skills to add/, 10_000);
 
     expect(output).toContain('develop');
     expect(output).toContain('vg-alpha');
@@ -82,7 +82,7 @@ describe('add interactive virtual group display E2E', () => {
     await tmux.pressSpace();
     await tmux.pressEnter();
 
-    const output = await tmux.waitForText(/Select skills to deploy/, 10_000);
+    const output = await tmux.waitForText(/Select skills to add/, 10_000);
 
     expect(output).toContain('flat-x');
     expect(output).toContain('flat-y');
@@ -114,7 +114,7 @@ describe('add interactive virtual group display E2E', () => {
     await tmux.pressSpace();
     await tmux.pressEnter();
 
-    const output = await tmux.waitForText(/Select skills to deploy/, 10_000);
+    const output = await tmux.waitForText(/Select skills to add/, 10_000);
 
     // Should show official and custom skills
     expect(output).toContain('skill-creator');
@@ -159,7 +159,7 @@ describe('add interactive virtual group display E2E', () => {
     await tmux.pressSpace();
     await tmux.pressEnter();
 
-    const output = await tmux.waitForText(/Select skills to deploy/, 10_000);
+    const output = await tmux.waitForText(/Select skills to add/, 10_000);
 
     expect(output).toContain('tools');
     // dep-a should be marked as deployed
@@ -199,7 +199,7 @@ describe('add interactive virtual group display E2E', () => {
     await tmux.pressSpace();
     await tmux.pressEnter();
 
-    await tmux.waitForText(/linked|already deployed|None selected/, 15_000);
+    await tmux.waitForText(/linked|already deployed|No new skills selected|None selected/, 15_000);
     tmux.destroy();
 
     // lock-a must still be deployed (space on locked item is a no-op)

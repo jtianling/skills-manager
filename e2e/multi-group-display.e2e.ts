@@ -11,7 +11,7 @@ describe('multi-group display E2E', () => {
   let tmux: TmuxSession;
 
   const fixturePath = join(import.meta.dirname, 'fixtures', 'multi-group-linkage.ts');
-  const command = `node --experimental-strip-types "${fixturePath}"`;
+  const command = `tsx "${fixturePath}"`;
 
   beforeEach(() => {
     env = createTestEnv();

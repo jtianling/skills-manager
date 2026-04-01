@@ -11,7 +11,7 @@ describe('interactive select fold E2E', () => {
   let tmux: TmuxSession;
 
   const fixturePath = join(import.meta.dirname, 'fixtures', 'interactive-select-fold.ts');
-  const command = `node --experimental-strip-types "${fixturePath}"`;
+  const command = `tsx "${fixturePath}"`;
 
   beforeEach(() => {
     env = createTestEnv();
