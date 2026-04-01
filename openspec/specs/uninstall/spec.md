@@ -4,7 +4,7 @@
 系统 SHALL 支持通过 provider key 卸载该 provider 下所有已安装的 skills.  命令格式: `skillsmgr uninstall <providerKey>`.  系统 SHALL 同时支持 provider 的别名(如 `vercel` -> `vercel-labs`).
 
 #### Scenario: 卸载整个 official provider
-- **WHEN** 用户执行 `skillsmgr uninstall anthropic`
+- **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills`
 - **THEN** 系统列出 `~/.skills-manager/official/anthropic/` 下所有已安装的 skills
 - **THEN** 系统警告 symlink 部署可能失效
 - **THEN** 系统请求用户确认
@@ -17,7 +17,7 @@
 - **THEN** 行为与直接使用 `vercel-labs` 一致
 
 #### Scenario: provider 不存在
-- **WHEN** 用户执行 `skillsmgr uninstall anthropic` 但 `~/.skills-manager/official/anthropic/` 不存在
+- **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills` 但 `~/.skills-manager/official/anthropic/` 不存在
 - **THEN** 系统输出错误信息并退出
 
 ### Requirement: 按 community source 卸载
@@ -81,7 +81,7 @@
 - **THEN** 系统取消操作, 不删除任何文件
 
 #### Scenario: force 模式跳过确认
-- **WHEN** 用户执行 `skillsmgr uninstall anthropic --force`
+- **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills --force`
 - **THEN** 系统跳过确认直接执行删除
 
 ### Requirement: sources.json 清理

@@ -427,14 +427,14 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 
 ## 前置条件
 
-- 大部分 skill 操作 (除 `setup`, `init`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
-- `init` 和 `add` 检查 `~/.skills-manager/` 目录是否存在, 不存在时自动执行 `executeSetup()` 完成初始化, 然后继续原命令流程
-- `init` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropic"
-- `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr init"
+- 大部分 skill 操作 (除 `setup`, `deploy`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
+- `deploy` 和 `add` 检查 `~/.skills-manager/` 目录是否存在, 不存在时自动执行 `executeSetup()` 完成初始化, 然后继续原命令流程
+- `deploy` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropics/skills"
+- `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr deploy"
 
-#### Scenario: init precondition check
-- **WHEN** 无可用 skill 时执行 `init`
-- **THEN** 输出 "No skills found. Run: skillsmgr install anthropic" 并 exit(1)
+#### Scenario: deploy precondition check
+- **WHEN** 无可用 skill 时执行 `deploy`
+- **THEN** 输出 "No skills found. Run: skillsmgr install anthropics/skills" 并 exit(1)
 
 #### Scenario: add precondition check
 - **WHEN** name 不匹配任何 skill 时执行 `add`

@@ -41,7 +41,7 @@
 
 ```bash
 # 1. تثبيت المهارات من مستودع Anthropic الرسمي
-npx skillsmgr install anthropic
+npx skillsmgr install anthropics/skills
 
 # 2. نشر المهارات في المشروع الحالي
 cd your-project
@@ -152,8 +152,8 @@ project/
 ### مهارات Anthropic الرسمية
 
 ```bash
-npx skillsmgr install anthropic
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills
+npx skillsmgr install anthropics/skills --all
 ```
 
 ### مستودع GitHub
@@ -187,7 +187,7 @@ npx skillsmgr install ./my-skill --group my-tools
 
 ```bash
 # تثبيت جميع المهارات المكتشفة بدون مطالبة
-npx skillsmgr install anthropic --all
+npx skillsmgr install anthropics/skills --all
 
 # تثبيت مهارات محدّدة بالاسم فقط
 npx skillsmgr install anthropics/skills -s code-review -s commit-message

@@ -272,7 +272,7 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 #### Scenario: 项目无已配置 agent
 - **WHEN** 用户执行 `skillsmgr add code-review --same-agents`
 - **AND** 项目无已配置 agent
-- **THEN** 输出 `No agents configured. Run 'skillsmgr init' or omit --same-agents flag.`
+- **THEN** 输出 `No agents configured. Run 'skillsmgr deploy' or omit --same-agents flag.`
 - **AND** 以退出码 1 退出
 
 ### Requirement: -a 和 --same-agents 互斥
