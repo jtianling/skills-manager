@@ -161,6 +161,12 @@ export async function interactiveCheckbox(
     new Set(choices.flatMap((c) => c.subGroup === undefined ? [] : [c.subGroup]))
   );
 
+  const valueToIndices = new Map<string, number[]>();
+  for (let i = 0; i < choices.length; i++) {
+    const indices = valueToIndices.get(choices[i].value) ?? [];
+    valueToIndices.set(choices[i].value, [...indices, i]);
+  }
+
   let searchQuery = '';
   let isSearchMode = false;
   let isFiltered = false;
@@ -375,6 +381,18 @@ export async function interactiveCheckbox(
       lastKeyWasG = false;
     };
 
+    const syncLinked = (triggerIndex: number) => {
+      const value = choices[triggerIndex].value;
+      const indices = valueToIndices.get(value);
+      if (!indices || indices.length <= 1) return;
+      const isSelected = selected.has(triggerIndex);
+      for (const idx of indices) {
+        if (choices[idx].locked) continue;
+        if (isSelected) selected.add(idx);
+        else selected.delete(idx);
+      }
+    };
+
     const getCursorTarget = (): { choiceIndex?: number; subGroupName?: string; displayIndex: number } => {
       const item = displayItems[cursor];
       if (!item) return { displayIndex: cursor };
@@ -494,9 +512,11 @@ export async function interactiveCheckbox(
         }
 
         resolve(
-          Array.from(selected)
-            .sort((a, b) => a - b)
-            .map((i) => choices[i].value)
+          [...new Set(
+            Array.from(selected)
+              .sort((a, b) => a - b)
+              .map((i) => choices[i].value)
+          )]
         );
         return;
       }
@@ -513,6 +533,7 @@ export async function interactiveCheckbox(
           } else {
             unlocked.forEach((idx) => selected.add(idx));
           }
+          for (const idx of unlocked) syncLinked(idx);
           onToggle?.(selected, choices);
           render();
         } else if (item && item.type === 'choice') {
@@ -523,6 +544,7 @@ export async function interactiveCheckbox(
           } else {
             selected.add(choiceIndex);
           }
+          syncLinked(choiceIndex);
           onToggle?.(selected, choices);
           render();
         }
@@ -542,6 +564,7 @@ export async function interactiveCheckbox(
         } else {
           indicesToToggle.forEach((i) => selected.add(i));
         }
+        for (const i of indicesToToggle) syncLinked(i);
         onToggle?.(selected, choices);
         render();
         return;

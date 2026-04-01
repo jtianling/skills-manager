@@ -209,33 +209,38 @@ export function buildVirtualGroupChoices<
   options: BuildVirtualGroupChoicesOptions<T> = {},
 ): SelectChoice[] {
   const groupNames = Object.keys(groupsData).sort((a, b) => a.localeCompare(b));
-  const skillToGroup = new Map<string, string>();
+  const skillToGroups = new Map<string, string[]>();
 
   for (const groupName of groupNames) {
     const skillKeys = groupsData[groupName] ?? [];
     for (const skillKey of skillKeys) {
-      if (!skillToGroup.has(skillKey)) {
-        skillToGroup.set(skillKey, groupName);
-      }
+      const existing = skillToGroups.get(skillKey) ?? [];
+      skillToGroups.set(skillKey, [...existing, groupName]);
     }
   }
 
   const groupedSkills = new Map<string, T[]>();
   const ungroupedSkills: T[] = [];
-  let hasNamedGroup = false;
+  const hasNamedGroup = groupNames.length > 0;
 
   for (const skill of skills) {
     const skillKey = `${skill.source}/${skill.name}`;
-    const groupName = skillToGroup.get(skillKey);
+    const groups = skillToGroups.get(skillKey);
 
-    if (groupName) {
-      hasNamedGroup = true;
-      const existing = groupedSkills.get(groupName) ?? [];
-      groupedSkills.set(groupName, [...existing, skill]);
+    if (groups && groups.length > 0) {
+      for (const gn of groups) {
+        groupedSkills.set(gn, [...(groupedSkills.get(gn) ?? []), skill]);
+      }
       continue;
     }
 
     ungroupedSkills.push(skill);
+  }
+
+  for (const gn of groupNames) {
+    if (!groupedSkills.has(gn)) {
+      groupedSkills.set(gn, []);
+    }
   }
 
   const toChoice = (skill: T, subGroup?: string): SelectChoice => ({
@@ -260,7 +265,17 @@ export function buildVirtualGroupChoices<
 
   for (const groupName of orderedGroups) {
     const groupSkills = groupedSkills.get(groupName) ?? [];
-    choices.push(...groupSkills.map((skill) => toChoice(skill, groupName)));
+    if (groupSkills.length === 0) {
+      choices.push({
+        name: '(empty)',
+        description: undefined,
+        value: `__empty_${groupName}`,
+        locked: true,
+        subGroup: groupName,
+      });
+    } else {
+      choices.push(...groupSkills.map((skill) => toChoice(skill, groupName)));
+    }
   }
 
   if (ungroupedSkills.length > 0) {
@@ -284,32 +299,22 @@ export function buildSourceGroupedChoices<
     getLocked?: (skill: T) => boolean | undefined;
   } = {},
 ): SelectChoice[] {
-  const skillToGroup = new Map<string, string>();
+  const skillToGroups = new Map<string, string[]>();
   for (const [groupName, keys] of Object.entries(groupsData)) {
     for (const key of keys) {
-      if (!skillToGroup.has(key)) skillToGroup.set(key, groupName);
+      const existing = skillToGroups.get(key) ?? [];
+      skillToGroups.set(key, [...existing, groupName]);
     }
   }
-
-  const movedToVirtualGroup = new Map<string, T[]>();
-  const movedKeys = new Set<string>();
 
   const byCategory = new Map<string, T[]>();
   for (const skill of skills) {
-    const skillKey = `${skill.source}/${skill.name}`;
     const { category } = parseSource(skill.source);
-    const vg = skillToGroup.get(skillKey);
-
-    if (vg && category !== 'custom') {
-      movedToVirtualGroup.set(vg, [...(movedToVirtualGroup.get(vg) ?? []), skill]);
-      movedKeys.add(skillKey);
-    } else {
-      byCategory.set(category, [...(byCategory.get(category) ?? []), skill]);
-    }
+    byCategory.set(category, [...(byCategory.get(category) ?? []), skill]);
   }
 
-  const hasMovedSkills = movedKeys.size > 0;
-  if (hasMovedSkills && !byCategory.has('custom')) {
+  const hasVirtualGroups = Object.keys(groupsData).length > 0;
+  if (hasVirtualGroups && !byCategory.has('custom')) {
     byCategory.set('custom', []);
   }
 
@@ -336,6 +341,11 @@ export function buildSourceGroupedChoices<
 
   const choices: SelectChoice[] = [];
 
+  const skillsByKey = new Map<string, T>();
+  for (const skill of skills) {
+    skillsByKey.set(`${skill.source}/${skill.name}`, skill);
+  }
+
   for (const category of categories) {
     const catSkills = byCategory.get(category)!;
     const group = showCategory ? category : undefined;
@@ -345,26 +355,41 @@ export function buildSourceGroupedChoices<
       const ungrouped: T[] = [];
       let hasNamed = false;
 
+      for (const [gn, keys] of Object.entries(groupsData)) {
+        hasNamed = true;
+        const matchingSkills: T[] = [];
+        for (const key of keys) {
+          const skill = skillsByKey.get(key);
+          if (skill) matchingSkills.push(skill);
+        }
+        grouped.set(gn, matchingSkills);
+      }
+
       for (const skill of catSkills) {
-        const vg = skillToGroup.get(`${skill.source}/${skill.name}`);
-        if (vg) {
-          hasNamed = true;
-          grouped.set(vg, [...(grouped.get(vg) ?? []), skill]);
-        } else {
+        const groups = skillToGroups.get(`${skill.source}/${skill.name}`);
+        if (!groups || groups.length === 0) {
           ungrouped.push(skill);
         }
       }
 
-      for (const [vgName, vgSkills] of movedToVirtualGroup) {
-        hasNamed = true;
-        grouped.set(vgName, [...(grouped.get(vgName) ?? []), ...vgSkills]);
-      }
-
       if (hasNamed) {
         for (const gn of Array.from(grouped.keys()).sort()) {
-          choices.push(...grouped.get(gn)!.map(s =>
-            toChoice(s, group, gn, getSourceSuffix(s.source))
-          ));
+          const gSkills = grouped.get(gn)!;
+          if (gSkills.length === 0) {
+            choices.push({
+              name: '(empty)',
+              description: undefined,
+              value: `__empty_${gn}`,
+              locked: true,
+              group,
+              subGroup: gn,
+              suffix: undefined,
+            });
+          } else {
+            choices.push(...gSkills.map(s =>
+              toChoice(s, group, gn, getSourceSuffix(s.source))
+            ));
+          }
         }
         if (ungrouped.length > 0) {
           choices.push(...ungrouped.map(s => toChoice(s, group)));
@@ -539,6 +564,26 @@ export async function promptSelect<T extends string>(
     render(true);
     process.stdin.on('keypress', onKey);
   });
+}
+
+export async function promptGroupAddConflictResolution(
+  group: string,
+  existingKey: string,
+  newKey: string,
+): Promise<'replace' | 'skip'> {
+  return promptSelect(
+    `Name conflict in group '${group}'. Choose an action:`,
+    [
+      {
+        name: `Replace ${existingKey} with ${newKey}`,
+        value: 'replace',
+      },
+      {
+        name: `Skip ${newKey}`,
+        value: 'skip',
+      },
+    ],
+  );
 }
 
 export interface ResolveAgentsOptions {

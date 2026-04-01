@@ -140,14 +140,14 @@ describe('prompts', () => {
       message: 'Select skills to deploy:',
       choices: [
         {
-          name: 'review',
-          description: 'Review skill',
-          value: 'review',
-          checked: undefined,
-          suffix: undefined,
+          name: 'commit',
+          description: 'Commit skill',
+          value: 'commit',
+          checked: true,
+          suffix: '[deployed]',
           locked: undefined,
-          group: undefined,
-          subGroup: 'develop',
+          group: 'official',
+          subGroup: 'anthropic/skills',
         },
         {
           name: 'commit',
@@ -156,7 +156,17 @@ describe('prompts', () => {
           checked: true,
           suffix: '(anthropic/skills) [deployed]',
           locked: undefined,
-          group: undefined,
+          group: 'custom',
+          subGroup: 'develop',
+        },
+        {
+          name: 'review',
+          description: 'Review skill',
+          value: 'review',
+          checked: undefined,
+          suffix: undefined,
+          locked: undefined,
+          group: 'custom',
           subGroup: 'develop',
         },
       ],
@@ -187,9 +197,19 @@ describe('prompts', () => {
           description: 'Commit skill',
           value: '/skills/official/anthropic/skills/commit',
           checked: undefined,
+          suffix: undefined,
+          locked: undefined,
+          group: 'official',
+          subGroup: 'anthropic/skills',
+        },
+        {
+          name: 'commit',
+          description: 'Commit skill',
+          value: '/skills/official/anthropic/skills/commit',
+          checked: undefined,
           suffix: '(anthropic/skills)',
           locked: undefined,
-          group: undefined,
+          group: 'custom',
           subGroup: 'develop',
         },
       ],
@@ -268,7 +288,7 @@ describe('prompts', () => {
     ]);
   });
 
-  it('uses the first matching virtual group alphabetically', () => {
+  it('shows skill in all matching virtual groups', () => {
     const choices = buildVirtualGroupChoices(
       [
         {
@@ -293,10 +313,18 @@ describe('prompts', () => {
         locked: undefined,
         subGroup: 'jt-tools',
       },
+      {
+        name: 'jt-codex',
+        description: 'Codex',
+        value: 'jt-codex',
+        suffix: undefined,
+        locked: undefined,
+        subGroup: 'openspec',
+      },
     ]);
   });
 
-  it('falls back to a flat list when no skills belong to any virtual group', () => {
+  it('shows empty group header when no skills match the group', () => {
     const choices = buildVirtualGroupChoices(
       [
         {
@@ -318,6 +346,13 @@ describe('prompts', () => {
     );
 
     expect(choices).toEqual([
+      {
+        name: '(empty)',
+        description: undefined,
+        value: '__empty_unused',
+        locked: true,
+        subGroup: 'unused',
+      },
       {
         name: 'flat-a',
         description: 'A',
@@ -457,7 +492,7 @@ describe('buildVirtualGroupChoices source suffix', () => {
 });
 
 describe('buildSourceGroupedChoices cross-source virtual groups', () => {
-  it('moves official skill to virtual group with source suffix', () => {
+  it('shows official skill in both source and virtual group', () => {
     const choices = buildSourceGroupedChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -467,9 +502,15 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
       { dev: ['official/anthropic/skills/commit', 'custom/my-tool'] },
     );
 
-    const commit = choices.find(c => c.name === 'commit')!;
-    expect(commit.subGroup).toBe('dev');
-    expect(commit.suffix).toBe('(anthropic/skills)');
+    const commitChoices = choices.filter(c => c.name === 'commit');
+    expect(commitChoices).toHaveLength(2);
+
+    const commitOfficial = commitChoices.find(c => c.group === 'official')!;
+    expect(commitOfficial.subGroup).toBe('anthropic/skills');
+    expect(commitOfficial.suffix).toBeUndefined();
+
+    const commitVg = commitChoices.find(c => c.subGroup === 'dev')!;
+    expect(commitVg.suffix).toBe('(anthropic/skills)');
 
     const review = choices.find(c => c.name === 'review')!;
     expect(review.subGroup).toBe('anthropic/skills');
@@ -481,7 +522,7 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
     expect(myTool.suffix).toBeUndefined();
   });
 
-  it('official skill not duplicated in source category', () => {
+  it('skill appears in source category and all virtual groups', () => {
     const choices = buildSourceGroupedChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -491,11 +532,14 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
     );
 
     const commitChoices = choices.filter(c => c.name === 'commit');
-    expect(commitChoices).toHaveLength(1);
-    expect(commitChoices[0].subGroup).toBe('dev');
+    expect(commitChoices).toHaveLength(2);
+    expect(commitChoices[0].group).toBe('official');
+    expect(commitChoices[0].subGroup).toBe('anthropic/skills');
+    expect(commitChoices[1].group).toBe('custom');
+    expect(commitChoices[1].subGroup).toBe('dev');
   });
 
-  it('hides empty source sub-group when all skills moved to virtual group', () => {
+  it('official source sub-group remains when skills belong to virtual group', () => {
     const choices = buildSourceGroupedChoices(
       [
         { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
@@ -505,7 +549,23 @@ describe('buildSourceGroupedChoices cross-source virtual groups', () => {
     );
 
     const officialChoices = choices.filter(c => c.group === 'official');
-    expect(officialChoices).toHaveLength(0);
+    expect(officialChoices).toHaveLength(1);
+    expect(officialChoices[0].name).toBe('commit');
+  });
+
+  it('shows empty virtual group header in custom section', () => {
+    const choices = buildSourceGroupedChoices(
+      [
+        { name: 'commit', source: 'official/anthropic/skills', description: 'Commit' },
+        { name: 'my-tool', source: 'custom', description: 'My tool' },
+      ],
+      { dev: ['custom/my-tool'], 'empty-group': [] },
+    );
+
+    const emptyChoice = choices.find(c => c.subGroup === 'empty-group')!;
+    expect(emptyChoice.name).toBe('(empty)');
+    expect(emptyChoice.locked).toBe(true);
+    expect(emptyChoice.group).toBe('custom');
   });
 
   it('behaves unchanged when no virtual groups', () => {
