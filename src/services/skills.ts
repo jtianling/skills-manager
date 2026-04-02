@@ -63,7 +63,7 @@ export class SkillsService {
         } else {
           const subDirs = getDirectoriesInDir(topDir.path);
           for (const subDir of subDirs) {
-            const nestedSkill = this.loadSkill(subDir.path, sourcePrefix);
+            const nestedSkill = this.loadSkill(subDir.path, `${sourcePrefix}/${topDir.name}`);
             if (nestedSkill) {
               skills.push(nestedSkill);
             }
