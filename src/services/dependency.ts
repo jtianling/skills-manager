@@ -28,8 +28,11 @@ export interface GitHubRepoDependency {
 export type ParsedDependency = RegistryDependency | GitHubSkillDependency | GitHubRepoDependency;
 
 export function parseDependencyIdentifier(dep: string): ParsedDependency {
+  // Normalize: trim trailing slashes for consistency with source-detection.ts
+  const normalized = dep.replace(/\/+$/, '');
+
   // owner/repo:skillName
-  const ghSkillMatch = dep.match(GITHUB_SKILL_PATTERN);
+  const ghSkillMatch = normalized.match(GITHUB_SKILL_PATTERN);
   if (ghSkillMatch) {
     return {
       type: 'github-skill',
@@ -40,7 +43,7 @@ export function parseDependencyIdentifier(dep: string): ParsedDependency {
   }
 
   // owner/repo
-  const ghRepoMatch = dep.match(GITHUB_REPO_PATTERN);
+  const ghRepoMatch = normalized.match(GITHUB_REPO_PATTERN);
   if (ghRepoMatch) {
     return {
       type: 'github-repo',
@@ -52,7 +55,7 @@ export function parseDependencyIdentifier(dep: string): ParsedDependency {
   // bare package name (registry)
   return {
     type: 'registry',
-    packageName: dep,
+    packageName: normalized,
   };
 }
 
@@ -89,7 +92,7 @@ export async function resolveDependencies(
   installing: Set<string> = new Set(),
   depth: number = 0,
 ): Promise<void> {
-  if (depth > MAX_DEPTH) {
+  if (depth >= MAX_DEPTH) {
     throw new Error('Dependency chain too deep (max 10 levels)');
   }
 

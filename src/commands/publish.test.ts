@@ -1,15 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkDependencyAvailability, handleUnavailableDeps, type UnavailableDep } from './publish.js';
 
-// Mock registry service
+// vi.hoisted so the mock fn is available when vi.mock is hoisted
+const { mockGetPackument } = vi.hoisted(() => ({
+  mockGetPackument: vi.fn(async (name: string) => {
+    if (name === 'existing-pkg') {
+      return { name: 'existing-pkg', 'dist-tags': { latest: '1.0.0' }, versions: {} };
+    }
+    throw new Error(`Package "${name}" not found in registry`);
+  }),
+}));
+
 vi.mock('../services/registry.js', () => ({
   RegistryService: vi.fn().mockImplementation(() => ({
-    getPackument: vi.fn(async (name: string) => {
-      if (name === 'existing-pkg') {
-        return { name: 'existing-pkg', 'dist-tags': { latest: '1.0.0' }, versions: {} };
-      }
-      throw new Error(`Package "${name}" not found in registry`);
-    }),
+    getPackument: mockGetPackument,
     publish: vi.fn(async () => ({ ok: true })),
   })),
 }));
@@ -25,6 +29,13 @@ const mockPromptSelect = vi.mocked(promptSelect);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Restore default getPackument behavior after clearAllMocks wipes it
+  mockGetPackument.mockImplementation(async (name: string) => {
+    if (name === 'existing-pkg') {
+      return { name: 'existing-pkg', 'dist-tags': { latest: '1.0.0' }, versions: {} };
+    }
+    throw new Error(`Package "${name}" not found in registry`);
+  });
 });
 
 describe('checkDependencyAvailability', () => {
@@ -56,6 +67,14 @@ describe('checkDependencyAvailability', () => {
     const result = await checkDependencyAvailability(['existing-pkg', 'missing-pkg', 'owner/repo']);
     expect(result).toHaveLength(2);
     expect(result.map(d => d.identifier)).toEqual(['missing-pkg', 'owner/repo']);
+  });
+
+  it('rethrows non-404 errors (network/server failures)', async () => {
+    mockGetPackument.mockRejectedValueOnce(
+      new Error('Failed to fetch package "server-pkg": 500 Internal Server Error'),
+    );
+
+    await expect(checkDependencyAvailability(['server-pkg'])).rejects.toThrow('500 Internal Server Error');
   });
 });
 
@@ -94,7 +113,7 @@ describe('handleUnavailableDeps', () => {
     expect(result.updatedDependencies).toContain('owner/repo:helper');
   });
 
-  it('proceeds with cascade publish attempt for GitHub deps', async () => {
+  it('returns proceed=false when cascade publish fails (needs manual publish)', async () => {
     const unavailable: UnavailableDep[] = [{
       identifier: 'owner/repo:helper',
       parsed: { type: 'github-skill', owner: 'owner', repo: 'repo', skillName: 'helper' },
@@ -103,9 +122,8 @@ describe('handleUnavailableDeps', () => {
     mockPromptSelect.mockResolvedValueOnce('publish-together' as never);
 
     const result = await handleUnavailableDeps(unavailable, manifest, token);
-    expect(result.proceed).toBe(true);
-    // GitHub cascade publish currently returns null (needs manual publish),
-    // so the dep gets removed
-    expect(result.updatedDependencies).not.toContain('owner/repo:helper');
+    expect(result.proceed).toBe(false);
+    // Dependency should NOT be removed — user must publish manually first
+    expect(result.updatedDependencies).toContain('owner/repo:helper');
   });
 });

@@ -50,8 +50,13 @@ export async function checkDependencyAvailability(
     if (parsed.type === 'registry') {
       try {
         await registryService.getPackument(parsed.packageName);
-      } catch {
-        unavailable.push({ identifier: dep, parsed });
+      } catch (error) {
+        // Only treat "not found" as unavailable; rethrow network/server errors
+        if (error instanceof Error && error.message.includes('not found')) {
+          unavailable.push({ identifier: dep, parsed });
+        } else {
+          throw error;
+        }
       }
     } else {
       // GitHub dependencies are not on registry by definition
@@ -104,9 +109,8 @@ export async function handleUnavailableDeps(
             console.log(`Updated dependency "${identifier}" → "${publishedName}"`);
           }
         } else {
-          console.warn(`Failed to cascade publish "${identifier}". Skipping.`);
-          const idx = updatedDeps.indexOf(identifier);
-          if (idx !== -1) updatedDeps.splice(idx, 1);
+          console.error(`Cannot cascade publish "${identifier}". Please publish it manually first, then retry.`);
+          return { proceed: false, updatedDependencies: updatedDeps };
         }
         break;
       }

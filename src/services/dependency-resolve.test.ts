@@ -62,7 +62,7 @@ describe('resolveDependencies', () => {
   it('throws on max depth exceeded', async () => {
     const opts = createMockOptions();
     await expect(
-      resolveDependencies(['x'], 'y', opts, new Set(), 11)
+      resolveDependencies(['x'], 'y', opts, new Set(), 10)
     ).rejects.toThrow('Dependency chain too deep (max 10 levels)');
   });
 

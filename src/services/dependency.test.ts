@@ -48,4 +48,20 @@ describe('parseDependencyIdentifier', () => {
       packageName: 'simple',
     });
   });
+
+  it('handles trailing slash on owner/repo', () => {
+    expect(parseDependencyIdentifier('obra/superpowers/')).toEqual({
+      type: 'github-repo',
+      owner: 'obra',
+      repo: 'superpowers',
+    });
+  });
+
+  it('handles trailing slash on owner/repo with multiple slashes', () => {
+    expect(parseDependencyIdentifier('obra/superpowers//')).toEqual({
+      type: 'github-repo',
+      owner: 'obra',
+      repo: 'superpowers',
+    });
+  });
 });
