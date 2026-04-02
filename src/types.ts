@@ -74,7 +74,7 @@ export interface SkillManifest {
   author?: string;
   license?: string;
   engines?: Record<string, string>;
-  dependencies?: Record<string, string>;
+  dependencies?: string[];
 }
 
 export interface PackumentVersion {

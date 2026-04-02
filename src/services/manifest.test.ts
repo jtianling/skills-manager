@@ -105,4 +105,57 @@ describe('validateManifest', () => {
     expect(result.valid).toBe(false);
     expect(result.errors[0]).toContain('Invalid version');
   });
+
+  it('accepts dependencies as string array', () => {
+    const result = validateManifest({
+      name: 'my-skill',
+      version: '1.0.0',
+      description: 'A skill',
+      dependencies: ['base-prompts', 'owner/repo:skill-name', 'owner/repo'],
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('accepts empty dependencies array', () => {
+    const result = validateManifest({
+      name: 'my-skill',
+      version: '1.0.0',
+      description: 'A skill',
+      dependencies: [],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts manifest without dependencies field', () => {
+    const result = validateManifest({
+      name: 'my-skill',
+      version: '1.0.0',
+      description: 'A skill',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects Record<string, string> dependencies with migration hint', () => {
+    const result = validateManifest({
+      name: 'my-skill',
+      version: '1.0.0',
+      description: 'A skill',
+      dependencies: { 'foo': '^1.0.0' } as unknown as string[],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('string[]');
+    expect(result.errors[0]).toContain('no longer supported');
+  });
+
+  it('rejects non-string items in dependencies array', () => {
+    const result = validateManifest({
+      name: 'my-skill',
+      version: '1.0.0',
+      description: 'A skill',
+      dependencies: ['valid', 123 as unknown as string],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain('expected string');
+  });
 });
