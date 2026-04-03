@@ -5,20 +5,33 @@ import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ListOptions } from '../types.js';
 import { ensureSetup } from './setup.js';
+import { jsonOutput } from '../utils/json-output.js';
 
 export async function executeList(options: ListOptions): Promise<void> {
   if (options.deployed) {
-    await listDeployed();
+    await listDeployed(options);
   } else {
-    await listAvailable();
+    await listAvailable(options);
   }
 }
 
-async function listAvailable(): Promise<void> {
+async function listAvailable(options: ListOptions = {}): Promise<void> {
   await ensureSetup();
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const skills = skillsService.getAllSkills();
+
+  if (options.json) {
+    jsonOutput({
+      skills: skills.map((s) => ({
+        name: s.name,
+        source: s.source,
+        category: s.source.split('/')[0],
+        path: s.path,
+      })),
+    });
+    return;
+  }
 
   if (skills.length === 0) {
     console.log('No skills found in ~/.skills-manager/');
@@ -72,9 +85,21 @@ async function listAvailable(): Promise<void> {
   }
 }
 
-async function listDeployed(): Promise<void> {
+async function listDeployed(options: ListOptions = {}): Promise<void> {
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const skills = scanner.getDeployedSkills();
+
+  if (options.json) {
+    jsonOutput({
+      skills: skills.map((s) => ({
+        name: s.name,
+        source: s.source,
+        deployMode: s.deployMode,
+        conflict: s.conflict ?? false,
+      })),
+    });
+    return;
+  }
 
   if (skills.length === 0) {
     console.log('No skills deployed in current project.');
@@ -118,6 +143,7 @@ async function listDeployed(): Promise<void> {
 export const listCommand = new Command('list')
   .description('List available or deployed skills')
   .option('--deployed', 'List deployed skills in current project')
+  .option('--json', 'Output as JSON')
   .action(async (options: ListOptions) => {
     await executeList(options);
   });
