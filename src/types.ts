@@ -38,6 +38,7 @@ export interface InstallOptions {
 export interface DeployOptions {
   copy?: boolean;
   global?: boolean;
+  json?: boolean;
 }
 
 export interface AddOptions {
@@ -49,6 +50,7 @@ export interface AddOptions {
   group?: string;
   all?: boolean;
   yes?: boolean;
+  json?: boolean;
 }
 
 export interface RemoveOptions {
@@ -59,10 +61,12 @@ export interface RemoveOptions {
   all?: boolean;
   group?: string;
   yes?: boolean;
+  json?: boolean;
 }
 
 export interface ListOptions {
   deployed?: boolean;
+  json?: boolean;
 }
 
 export interface SkillManifest {
