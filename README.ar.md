@@ -7,6 +7,8 @@
 ## أبرز الميزات
 
 - **مستودع مركزي, نشر في أي مكان** — تُثبَّت المهارات مرة واحدة في `~/.skills-manager/`. بعد ذلك, يتيح لك أمر `add` اختيار المهارات المثبّتة محليًا بشكل تفاعلي ونشرها في أي مشروع أو على المستوى العام — دون الحاجة لتذكّر رابط المستودع الأصلي أو مساره في كل مرة.
+- **تكامل السجل** — ابحث عن المهارات وثبّتها وانشرها عبر سجل [skillsmgr.dev](https://skillsmgr.dev). `skillsmgr install code-review` يجلب من السجل. `skillsmgr publish` يتيح لك مشاركة مهاراتك مع المجتمع.
+- **حل التبعيات التلقائي** — يمكن للمهارات الإعلان عن تبعياتها على مهارات أخرى. عند تثبيت مهارة، يتم حل تبعياتها وتثبيتها تلقائيًا بشكل متكرر.
 - **مجموعات مخصّصة للإدارة الدفعية** — نظّم المهارات في مجموعات مسمّاة (مثل `--group my-tools`). انشر مجموعة كاملة بأمر `skillsmgr add group-name`. يمكنك ملء المجموعات من مصادر متعدّدة: إضافة مهارات فردية بـ `group add my-group skill-name`, أو جميع مهارات مستودع بـ `group add my-group owner/repo`, أو تداخل المجموعات بـ `group add my-group another-group`.
 - **دعم أرشيفات Zip** — ثبّت المهارات مباشرة من ملفات `.zip` أو حزم `.skill` من Anthropic, مما يجعل تعبئة ومشاركة حزم المهارات خارج GitHub أمرًا بسيطًا.
 
@@ -75,7 +77,7 @@ project/
 
 | الأمر | الاختصار | الوصف |
 |---------|-------|-------------|
-| `skillsmgr install <source>` | `i` | تثبيت المهارات من GitHub أو مجلد محلي أو أرشيف zip |
+| `skillsmgr install <source>` | `i` | تثبيت المهارات من GitHub أو مجلد محلي أو أرشيف zip أو السجل |
 | `skillsmgr uninstall [identifier]` | - | إزالة المهارات من `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | تحديث المهارات المثبّتة من المصادر المتتبَّعة |
 | `skillsmgr list` | - | عرض المهارات المثبّتة في `~/.skills-manager/` |
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | إضافة مهارة إلى المشروع (اسم, `owner/repo`, أو اسم مجموعة) |
 | `skillsmgr remove [name]` | - | إزالة مهارة منشورة من المشروع (اسم, `owner/repo`, أو اسم مجموعة) |
 | `skillsmgr group <subcommand>` | - | إدارة مجموعات المهارات الافتراضية |
+| `skillsmgr search [query]` | - | البحث عن المهارات في سجل skillsmgr.dev |
+| `skillsmgr publish [dir]` | - | نشر مهارة في سجل skillsmgr.dev |
+| `skillsmgr login` | - | تسجيل الدخول إلى سجل skillsmgr.dev |
+| `skillsmgr logout` | - | تسجيل الخروج من السجل |
+| `skillsmgr whoami` | - | عرض المستخدم المسجّل دخوله حاليًا |
 
 ### علامات الأوامر
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | إعادة تسمية مجموعة |
 
 ## تثبيت المهارات
+
+### من السجل
+
+```bash
+# التثبيت باسم الحزمة (يتم حل التبعيات تلقائيًا)
+npx skillsmgr install code-review
+
+# تثبيت إصدار محدّد
+npx skillsmgr install code-review@1.0.0
+
+# البحث في السجل أولاً
+npx skillsmgr search code
+```
 
 ### مهارات Anthropic الرسمية
 
@@ -266,15 +286,75 @@ npx skillsmgr remove code-review -g -a claude-code
 │           └── skill-name/SKILL.md
 ├── custom/
 │   └── example-skill/SKILL.md
+├── registry/
 ├── groups.json
-└── sources.json
+├── sources.json
+└── auth.json
 ```
 
 - `official/`: المصادر الرسمية المضمّنة مثل `anthropic`
 - `community/`: مستودعات الطرف الثالث
 - `custom/`: المهارات المحلية والمهارات المثبّتة صراحة كمخصّصة
+- `registry/`: المهارات المثبّتة من سجل skillsmgr.dev
 - `groups.json`: تعريفات المجموعات الافتراضية المُدارة بواسطة أوامر `group`
 - `sources.json`: بيانات المصادر الوصفية المستخدمة بواسطة `update`
+- `auth.json`: رمز مصادقة السجل
+
+## نشر المهارات في السجل
+
+### skill.json
+
+كل مهارة قابلة للنشر تحتاج إلى ملف بيان `skill.json`:
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "وصف مختصر لما تفعله المهارة",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**الحقول المطلوبة**: `name`، `version`، `description`. جميع الحقول الأخرى اختيارية.
+
+### التبعيات
+
+يمكن للمهارات الإعلان عن تبعياتها على مهارات أخرى. حقل `dependencies` هو مصفوفة نصوص (بدون قيود إصدار):
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+الصيغ المدعومة:
+- **حزمة السجل**: `"base-prompts"` — تُثبَّت من skillsmgr.dev
+- **مهارة GitHub محدّدة**: `"owner/repo:skill-name"` — مهارة محدّدة من مستودع GitHub
+- **مستودع GitHub كامل**: `"owner/repo"` — جميع مهارات مستودع GitHub
+
+عند تثبيت المستخدم لمهارتك، يتم حل التبعيات وتثبيتها تلقائيًا.
+
+### سير عمل النشر
+
+```bash
+# 1. تسجيل الدخول (مرة واحدة فقط)
+npx skillsmgr login
+
+# 2. إنشاء skill.json في مجلد المهارة
+# 3. النشر
+npx skillsmgr publish
+
+# 4. التحقق
+npx skillsmgr search my-skill
+```
+
+أثناء النشر، يتحقق skillsmgr من توفر جميع التبعيات المُعلنة في السجل. إذا كانت أي منها مفقودة، ستُطلب منك إجراءات لحلها.
 
 ## شكر وتقدير
 

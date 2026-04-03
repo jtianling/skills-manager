@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo, parseRegistryInput } from './source-detection.js';
+import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo, parseRegistryInput, parseOwnerRepoSkill } from './source-detection.js';
 
 describe('detectSourceType', () => {
   it('detects bare package names as registry', () => {
@@ -54,6 +54,30 @@ describe('detectSourceType', () => {
   it('detects owner/repo shorthand', () => {
     expect(detectSourceType('owner/repo')).toBe('owner-repo');
     expect(detectSourceType('owner/repo/')).toBe('owner-repo');
+  });
+
+  it('detects owner/repo:skillName format', () => {
+    expect(detectSourceType('anthropics/skills:git-diff-parser')).toBe('owner-repo-skill');
+    expect(detectSourceType('obra/superpowers:brainstorming')).toBe('owner-repo-skill');
+  });
+});
+
+describe('parseOwnerRepoSkill', () => {
+  it('parses valid owner/repo:skillName', () => {
+    expect(parseOwnerRepoSkill('anthropics/skills:git-diff-parser')).toEqual({
+      type: 'owner-repo-skill',
+      owner: 'anthropics',
+      repo: 'skills',
+      skillName: 'git-diff-parser',
+    });
+  });
+
+  it('returns null for owner/repo without skill name', () => {
+    expect(parseOwnerRepoSkill('owner/repo')).toBeNull();
+  });
+
+  it('returns null for bare package names', () => {
+    expect(parseOwnerRepoSkill('base-prompts')).toBeNull();
   });
 });
 

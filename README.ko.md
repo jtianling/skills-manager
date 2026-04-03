@@ -7,6 +7,8 @@ AI 코딩 도구를 위한 통합 스킬 매니저입니다. 스킬을 `~/.skill
 ## 주요 특징
 
 - **중앙 저장소, 어디서나 배포** — 스킬은 `~/.skills-manager/`에 한 번만 설치됩니다. 이후 `add` 명령으로 로컬에 설치된 모든 스킬을 대화형으로 선택하여 프로젝트 또는 전역에 배포할 수 있습니다. 매번 원본 저장소 URL이나 경로를 기억할 필요가 없습니다.
+- **레지스트리 통합** — [skillsmgr.dev](https://skillsmgr.dev) 레지스트리를 통해 스킬을 검색, 설치, 배포할 수 있습니다. `skillsmgr install code-review`는 레지스트리에서 가져옵니다. `skillsmgr publish`로 커뮤니티와 스킬을 공유하세요.
+- **자동 의존성 해결** — 스킬은 다른 스킬에 대한 의존성을 선언할 수 있습니다. 스킬을 설치하면 의존성이 자동으로 재귀적으로 해결 및 설치됩니다.
 - **사용자 정의 그룹으로 일괄 관리** — 스킬을 명명된 그룹으로 구성합니다(예: `--group my-tools`). `skillsmgr add group-name`으로 전체 그룹을 배포할 수 있습니다. 다양한 방법으로 그룹을 구성: `group add my-group skill-name`으로 개별 스킬 추가, `group add my-group owner/repo`로 저장소 전체 스킬 추가, `group add my-group another-group`으로 그룹 중첩이 가능합니다.
 - **Zip 아카이브 지원** — `.zip` 파일이나 Anthropic의 `.skill` 패키지에서 직접 스킬을 설치할 수 있어, GitHub 외부에서도 스킬 번들을 패키징하고 공유하기 간편합니다.
 
@@ -75,7 +77,7 @@ project/
 
 | 명령어 | 별칭 | 설명 |
 |--------|------|------|
-| `skillsmgr install <source>` | `i` | GitHub, 로컬 디렉토리 또는 zip 아카이브에서 스킬 설치 |
+| `skillsmgr install <source>` | `i` | GitHub, 로컬 디렉토리, zip 아카이브 또는 레지스트리에서 스킬 설치 |
 | `skillsmgr uninstall [identifier]` | - | `~/.skills-manager/`에서 스킬 제거 |
 | `skillsmgr update [source]` | - | 추적된 소스에서 설치된 스킬 업데이트 |
 | `skillsmgr list` | - | `~/.skills-manager/`에 설치된 스킬 목록 조회 |
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | 프로젝트에 스킬 추가 (이름, `owner/repo` 또는 그룹 이름) |
 | `skillsmgr remove [name]` | - | 프로젝트에서 배포된 스킬 제거 (이름, `owner/repo` 또는 그룹 이름) |
 | `skillsmgr group <subcommand>` | - | 가상 스킬 그룹 관리 |
+| `skillsmgr search [query]` | - | skillsmgr.dev 레지스트리에서 스킬 검색 |
+| `skillsmgr publish [dir]` | - | skillsmgr.dev 레지스트리에 스킬 게시 |
+| `skillsmgr login` | - | skillsmgr.dev 레지스트리에 로그인 |
+| `skillsmgr logout` | - | 레지스트리에서 로그아웃 |
+| `skillsmgr whoami` | - | 현재 로그인된 사용자 확인 |
 
 ### 명령어 플래그
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | 그룹 이름 변경 |
 
 ## 스킬 설치
+
+### 레지스트리에서 설치
+
+```bash
+# 패키지 이름으로 설치 (의존성 자동 해결)
+npx skillsmgr install code-review
+
+# 특정 버전 설치
+npx skillsmgr install code-review@1.0.0
+
+# 먼저 레지스트리 검색
+npx skillsmgr search code
+```
 
 ### Anthropic 공식 스킬
 
@@ -273,8 +293,66 @@ npx skillsmgr remove code-review -g -a claude-code
 - `official/`: `anthropic` 등 내장 공식 소스
 - `community/`: 서드파티 저장소
 - `custom/`: 로컬 스킬 및 custom으로 명시적으로 설치된 스킬
+- `registry/`: skillsmgr.dev 레지스트리에서 설치된 스킬
 - `groups.json`: `group` 명령으로 관리되는 가상 그룹 정의
 - `sources.json`: `update`에서 사용하는 소스 메타데이터
+- `auth.json`: 레지스트리 인증 토큰
+
+## 스킬 게시
+
+### skill.json
+
+게시 가능한 모든 스킬에는 `skill.json` 매니페스트가 필요합니다:
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "스킬이 하는 일에 대한 간단한 설명",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**필수 필드**: `name`, `version`, `description`. 나머지는 선택 사항입니다.
+
+### 의존성
+
+스킬은 다른 스킬에 대한 의존성을 선언할 수 있습니다. `dependencies` 필드는 문자열 배열입니다(버전 제약 없음):
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+지원 형식:
+- **레지스트리 패키지**: `"base-prompts"` — skillsmgr.dev에서 설치
+- **GitHub 특정 스킬**: `"owner/repo:skill-name"` — GitHub 저장소의 특정 스킬
+- **GitHub 전체 저장소**: `"owner/repo"` — GitHub 저장소의 모든 스킬
+
+사용자가 스킬을 설치하면 의존성이 자동으로 해결되고 설치됩니다.
+
+### 게시 워크플로우
+
+```bash
+# 1. 로그인 (최초 1회만)
+npx skillsmgr login
+
+# 2. 스킬 디렉토리에 skill.json 생성
+# 3. 게시
+npx skillsmgr publish
+
+# 4. 확인
+npx skillsmgr search my-skill
+```
+
+게시 중에 skillsmgr은 선언된 모든 의존성이 레지스트리에서 사용 가능한지 확인합니다. 누락된 항목이 있으면 해결하도록 안내합니다.
 
 ## 감사의 글
 

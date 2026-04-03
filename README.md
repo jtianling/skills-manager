@@ -7,6 +7,8 @@ Unified skills manager for AI coding tools. Install skills into `~/.skills-manag
 ## Highlights
 
 - **Central repository, deploy anywhere** — Skills are installed once into `~/.skills-manager/`. After that, `add` lets you interactively pick from all locally installed skills and deploy them to any project or globally — no need to remember the original repo URL or path every time.
+- **Registry integration** — Search, install, and publish skills via the [skillsmgr.dev](https://skillsmgr.dev) registry. `skillsmgr install code-review` fetches from the registry. `skillsmgr publish` shares your skills with the community.
+- **Automatic dependency resolution** — Skills can declare dependencies on other skills. When you install a skill, its dependencies are automatically resolved and installed recursively.
 - **Custom groups for batch management** — Organize skills into named groups (e.g., `--group my-tools`). Deploy an entire group with `skillsmgr add group-name`. Populate groups from multiple sources: add individual skills with `group add my-group skill-name`, all skills from a repo with `group add my-group owner/repo`, or nest groups with `group add my-group another-group`.
 - **Zip archive support** — Install skills directly from `.zip` files or Anthropic's `.skill` packages, which makes it simple to package and share skill bundles outside of GitHub.
 
@@ -75,7 +77,7 @@ project/
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `skillsmgr install <source>` | `i` | Install skills from GitHub, local directory, or zip archive |
+| `skillsmgr install <source>` | `i` | Install skills from GitHub, local directory, zip archive, or registry |
 | `skillsmgr uninstall [identifier]` | - | Remove skills from `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | Update installed skills from tracked sources |
 | `skillsmgr list` | - | List installed skills in `~/.skills-manager/` |
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | Add a skill to the project (name, `owner/repo`, or group name) |
 | `skillsmgr remove [name]` | - | Remove a deployed skill from the project (name, `owner/repo`, or group name) |
 | `skillsmgr group <subcommand>` | - | Manage virtual skill groups |
+| `skillsmgr search [query]` | - | Search for skills on the skillsmgr.dev registry |
+| `skillsmgr publish [dir]` | - | Publish a skill to the skillsmgr.dev registry |
+| `skillsmgr login` | - | Log in to the skillsmgr.dev registry |
+| `skillsmgr logout` | - | Log out from the registry |
+| `skillsmgr whoami` | - | Show the currently logged-in user |
 
 ### Command Flags
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | Rename a group |
 
 ## Installing Skills
+
+### From the registry
+
+```bash
+# install by package name (dependencies auto-resolved)
+npx skillsmgr install code-review
+
+# install a specific version
+npx skillsmgr install code-review@1.0.0
+
+# search the registry first
+npx skillsmgr search code
+```
 
 ### Official Anthropic skills
 
@@ -273,8 +293,66 @@ npx skillsmgr remove code-review -g -a claude-code
 - `official/`: built-in official sources such as `anthropic`
 - `community/`: third-party repositories
 - `custom/`: local skills and skills explicitly installed as custom
+- `registry/`: skills installed from skillsmgr.dev registry
 - `groups.json`: virtual group definitions managed by `group` commands
 - `sources.json`: source metadata used by `update`
+- `auth.json`: registry authentication token
+
+## Publishing Skills
+
+### skill.json
+
+Every publishable skill needs a `skill.json` manifest:
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "A short description of what the skill does",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**Required fields**: `name`, `version`, `description`. All others are optional.
+
+### Dependencies
+
+Skills can declare dependencies on other skills. The `dependencies` field is a string array (no version constraints):
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+Supported formats:
+- **Registry package**: `"base-prompts"` — installed from skillsmgr.dev
+- **GitHub specific skill**: `"owner/repo:skill-name"` — a specific skill from a GitHub repo
+- **GitHub full repo**: `"owner/repo"` — all skills from a GitHub repo
+
+When a user installs your skill, dependencies are automatically resolved and installed.
+
+### Publish workflow
+
+```bash
+# 1. Log in (first time only)
+npx skillsmgr login
+
+# 2. Create skill.json in your skill directory
+# 3. Publish
+npx skillsmgr publish
+
+# 4. Verify
+npx skillsmgr search my-skill
+```
+
+During publishing, skillsmgr checks that all declared dependencies are available on the registry. If any are missing, you'll be prompted to resolve them.
 
 ## Acknowledgements
 

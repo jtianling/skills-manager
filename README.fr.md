@@ -7,6 +7,8 @@ Gestionnaire de skills unifie pour les outils de codage IA.  Installez les skill
 ## Points forts
 
 - **Depot central, deploiement partout** — Les skills sont installes une seule fois dans `~/.skills-manager/`.  Ensuite, `add` vous permet de choisir de maniere interactive parmi tous les skills installes localement et de les deployer dans n'importe quel projet ou globalement — sans avoir a retenir l'URL ou le chemin du depot d'origine a chaque fois.
+- **Integration au registre** — Recherchez, installez et publiez des skills via le registre [skillsmgr.dev](https://skillsmgr.dev). `skillsmgr install code-review` telecharge depuis le registre. `skillsmgr publish` partage vos skills avec la communaute.
+- **Resolution automatique des dependances** — Les skills peuvent declarer des dependances envers d'autres skills. Lors de l'installation d'un skill, ses dependances sont automatiquement resolues et installees de maniere recursive.
 - **Groupes personnalises pour la gestion par lots** — Organisez vos skills en groupes nommes (par ex., `--group my-tools`).  Deployez un groupe entier avec `skillsmgr add group-name`.  Remplissez les groupes depuis plusieurs sources : ajoutez des skills individuels avec `group add my-group skill-name`, tous les skills d'un depot avec `group add my-group owner/repo`, ou imbriquez des groupes avec `group add my-group another-group`.
 - **Prise en charge des archives zip** — Installez des skills directement a partir de fichiers `.zip` ou de paquets `.skill` d'Anthropic, ce qui simplifie l'empaquetage et le partage de lots de skills en dehors de GitHub.
 
@@ -75,7 +77,7 @@ project/
 
 | Commande | Alias | Description |
 |----------|-------|-------------|
-| `skillsmgr install <source>` | `i` | Installer des skills depuis GitHub, un repertoire local ou une archive zip |
+| `skillsmgr install <source>` | `i` | Installer des skills depuis GitHub, un repertoire local, une archive zip ou le registre |
 | `skillsmgr uninstall [identifier]` | - | Supprimer des skills de `~/.skills-manager/` |
 | `skillsmgr update [source]` | - | Mettre a jour les skills installes depuis les sources suivies |
 | `skillsmgr list` | - | Lister les skills installes dans `~/.skills-manager/` |
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | Ajouter un skill au projet (nom, `owner/repo` ou nom de groupe) |
 | `skillsmgr remove [name]` | - | Supprimer un skill deploye du projet (nom, `owner/repo` ou nom de groupe) |
 | `skillsmgr group <subcommand>` | - | Gerer les groupes de skills virtuels |
+| `skillsmgr search [query]` | - | Rechercher des skills sur le registre skillsmgr.dev |
+| `skillsmgr publish [dir]` | - | Publier un skill sur le registre skillsmgr.dev |
+| `skillsmgr login` | - | Se connecter au registre skillsmgr.dev |
+| `skillsmgr logout` | - | Se deconnecter du registre |
+| `skillsmgr whoami` | - | Afficher l'utilisateur actuellement connecte |
 
 ### Flags des commandes
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | Renommer un groupe |
 
 ## Installation des skills
+
+### Depuis le registre
+
+```bash
+# installer par nom de paquet (les dependances sont resolues automatiquement)
+npx skillsmgr install code-review
+
+# installer une version specifique
+npx skillsmgr install code-review@1.0.0
+
+# rechercher dans le registre d'abord
+npx skillsmgr search code
+```
 
 ### Skills officiels Anthropic
 
@@ -266,15 +286,75 @@ npx skillsmgr remove code-review -g -a claude-code
 │           └── skill-name/SKILL.md
 ├── custom/
 │   └── example-skill/SKILL.md
+├── registry/
 ├── groups.json
-└── sources.json
+├── sources.json
+└── auth.json
 ```
 
 - `official/` : sources officielles integrees telles que `anthropic`
 - `community/` : depots tiers
 - `custom/` : skills locaux et skills explicitement installes comme personnalises
+- `registry/` : skills installes depuis le registre skillsmgr.dev
 - `groups.json` : definitions des groupes virtuels geres par les commandes `group`
 - `sources.json` : metadonnees des sources utilisees par `update`
+- `auth.json` : jeton d'authentification du registre
+
+## Publication de skills
+
+### skill.json
+
+Tout skill publiable necessite un manifeste `skill.json` :
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "Une courte description de ce que fait le skill",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**Champs obligatoires** : `name`, `version`, `description`. Tous les autres sont optionnels.
+
+### Dependances
+
+Les skills peuvent declarer des dependances envers d'autres skills. Le champ `dependencies` est un tableau de chaines (sans contraintes de version) :
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+Formats pris en charge :
+- **Paquet du registre** : `"base-prompts"` — installe depuis skillsmgr.dev
+- **Skill GitHub specifique** : `"owner/repo:skill-name"` — un skill precis d'un depot GitHub
+- **Depot GitHub complet** : `"owner/repo"` — tous les skills d'un depot GitHub
+
+Lorsqu'un utilisateur installe votre skill, les dependances sont automatiquement resolues et installees.
+
+### Processus de publication
+
+```bash
+# 1. Se connecter (premiere fois uniquement)
+npx skillsmgr login
+
+# 2. Creer skill.json dans le repertoire du skill
+# 3. Publier
+npx skillsmgr publish
+
+# 4. Verifier
+npx skillsmgr search my-skill
+```
+
+Lors de la publication, skillsmgr verifie que toutes les dependances declarees sont disponibles sur le registre. Si certaines manquent, vous serez invite a les resoudre.
 
 ## Remerciements
 

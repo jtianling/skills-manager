@@ -1,0 +1,10 @@
+{
+  "name": "skillsmgr",
+  "version": "1.0.0",
+  "description": "Complete skillsmgr workflow — search, install, create, validate, publish, update, and manage skills on skillsmgr.dev registry",
+  "main": "SKILL.md",
+  "keywords": ["skillsmgr", "registry", "publish", "install", "search", "dependencies", "workflow"],
+  "author": "jtianling",
+  "license": "MIT",
+  "dependencies": []
+}

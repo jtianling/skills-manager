@@ -52,6 +52,22 @@ export function validateManifest(manifest: SkillManifest): { valid: boolean; err
     errors.push('Missing required field: description');
   }
 
+  if (manifest.dependencies !== undefined) {
+    if (!Array.isArray(manifest.dependencies)) {
+      errors.push(
+        'dependencies must be a string[]. ' +
+        'The Record<string, string> format is no longer supported. ' +
+        'Migrate to: "dependencies": ["package-name", "owner/repo:skillName", "owner/repo"]'
+      );
+    } else {
+      for (const dep of manifest.dependencies) {
+        if (typeof dep !== 'string') {
+          errors.push(`Invalid dependency: expected string, got ${typeof dep}`);
+        }
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 

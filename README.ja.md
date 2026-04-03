@@ -7,6 +7,8 @@ AIコーディングツールのための統合スキルマネージャーです
 ## 特徴
 
 - **中央リポジトリからどこにでもデプロイ** — スキルは `~/.skills-manager/` に一度だけインストールされます. その後, `add` を使ってインストール済みの全スキルからインタラクティブに選択し, 任意のプロジェクトまたはグローバルにデプロイできます. 毎回元のリポジトリURLやパスを覚えておく必要はありません.
+- **レジストリ統合** — [skillsmgr.dev](https://skillsmgr.dev) レジストリでスキルの検索、インストール、公開ができます。`skillsmgr install code-review` でレジストリから取得。`skillsmgr publish` でコミュニティにスキルを共有。
+- **自動依存関係解決** — スキルは他のスキルへの依存を宣言できます。スキルをインストールすると、依存関係が自動的に再帰的に解決・インストールされます。
 - **カスタムグループによる一括管理** — スキルを名前付きグループ (例: `--group my-tools`) にまとめることができます. `skillsmgr add group-name` でグループ全体をデプロイできます. 複数の方法でグループを構成: `group add my-group skill-name` で個別のスキルを追加, `group add my-group owner/repo` でリポジトリ全体のスキルを追加, `group add my-group another-group` でグループのネストが可能です.
 - **Zipアーカイブ対応** — `.zip` ファイルや Anthropic の `.skill` パッケージから直接スキルをインストールできます. GitHub以外でのスキルバンドルのパッケージングと共有が簡単になります.
 
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | プロジェクトにスキルを追加 (名前, `owner/repo`, またはグループ名) |
 | `skillsmgr remove [name]` | - | プロジェクトからデプロイ済みスキルを削除 (名前, `owner/repo`, またはグループ名) |
 | `skillsmgr group <subcommand>` | - | 仮想スキルグループを管理 |
+| `skillsmgr search [query]` | - | skillsmgr.dev レジストリでスキルを検索 |
+| `skillsmgr publish [dir]` | - | skillsmgr.dev レジストリにスキルを公開 |
+| `skillsmgr login` | - | skillsmgr.dev レジストリにログイン |
+| `skillsmgr logout` | - | レジストリからログアウト |
+| `skillsmgr whoami` | - | 現在ログイン中のユーザーを表示 |
 
 ### コマンドフラグ
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | グループの名前を変更 |
 
 ## スキルのインストール
+
+### レジストリからインストール
+
+```bash
+# パッケージ名でインストール (依存関係は自動解決)
+npx skillsmgr install code-review
+
+# 特定のバージョンをインストール
+npx skillsmgr install code-review@1.0.0
+
+# 先にレジストリを検索
+npx skillsmgr search code
+```
 
 ### 公式 Anthropic スキル
 
@@ -266,15 +286,75 @@ npx skillsmgr remove code-review -g -a claude-code
 │           └── skill-name/SKILL.md
 ├── custom/
 │   └── example-skill/SKILL.md
+├── registry/
 ├── groups.json
-└── sources.json
+├── sources.json
+└── auth.json
 ```
 
 - `official/`: `anthropic` などの公式ビルトインソース
 - `community/`: サードパーティリポジトリ
 - `custom/`: ローカルスキルおよびcustomとして明示的にインストールされたスキル
+- `registry/`: skillsmgr.dev レジストリからインストールされたスキル
 - `groups.json`: `group` コマンドで管理される仮想グループ定義
 - `sources.json`: `update` で使用されるソースメタデータ
+- `auth.json`: レジストリ認証トークン
+
+## スキルの公開
+
+### skill.json
+
+公開可能なスキルには `skill.json` マニフェストが必要です:
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "スキルの簡単な説明",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**必須フィールド**: `name`, `version`, `description`. その他はオプションです。
+
+### 依存関係
+
+スキルは他のスキルへの依存を宣言できます。`dependencies` フィールドは文字列の配列です (バージョン制約なし):
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+サポートされているフォーマット:
+- **レジストリパッケージ**: `"base-prompts"` — skillsmgr.dev からインストール
+- **GitHub 特定スキル**: `"owner/repo:skill-name"` — GitHub リポジトリの特定スキル
+- **GitHub リポジトリ全体**: `"owner/repo"` — GitHub リポジトリのすべてのスキル
+
+ユーザーがスキルをインストールすると、依存関係は自動的に解決・インストールされます。
+
+### 公開ワークフロー
+
+```bash
+# 1. ログイン (初回のみ)
+npx skillsmgr login
+
+# 2. スキルディレクトリに skill.json を作成
+# 3. 公開
+npx skillsmgr publish
+
+# 4. 確認
+npx skillsmgr search my-skill
+```
+
+公開時、skillsmgr は宣言されたすべての依存関係がレジストリで利用可能かどうかを確認します。不足している場合は解決を求めるプロンプトが表示されます。
 
 ## 謝辞
 

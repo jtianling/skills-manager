@@ -3,6 +3,7 @@ export type SourceType =
   | 'local-zip'
   | 'remote-url'
   | 'owner-repo'
+  | 'owner-repo-skill'
   | 'local-path'
   | 'registry'
   | 'unknown';
@@ -59,6 +60,20 @@ export function parseRegistryInput(input: string): RegistryDetectedSource | null
 
 const LOCAL_PATH_PREFIXES = ['/', './', '../', '~/'];
 const OWNER_REPO_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\/?$/;
+const OWNER_REPO_SKILL_PATTERN = /^([A-Za-z0-9][A-Za-z0-9_.-]*)\/([A-Za-z0-9][A-Za-z0-9_.-]*):(.+)$/;
+
+export interface OwnerRepoSkillDetectedSource {
+  type: 'owner-repo-skill';
+  owner: string;
+  repo: string;
+  skillName: string;
+}
+
+export function parseOwnerRepoSkill(input: string): OwnerRepoSkillDetectedSource | null {
+  const match = input.match(OWNER_REPO_SKILL_PATTERN);
+  if (!match) return null;
+  return { type: 'owner-repo-skill', owner: match[1], repo: match[2], skillName: match[3] };
+}
 const ZIP_LIKE_EXTENSIONS = ['.zip', '.skill'];
 
 export function isZipLikeExtension(input: string): boolean {
@@ -110,6 +125,10 @@ export function detectSourceType(input: string): SourceType {
 
   if (input.startsWith('http://') || input.startsWith('https://') || input.startsWith('git@')) {
     return 'remote-url';
+  }
+
+  if (parseOwnerRepoSkill(input)) {
+    return 'owner-repo-skill';
   }
 
   if (OWNER_REPO_PATTERN.test(input)) {
