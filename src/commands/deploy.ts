@@ -15,6 +15,7 @@ import {
   promptSkills,
 } from '../utils/prompts.js';
 import { ensureSetup } from './setup.js';
+import { jsonOutput, jsonError } from '../utils/json-output.js';
 
 function scanGlobalDeployedSkills(agents: ToolName[]): string[] {
   const names = new Set<string>();
@@ -80,6 +81,10 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const allSkills = skillsService.getAllSkills();
 
   if (allSkills.length === 0) {
+    if (options.json) {
+      jsonError('No skills found. Run: skillsmgr install anthropics/skills', 'NO_SKILLS');
+      process.exit(1);
+    }
     console.log('No skills found. Run: skillsmgr install anthropics/skills');
     process.exit(1);
   }
@@ -131,7 +136,9 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const selectedSkills = skillsService.getSkillsByNames(selectedSkillNames);
   const deployMode = options.copy ? 'copy' : 'link';
 
-  console.log('\nDeploying...\n');
+  if (!options.json) {
+    console.log('\nDeploying...\n');
+  }
 
   // Deploy skills to .agents/skills/
   const previousNames = new Set(deployedSkills.map((s) => s.name));
@@ -142,10 +149,31 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   );
   const unmanagedSkills = deployedSkills.filter((s) => s.source === 'unknown');
 
+  // Perform all deploy operations
+  for (const skill of toRemove) {
+    deployer.removeSkill(skill.name);
+  }
+
+  for (const skill of toAdd) {
+    deployer.deploySkill(skill, deployMode);
+  }
+
+  if (options.json) {
+    const deployed: Array<{ name: string; agents: string[]; mode: string }> = [];
+    for (const skill of toAdd) {
+      deployed.push({ name: skill.name, agents: selectedTools, mode: deployMode === 'link' ? 'linked' : 'copied' });
+    }
+    for (const skill of toKeep) {
+      deployed.push({ name: skill.name, agents: selectedTools, mode: 'unchanged' });
+    }
+    jsonOutput({ deployed });
+    return;
+  }
+
+  // Human output
   console.log('Skills (.agents/skills/):');
 
   for (const skill of toRemove) {
-    deployer.removeSkill(skill.name);
     console.log(`  ✗ ${skill.name} (removed)`);
   }
 
@@ -154,7 +182,6 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   }
 
   for (const skill of toAdd) {
-    deployer.deploySkill(skill, deployMode);
     console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
   }
 
@@ -198,6 +225,7 @@ export const deployCommand = new Command('deploy')
   .description('Deploy skills to current project (or globally with -g)')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-g, --global', 'Deploy skills globally to agent user-level directories')
+  .option('--json', 'Output as JSON')
   .action(async (options: DeployOptions) => {
     await executeDeploy(options);
   });
