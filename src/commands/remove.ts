@@ -20,6 +20,7 @@ import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-look
 import { extractOwnerRepo } from '../utils/source-detection.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
+import { jsonOutput, jsonError } from '../utils/json-output.js';
 
 interface ResolvedDeployedSkill extends ScannedSkill {
   skillKey: string | null;
@@ -156,11 +157,15 @@ function findMatchingRepoSkills(
 function removeSkillNames(
   skillNames: string[],
   deployer: Deployer,
-): void {
+  json?: boolean,
+): Array<{ name: string }> {
+  const removed: Array<{ name: string }> = [];
   for (const skillName of skillNames) {
     deployer.removeSkill(skillName);
-    console.log(`  ✓ Removed ${skillName}`);
+    removed.push({ name: skillName });
+    if (!json) console.log(`  ✓ Removed ${skillName}`);
   }
+  return removed;
 }
 
 function removeSkillNamesGlobal(
@@ -205,6 +210,10 @@ async function removeByGroup(
   const groupSkillKeys = groupsService.getGroup(groupName);
 
   if (!groupSkillKeys) {
+    if (options.json) {
+      jsonError(`Group '${groupName}' not found.`, 'NOT_FOUND');
+      process.exit(1);
+    }
     console.log(`Group '${groupName}' not found.`);
     process.exit(1);
   }
@@ -283,7 +292,10 @@ async function removeByGroup(
     return;
   }
 
-  removeSkillNames(selectedSkillNames, deployer);
+  const removed = removeSkillNames(selectedSkillNames, deployer, options.json);
+  if (options.json) {
+    jsonOutput({ removed });
+  }
   cleanupGroupRefs(
     deployedGroupSkills
       .filter((skill) => selectedSkillNames.includes(skill.name))
@@ -301,6 +313,10 @@ async function removeByOwnerRepo(
   if (options.global) {
     const repoSkills = findRepoInCentralRepository(ownerRepo, skillsService);
     if (!repoSkills) {
+      if (options.json) {
+        jsonError(`'${ownerRepo}' not found in central repository`, 'NOT_FOUND');
+        process.exit(1);
+      }
       console.log(`'${ownerRepo}' not found in central repository`);
       process.exit(1);
     }
@@ -319,6 +335,10 @@ async function removeByOwnerRepo(
     const removedNames = removeSkillNamesGlobal(targetNames, deployer, agents);
 
     if (removedNames.length === 0) {
+      if (options.json) {
+        jsonError(`No deployed skills found from '${ownerRepo}'`, 'NOT_FOUND');
+        process.exit(1);
+      }
       console.log(`No deployed skills found from '${ownerRepo}'`);
       process.exit(1);
     }
@@ -336,11 +356,19 @@ async function removeByOwnerRepo(
   const matchedSkills = findMatchingRepoSkills(ownerRepo, scanner, skillsService);
 
   if (!matchedSkills) {
+    if (options.json) {
+      jsonError(`'${ownerRepo}' not found in central repository`, 'NOT_FOUND');
+      process.exit(1);
+    }
     console.log(`'${ownerRepo}' not found in central repository`);
     process.exit(1);
   }
 
   if (matchedSkills.length === 0) {
+    if (options.json) {
+      jsonError(`No deployed skills found from '${ownerRepo}'`, 'NOT_FOUND');
+      process.exit(1);
+    }
     console.log(`No deployed skills found from '${ownerRepo}'`);
     process.exit(1);
   }
@@ -381,7 +409,10 @@ async function removeByOwnerRepo(
     selectedSkillNames = selected;
   }
 
-  removeSkillNames(selectedSkillNames, deployer);
+  const removedByRepo = removeSkillNames(selectedSkillNames, deployer, options.json);
+  if (options.json) {
+    jsonOutput({ removed: removedByRepo });
+  }
   cleanupGroupRefs(
     resolvedSkills
       .filter((skill) => selectedSkillNames.includes(skill.name))
@@ -435,6 +466,9 @@ export async function executeRemove(
   name: string | undefined,
   options: RemoveOptions = {},
 ): Promise<void> {
+  if (options.json) {
+    options.yes = true;
+  }
   options = expandYesFlag(options);
 
   await ensureSetup();
@@ -500,6 +534,10 @@ export async function executeRemove(
   const deployedSkills = resolveDeployedSkills(scanner.getDeployedSkills(), skillsService);
 
   if (deployedSkills.length === 0) {
+    if (options.json) {
+      jsonError('No skills deployed in current project.', 'NOT_FOUND');
+      process.exit(1);
+    }
     console.log('No skills deployed in current project.');
     process.exit(1);
   }
@@ -508,12 +546,21 @@ export async function executeRemove(
     const skillToRemove = deployedSkills.find((skill) => skill.name === skillName);
 
     if (!skillToRemove) {
+      if (options.json) {
+        jsonError(`'${skillName}' not found in deployed skills`, 'NOT_FOUND');
+        process.exit(1);
+      }
       console.log(`'${skillName}' not found in deployed skills`);
       process.exit(1);
     }
   }
 
-  removeSkillNames(plainSkillNames, deployer);
+  const removed = removeSkillNames(plainSkillNames, deployer, options.json);
+
+  if (options.json) {
+    jsonOutput({ removed });
+  }
+
   cleanupGroupRefs(
     deployedSkills
       .filter((skill) => plainSkillNames.includes(skill.name))
@@ -530,6 +577,7 @@ export const removeCommand = new Command('remove')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('--same-agents', 'Use currently configured agents')
   .option('--group <name>', 'Batch remove deployed skills from a group')
+  .option('--json', 'Output as JSON (implies --yes)')
   .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);
