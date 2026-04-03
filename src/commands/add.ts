@@ -19,6 +19,7 @@ import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ensureSetup } from './setup.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
+import { jsonOutput, jsonError } from '../utils/json-output.js';
 
 async function promptSkillsFromRepo(
   repoSkills: SkillInfo[],
@@ -46,22 +47,27 @@ async function deploySkills(
   deployer: Deployer,
   scanner: DeploymentScanner,
   deployMode: 'link' | 'copy',
-): Promise<void> {
+  json?: boolean,
+): Promise<Array<{ name: string; mode: string }>> {
   const deployedSkills = scanner.getDeployedSkills();
   const deployedNames = new Set(deployedSkills.map((s) => s.name));
+  const results: Array<{ name: string; mode: string }> = [];
 
   for (const name of skillNames) {
     if (deployedNames.has(name)) continue;
 
     const skill = skillsService.getSkillByName(name);
     if (!skill) {
-      console.log(`  ⚠ ${name} (not found in central repository)`);
+      if (!json) console.log(`  ⚠ ${name} (not found in central repository)`);
       continue;
     }
 
     deployer.deploySkill(skill, deployMode);
-    console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+    results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
+    if (!json) console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
   }
+
+  return results;
 }
 
 async function deploySkillsGlobal(
@@ -70,16 +76,22 @@ async function deploySkillsGlobal(
   deployer: Deployer,
   agents: ToolName[],
   deployMode: 'link' | 'copy',
-): Promise<void> {
+  json?: boolean,
+): Promise<Array<{ name: string; mode: string }>> {
+  const results: Array<{ name: string; mode: string }> = [];
+
   for (const name of skillNames) {
     const skill = skillsService.getSkillByName(name);
     if (!skill) {
-      console.log(`  ⚠ ${name} (not found in central repository)`);
+      if (!json) console.log(`  ⚠ ${name} (not found in central repository)`);
       continue;
     }
 
     deployer.deploySkillGlobal(skill, agents, deployMode);
+    results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
   }
+
+  return results;
 }
 
 function ensureSymlinkBridges(
@@ -131,7 +143,7 @@ async function handleSkillName(
   const alreadyExists = existingSkills.some((s) => s.name === skill.name);
 
   if (alreadyExists) {
-    console.log(`  · ${skill.name} (already deployed)`);
+    if (!options.json) console.log(`  · ${skill.name} (already deployed)`);
     return;
   }
 
@@ -139,7 +151,13 @@ async function handleSkillName(
   const deployMode = options.copy ? 'copy' : 'link';
 
   deployer.deploySkill(skill, deployMode);
-  console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+  if (options.json) {
+    jsonOutput({
+      deployed: [{ name: skill.name, agents: selectedAgents, mode: deployMode === 'link' ? 'linked' : 'copied' }],
+    });
+  } else {
+    console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+  }
 
   ensureSymlinkBridges(selectedAgents, deployer);
 }
@@ -195,7 +213,7 @@ async function handleRepoSkillSelection(
   const allDeployed = repoSkills.every((s) => deployedNames.includes(s.name));
 
   if (allDeployed && !options.global) {
-    console.log('All skills from this source are already deployed.');
+    if (!options.json) console.log('All skills from this source are already deployed.');
     return;
   }
 
@@ -216,18 +234,29 @@ async function handleRepoSkillSelection(
     : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
-    console.log('No new skills selected.');
+    if (!options.json) console.log('No new skills selected.');
     return;
   }
 
   const deployMode = options.copy ? 'copy' : 'link';
 
   if (options.global) {
-    await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
+    const results = await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode, options.json);
+    if (options.json) {
+      jsonOutput({
+        deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+      });
+    }
     return;
   }
 
-  await deploySkills(newSkills, skillsService, deployer, scanner, deployMode);
+  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json);
+  if (options.json) {
+    jsonOutput({
+      deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+    });
+    return;
+  }
   ensureSymlinkBridges(selectedAgents, deployer);
 }
 
@@ -245,7 +274,11 @@ async function handleRemoteInstallAndDeploy(
     });
   } catch (error) {
     if (error instanceof Error) {
-      console.error(`Error: ${error.message}`);
+      if (options.json) {
+        jsonError(error.message, 'INSTALL_ERROR');
+      } else {
+        console.error(`Error: ${error.message}`);
+      }
     }
     process.exit(1);
   }
@@ -282,7 +315,11 @@ async function handleRemoteInstallAndDeploy(
   );
 
   if (installedSkills.length === 0) {
-    console.log('No skills found after installation.');
+    if (options.json) {
+      jsonError('No skills found after installation.', 'NO_SKILLS_FOUND');
+    } else {
+      console.log('No skills found after installation.');
+    }
     rollback();
     process.exit(1);
   }
@@ -315,10 +352,21 @@ async function handleRemoteInstallAndDeploy(
 
   try {
     if (options.global) {
-      await deploySkillsGlobal(newSkills, freshSkillsService, deployer, selectedAgents, deployMode);
+      const results = await deploySkillsGlobal(newSkills, freshSkillsService, deployer, selectedAgents, deployMode, options.json);
+      if (options.json) {
+        jsonOutput({
+          deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+        });
+      }
     } else {
-      await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode);
-      ensureSymlinkBridges(selectedAgents, deployer);
+      const results = await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode, options.json);
+      if (options.json) {
+        jsonOutput({
+          deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+        });
+      } else {
+        ensureSymlinkBridges(selectedAgents, deployer);
+      }
     }
   } catch (error) {
     rollback();
@@ -336,7 +384,11 @@ async function handleGroupBatchDeploy(
   const skillKeys = groupsService.getGroup(groupName);
 
   if (!skillKeys || skillKeys.length === 0) {
-    console.log(`No skills found in group '${groupName}'.`);
+    if (options.json) {
+      jsonError(`No skills found in group '${groupName}'.`, 'GROUP_NOT_FOUND');
+    } else {
+      console.log(`No skills found in group '${groupName}'.`);
+    }
     process.exit(1);
     return;
   }
@@ -350,12 +402,16 @@ async function handleGroupBatchDeploy(
     if (match) {
       groupSkills.push(match);
     } else {
-      console.log(`Skill '${key}' not found, skipping.`);
+      if (!options.json) console.log(`Skill '${key}' not found, skipping.`);
     }
   }
 
   if (groupSkills.length === 0) {
-    console.log(`No valid skills found in group '${groupName}'.`);
+    if (options.json) {
+      jsonError(`No valid skills found in group '${groupName}'.`, 'GROUP_EMPTY');
+    } else {
+      console.log(`No valid skills found in group '${groupName}'.`);
+    }
     process.exit(1);
   }
 
@@ -375,18 +431,29 @@ async function handleGroupBatchDeploy(
     : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
-    console.log('No new skills selected.');
+    if (!options.json) console.log('No new skills selected.');
     return;
   }
 
   const deployMode = options.copy ? 'copy' : 'link';
 
   if (options.global) {
-    await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode);
+    const results = await deploySkillsGlobal(newSkills, skillsService, deployer, selectedAgents, deployMode, options.json);
+    if (options.json) {
+      jsonOutput({
+        deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+      });
+    }
     return;
   }
 
-  await deploySkills(newSkills, skillsService, deployer, scanner, deployMode);
+  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json);
+  if (options.json) {
+    jsonOutput({
+      deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+    });
+    return;
+  }
   ensureSymlinkBridges(selectedAgents, deployer);
 }
 
@@ -394,6 +461,9 @@ export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
 ): Promise<void> {
+  if (options.json) {
+    options.yes = true;
+  }
   options = expandYesFlag(options);
 
   if (options.group && arg) {
@@ -453,6 +523,7 @@ export const addCommand = new Command('add')
   .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
   .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
   .option('--same-agents', 'Use currently configured agents')
+  .option('--json', 'Output as JSON (implies --yes)')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);
   });
