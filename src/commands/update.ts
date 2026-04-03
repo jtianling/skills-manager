@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { basename, join, resolve } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from '../services/github.js';
+import { RegistryService } from '../services/registry.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { detectSourceType } from '../utils/source-detection.js';
@@ -74,8 +75,69 @@ function updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
   return result;
 }
 
+const registryService = new RegistryService();
+
+async function updateRegistrySource(key: string, info: SourceInfo): Promise<UpdateResult> {
+  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+
+  // Extract package name from key (e.g., "registry/code-review" -> "code-review")
+  const packageName = key.replace(/^registry\//, '');
+
+  try {
+    const packument = await registryService.getPackument(packageName);
+    const latestVersion = packument['dist-tags']?.latest;
+
+    if (!latestVersion) {
+      console.log(`  ⚠ ${packageName}: no latest version found`);
+      result.failed++;
+      return result;
+    }
+
+    if (info.version === latestVersion) {
+      console.log(`  ✓ ${packageName}: up to date (${latestVersion})`);
+      result.upToDate++;
+      return result;
+    }
+
+    const versionData = packument.versions[latestVersion];
+    if (!versionData?.dist?.tarball) {
+      console.log(`  ⚠ ${packageName}: no tarball URL for ${latestVersion}`);
+      result.failed++;
+      return result;
+    }
+
+    const installDir = join(SKILLS_MANAGER_DIR, key);
+    removeDir(installDir);
+
+    await registryService.downloadTarball(versionData.dist.tarball, installDir);
+    warnScriptFiles(findScriptFiles(installDir));
+
+    // Update source info with new version
+    sourcesService.addSource(key, {
+      url: info.url,
+      type: 'registry',
+      repoName: info.repoName,
+      installMethod: info.installMethod,
+      version: latestVersion,
+      registryUrl: info.registryUrl,
+    });
+
+    console.log(`  ↑ ${packageName}: ${info.version} → ${latestVersion}`);
+    result.updated++;
+  } catch (error) {
+    console.log(`  ✗ ${packageName}: ${(error as Error).message}`);
+    result.failed++;
+  }
+
+  return result;
+}
+
 async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult> {
   const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+
+  if (info.type === 'registry') {
+    return updateRegistrySource(key, info);
+  }
 
   if (info.installMethod === 'zip') {
     console.log(`  Skipping ${key.split('/').pop() || key}: installed from zip, manual reinstall required`);

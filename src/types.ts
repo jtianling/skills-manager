@@ -65,6 +65,69 @@ export interface ListOptions {
   deployed?: boolean;
 }
 
+export interface SkillManifest {
+  name: string;
+  version: string;
+  description: string;
+  main?: string;
+  keywords?: string[];
+  author?: string;
+  license?: string;
+  engines?: Record<string, string>;
+  dependencies?: Record<string, string>;
+}
+
+export interface PackumentVersion {
+  name: string;
+  version: string;
+  description: string;
+  manifest: SkillManifest;
+  dist: {
+    tarball: string;
+    shasum?: string;
+  };
+}
+
+export interface Packument {
+  name: string;
+  'dist-tags': Record<string, string>;
+  versions: Record<string, PackumentVersion>;
+  time?: Record<string, string>;
+}
+
+export interface PublishPayload {
+  version: string;
+  description: string;
+  manifest: SkillManifest;
+  tarball: string;
+}
+
+export interface SearchResultObject {
+  package: {
+    name: string;
+    version: string;
+    description: string;
+    author?: { name: string };
+    keywords?: string[];
+    date?: string;
+  };
+  score?: {
+    detail?: {
+      popularity?: number;
+    };
+  };
+}
+
+export interface SearchResult {
+  objects: SearchResultObject[];
+  total: number;
+}
+
+export interface AuthInfo {
+  token: string;
+  username: string;
+}
+
 export function collect(val: string, acc: string[]): string[] {
   return [...acc, val];
 }

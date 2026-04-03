@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo } from './source-detection.js';
+import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo, parseRegistryInput } from './source-detection.js';
 
 describe('detectSourceType', () => {
-  it('returns unknown for bare words', () => {
-    expect(detectSourceType('my-skill')).toBe('unknown');
-    expect(detectSourceType('anthropic')).toBe('unknown');
-    expect(detectSourceType('foo-bar')).toBe('unknown');
+  it('detects bare package names as registry', () => {
+    expect(detectSourceType('my-skill')).toBe('registry');
+    expect(detectSourceType('anthropic')).toBe('registry');
+    expect(detectSourceType('foo-bar')).toBe('registry');
+    expect(detectSourceType('code-review')).toBe('registry');
   });
 
   it('detects explicit local path prefixes', () => {
@@ -25,7 +26,7 @@ describe('detectSourceType', () => {
     expect(detectSourceType('../my-skill.zip')).toBe('local-zip');
     expect(detectSourceType('/tmp/my-skill.zip')).toBe('local-zip');
     expect(detectSourceType('~/my-skill.zip')).toBe('local-zip');
-    expect(detectSourceType('my-skill.zip')).toBe('unknown');
+    expect(detectSourceType('my-skill.zip')).toBe('registry');
     expect(detectSourceType('http://example.com/my-skill.zip')).toBe('remote-zip');
     expect(detectSourceType('https://example.com/my-skill.zip')).toBe('remote-zip');
   });
@@ -39,7 +40,7 @@ describe('detectSourceType', () => {
     expect(detectSourceType('../foo.skill')).toBe('local-zip');
     expect(detectSourceType('/path/to/foo.skill')).toBe('local-zip');
     expect(detectSourceType('~/foo.skill')).toBe('local-zip');
-    expect(detectSourceType('foo.skill')).toBe('unknown');
+    expect(detectSourceType('foo.skill')).toBe('registry');
     expect(detectSourceType('http://example.com/foo.skill')).toBe('remote-zip');
     expect(detectSourceType('https://example.com/foo.skill')).toBe('remote-zip');
   });
@@ -53,6 +54,67 @@ describe('detectSourceType', () => {
   it('detects owner/repo shorthand', () => {
     expect(detectSourceType('owner/repo')).toBe('owner-repo');
     expect(detectSourceType('owner/repo/')).toBe('owner-repo');
+  });
+});
+
+describe('parseRegistryInput', () => {
+  it('parses bare package names', () => {
+    expect(parseRegistryInput('code-review')).toEqual({
+      type: 'registry',
+      packageName: 'code-review',
+    });
+  });
+
+  it('parses bare package name with version', () => {
+    expect(parseRegistryInput('code-review@1.0.0')).toEqual({
+      type: 'registry',
+      packageName: 'code-review',
+      requestedVersion: '1.0.0',
+    });
+  });
+
+  it('parses scoped package names', () => {
+    expect(parseRegistryInput('@anthropic/code-review')).toEqual({
+      type: 'registry',
+      packageName: '@anthropic/code-review',
+    });
+  });
+
+  it('parses scoped package name with version', () => {
+    expect(parseRegistryInput('@anthropic/code-review@2.0.0')).toEqual({
+      type: 'registry',
+      packageName: '@anthropic/code-review',
+      requestedVersion: '2.0.0',
+    });
+  });
+
+  it('returns null for URLs', () => {
+    expect(parseRegistryInput('https://github.com/owner/repo')).toBeNull();
+  });
+
+  it('returns null for local paths', () => {
+    expect(parseRegistryInput('./my-skill')).toBeNull();
+    expect(parseRegistryInput('~/skills/review')).toBeNull();
+    expect(parseRegistryInput('/tmp/skill')).toBeNull();
+  });
+
+  it('returns null for owner/repo format', () => {
+    expect(parseRegistryInput('anthropics/skills')).toBeNull();
+  });
+
+  it('returns null for invalid package names', () => {
+    expect(parseRegistryInput('My_Skill!')).toBeNull();
+    expect(parseRegistryInput('UPPERCASE')).toBeNull();
+  });
+
+  it('does not conflict with owner-repo detection', () => {
+    // owner/repo should be detected first, not as registry
+    expect(detectSourceType('anthropics/skills')).toBe('owner-repo');
+  });
+
+  it('does not conflict with local-path detection', () => {
+    expect(detectSourceType('./my-skill')).toBe('local-path');
+    expect(detectSourceType('~/skills/review')).toBe('local-path');
   });
 });
 

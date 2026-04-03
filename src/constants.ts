@@ -3,7 +3,9 @@ import { join } from 'path';
 
 export const SKILLS_MANAGER_DIR = join(homedir(), '.skills-manager');
 
-export const SKILL_SOURCES = ['official', 'community', 'custom'] as const;
+export const REGISTRY_URL = 'https://skillsmgr.dev';
+
+export const SKILL_SOURCES = ['official', 'community', 'custom', 'registry'] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
 
 export const SUPPORTED_TOOLS = [

@@ -4,7 +4,58 @@ export type SourceType =
   | 'remote-url'
   | 'owner-repo'
   | 'local-path'
+  | 'registry'
   | 'unknown';
+
+export interface RegistryDetectedSource {
+  type: 'registry';
+  packageName: string;
+  requestedVersion?: string;
+}
+
+const BARE_PACKAGE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const SCOPED_PACKAGE_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
+
+export function parseRegistryInput(input: string): RegistryDetectedSource | null {
+  // Don't match URLs, local paths, or owner/repo patterns
+  if (input.includes('://') || input.startsWith('git@')) return null;
+  if (hasExplicitLocalPrefix(input)) return null;
+
+  // Scoped package: @scope/name or @scope/name@version
+  if (input.startsWith('@')) {
+    const versionSplit = input.match(/^(@[^@]+)@(.+)$/);
+    if (versionSplit) {
+      const name = versionSplit[1];
+      const version = versionSplit[2];
+      if (SCOPED_PACKAGE_PATTERN.test(name)) {
+        return { type: 'registry', packageName: name, requestedVersion: version };
+      }
+    }
+    if (SCOPED_PACKAGE_PATTERN.test(input)) {
+      return { type: 'registry', packageName: input };
+    }
+    return null;
+  }
+
+  // Don't match owner/repo (contains / but doesn't start with @)
+  if (input.includes('/')) return null;
+
+  // Bare package: name or name@version
+  const atIndex = input.indexOf('@');
+  if (atIndex > 0) {
+    const name = input.substring(0, atIndex);
+    const version = input.substring(atIndex + 1);
+    if (BARE_PACKAGE_NAME_PATTERN.test(name) && version.length > 0) {
+      return { type: 'registry', packageName: name, requestedVersion: version };
+    }
+  }
+
+  if (BARE_PACKAGE_NAME_PATTERN.test(input)) {
+    return { type: 'registry', packageName: input };
+  }
+
+  return null;
+}
 
 const LOCAL_PATH_PREFIXES = ['/', './', '../', '~/'];
 const OWNER_REPO_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\/?$/;
@@ -67,6 +118,10 @@ export function detectSourceType(input: string): SourceType {
 
   if (hasExplicitLocalPrefix(input)) {
     return 'local-path';
+  }
+
+  if (parseRegistryInput(input)) {
+    return 'registry';
   }
 
   return 'unknown';

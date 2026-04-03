@@ -2,9 +2,10 @@ import { Command } from 'commander';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { type InstallOptions, collect } from '../types.js';
 import { ensureSetup } from './setup.js';
-import { detectSourceType } from '../utils/source-detection.js';
+import { detectSourceType, parseRegistryInput } from '../utils/source-detection.js';
 import { installViaGitClone } from './install-git.js';
 import { installFromLocalDir, installFromRemoteZip, installFromZip } from './install-local.js';
+import { installFromRegistry } from './install-registry.js';
 import type { InstallResult } from './install-utils.js';
 
 async function installBySourceType(source: string, options: InstallOptions): Promise<InstallResult> {
@@ -23,6 +24,13 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
       return installViaGitClone(source, options);
     case 'local-path':
       return installFromLocalDir(source, options);
+    case 'registry': {
+      const detected = parseRegistryInput(source);
+      if (!detected) {
+        throw new Error(`Invalid registry package name: '${source}'`);
+      }
+      return installFromRegistry(detected, options);
+    }
     case 'unknown':
       throw new Error(
         `Unknown source format '${source}'. Use ./name for local, owner/repo for GitHub.`
@@ -72,8 +80,8 @@ export { InstallResult };
 
 export const installCommand = new Command('install')
   .alias('i')
-  .description('Install skills from a local path, zip archive, repository, or URL')
-  .argument('<source>', 'Local path, zip file, owner/repo, or URL')
+  .description('Install skills from a local path, zip archive, repository, URL, or registry')
+  .argument('<source>', 'Local path, zip file, owner/repo, URL, or package name')
   .option('--all', 'Install all skills without prompting')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')

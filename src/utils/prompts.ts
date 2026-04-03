@@ -10,7 +10,7 @@ import { interactiveCheckbox, SelectChoice } from './interactive-select.js';
 /**
  * Handle Ctrl+C gracefully during prompts
  */
-function handlePromptError(error: unknown): never {
+export function handlePromptError(error: unknown): never {
   if (error && typeof error === 'object' && 'name' in error) {
     if (error.name === 'ExitPromptError') {
       console.log('\nCancelled.');
