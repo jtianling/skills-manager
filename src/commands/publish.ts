@@ -153,7 +153,9 @@ export async function executePublish(dir: string): Promise<void> {
   }
 
   // Check dependency availability
-  if (manifest.dependencies && manifest.dependencies.length > 0) {
+  if (!manifest.dependencies || manifest.dependencies.length === 0) {
+    console.log('No dependencies declared.');
+  } else if (manifest.dependencies.length > 0) {
     console.log('Checking dependency availability...');
     const unavailable = await checkDependencyAvailability(manifest.dependencies);
 

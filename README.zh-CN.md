@@ -7,6 +7,8 @@
 ## 亮点
 
 - **中央仓库, 随处部署** — Skills 只需安装一次到 `~/.skills-manager/`.  之后通过 `add` 命令可以交互式地从所有本地已安装的 skills 中选择, 部署到任意项目或全局 — 不用每次都去翻原始仓库地址或路径.
+- **注册表集成** — 通过 [skillsmgr.dev](https://skillsmgr.dev) 注册表搜索、安装和发布 skills。`skillsmgr install code-review` 从注册表获取。`skillsmgr publish` 将你的 skills 分享给社区。
+- **自动依赖解析** — Skills 可以声明对其他 skills 的依赖。安装 skill 时，依赖会自动递归解析并安装。
 - **自定义分组, 批量管理** — 将 skills 组织到命名分组中 (如 `--group my-tools`).  `skillsmgr add group-name` 一条命令即可部署整组 skills.  支持多种方式填充分组: `group add my-group skill-name` 添加单个 skill, `group add my-group owner/repo` 添加整个仓库的 skills, `group add my-group another-group` 嵌套引用其他分组.
 - **支持 zip 包安装** — 可以直接从 `.zip` 文件或 Anthropic 的 `.skill` 包安装 skills, 方便在 GitHub 之外打包和分享技能.
 
@@ -84,6 +86,11 @@ project/
 | `skillsmgr add [name]` | - | 添加 skill 到项目 (name, `owner/repo` 或 group 名) |
 | `skillsmgr remove [name]` | - | 从项目中移除已部署的 skill (name, `owner/repo` 或 group 名) |
 | `skillsmgr group <subcommand>` | - | 管理虚拟 skill 分组 |
+| `skillsmgr search [query]` | - | 在 skillsmgr.dev 注册表中搜索 skills |
+| `skillsmgr publish [dir]` | - | 将 skill 发布到 skillsmgr.dev 注册表 |
+| `skillsmgr login` | - | 登录 skillsmgr.dev 注册表 |
+| `skillsmgr logout` | - | 登出注册表 |
+| `skillsmgr whoami` | - | 查看当前登录用户 |
 
 ### 命令选项
 
@@ -149,6 +156,19 @@ project/
 | `group rename <old> <new>` | 重命名分组 |
 
 ## 安装 Skills
+
+### 从注册表安装
+
+```bash
+# 通过包名安装（依赖自动解析）
+npx skillsmgr install code-review
+
+# 安装指定版本
+npx skillsmgr install code-review@1.0.0
+
+# 先搜索注册表
+npx skillsmgr search code
+```
 
 ### 安装官方 Anthropic skills
 
@@ -266,15 +286,75 @@ npx skillsmgr remove code-review -g -a claude-code
 │           └── skill-name/SKILL.md
 ├── custom/
 │   └── example-skill/SKILL.md
+├── registry/
 ├── groups.json
-└── sources.json
+├── sources.json
+└── auth.json
 ```
 
 - `official/`: 官方来源, 例如 `anthropic`
 - `community/`: 第三方仓库
 - `custom/`: 本地 skill, 或明确按 custom 分类安装的 skill
+- `registry/`: 从 skillsmgr.dev 注册表安装的 skills
 - `groups.json`: 由 `group` 命令管理的虚拟分组定义
 - `sources.json`: 供 `update` 使用的来源元数据
+- `auth.json`: 注册表认证令牌
+
+## 发布 Skills
+
+### skill.json
+
+每个可发布的 skill 都需要一个 `skill.json` 清单文件：
+
+```json
+{
+  "name": "my-skill",
+  "version": "1.0.0",
+  "description": "A short description of what the skill does",
+  "main": "SKILL.md",
+  "keywords": ["code", "review"],
+  "author": "your-name",
+  "license": "MIT",
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+}
+```
+
+**必填字段**：`name`、`version`、`description`，其余字段均为可选。
+
+### 依赖
+
+Skills 可以声明对其他 skills 的依赖。`dependencies` 字段为字符串数组（不支持版本约束）：
+
+```json
+"dependencies": [
+  "base-prompts",
+  "anthropics/skills:code-review",
+  "owner/repo"
+]
+```
+
+支持以下三种格式：
+- **注册表包名**：`"base-prompts"` — 从 skillsmgr.dev 安装
+- **GitHub 指定 skill**：`"owner/repo:skill-name"` — 来自 GitHub 仓库的特定 skill
+- **GitHub 完整仓库**：`"owner/repo"` — 仓库下的所有 skills
+
+用户安装你的 skill 时，依赖会自动解析并安装。
+
+### 发布流程
+
+```bash
+# 1. 登录（首次使用）
+npx skillsmgr login
+
+# 2. 在 skill 目录中创建 skill.json
+# 3. 发布
+npx skillsmgr publish
+
+# 4. 验证
+npx skillsmgr search my-skill
+```
+
+发布时，skillsmgr 会检查所有声明的依赖是否在注册表中可用。如有缺失，会提示你进行处理。
 
 ## 致谢
 
