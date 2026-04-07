@@ -3,11 +3,15 @@ import { mkdirSync, rmSync, existsSync, writeFileSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-vi.mock('../utils/prompts.js', () => ({
-  loadGroupsData: vi.fn().mockReturnValue({}),
-  promptAgents: vi.fn().mockResolvedValue(['agents-skills-standard']),
-  promptSkills: vi.fn().mockResolvedValue([]),
-}));
+vi.mock('../utils/prompts.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../utils/prompts.js')>();
+  return {
+    ...original,
+    loadGroupsData: vi.fn().mockReturnValue({}),
+    promptAgents: vi.fn().mockResolvedValue(['agents-skills-standard']),
+    promptSkills: vi.fn().mockResolvedValue([]),
+  };
+});
 
 vi.mock('./setup.js', () => ({
   executeSetup: vi.fn(),

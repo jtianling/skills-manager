@@ -7,12 +7,14 @@ import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { DeployOptions, ToolName } from '../types.js';
+import { DeployOptions, ToolName, collect } from '../types.js';
 import {
+  expandYesFlag,
   loadGroupsData,
   promptAgents,
   promptAgentsGlobal,
   promptSkills,
+  resolveTargetAgents,
 } from '../utils/prompts.js';
 import { ensureSetup } from './setup.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
@@ -73,6 +75,11 @@ async function executeDeployGlobal(
 }
 
 export async function executeDeploy(options: DeployOptions): Promise<void> {
+  if (options.json) {
+    options.yes = true;
+  }
+  options = expandYesFlag(options);
+
   await ensureSetup();
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -97,7 +104,11 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
   const configuredTools = scanner.getConfiguredTools();
 
-  const selectedTools = await promptAgents(configuredTools);
+  const selectedTools = options.sameAgents
+    ? configuredTools
+    : options.agent && options.agent.length > 0
+      ? options.agent as ToolName[]
+      : await promptAgents(configuredTools);
 
   const agentsSelected = selectedTools.includes('agents-skills-standard');
   const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');
@@ -126,7 +137,9 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const deployedSkillNames = deployedSkills.map((s) => s.name);
   const groupsData = loadGroupsData(new GroupsService());
 
-  const selectedSkillNames = await promptSkills(allSkills, deployedSkillNames, groupsData);
+  const selectedSkillNames = options.all
+    ? allSkills.map((s) => s.name)
+    : await promptSkills(allSkills, deployedSkillNames, groupsData);
 
   if (selectedSkillNames.length === 0) {
     console.log('No skills selected');
@@ -225,7 +238,11 @@ export const deployCommand = new Command('deploy')
   .description('Deploy skills to current project (or globally with -g)')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-g, --global', 'Deploy skills globally to agent user-level directories')
-  .option('--json', 'Output as JSON')
+  .option('--all', 'Deploy all skills without prompting')
+  .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
+  .option('--same-agents', 'Use currently configured agents')
+  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
+  .option('--json', 'Output as JSON (implies --yes)')
   .action(async (options: DeployOptions) => {
     await executeDeploy(options);
   });

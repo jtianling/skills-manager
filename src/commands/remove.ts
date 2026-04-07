@@ -485,8 +485,32 @@ export async function executeRemove(
     return;
   }
 
-  if (skillNames.length === 0) {
+  if (skillNames.length === 0 && !options.all) {
     await interactiveRemove();
+    return;
+  }
+
+  if (skillNames.length === 0 && options.all) {
+    const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+    const deployer = new Deployer(process.cwd());
+    const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+    const deployedSkills = resolveDeployedSkills(scanner.getDeployedSkills(), skillsService);
+
+    if (deployedSkills.length === 0) {
+      if (options.json) {
+        jsonError('No skills deployed in current project.', 'NOT_FOUND');
+        process.exit(1);
+      }
+      console.log('No skills deployed in current project.');
+      process.exit(1);
+    }
+
+    const allNames = deployedSkills.map((s) => s.name);
+    const removed = removeSkillNames(allNames, deployer, options.json);
+    if (options.json) {
+      jsonOutput({ removed });
+    }
+    cleanupGroupRefs(deployedSkills.map((s) => s.skillKey));
     return;
   }
 

@@ -13,6 +13,7 @@ vi.mock('../utils/prompts.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../utils/prompts.js')>();
   return {
     ...original,
+    loadGroupsData: vi.fn().mockReturnValue({}),
     promptAgents: vi.fn().mockResolvedValue(['agents-skills-standard']),
     promptAgentsGlobal: vi.fn().mockResolvedValue([]),
     promptSkills: vi.fn().mockResolvedValue([]),
@@ -64,9 +65,7 @@ describe('deploy --json', () => {
   });
 
   it('outputs deployed skills as JSON', async () => {
-    vi.mocked(promptSkills).mockResolvedValue(['code-review']);
-
-    await executeDeploy({ json: true });
+    await executeDeploy({ json: true, agent: ['agents-skills-standard'] });
 
     const written = (stdoutSpy.mock.calls[0] as string[])[0] as string;
     const parsed = JSON.parse(written);

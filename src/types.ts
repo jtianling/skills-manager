@@ -39,6 +39,11 @@ export interface DeployOptions {
   copy?: boolean;
   global?: boolean;
   json?: boolean;
+  yes?: boolean;
+  sameAgents?: boolean;
+  agent?: string[];
+  skill?: string[];
+  all?: boolean;
 }
 
 export interface AddOptions {
