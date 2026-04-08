@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 
 vi.mock('../utils/prompts.js', () => ({
   promptConfirm: vi.fn().mockResolvedValue(true),
-  promptSkillsToInstall: vi.fn().mockResolvedValue([]),
+  promptSkillsToInstall: vi.fn().mockResolvedValue({ names: [], isAll: false }),
 }));
 
 vi.mock('../utils/interactive-select.js', () => ({
@@ -23,7 +23,7 @@ describe('install --json', () => {
   let testManagerDir: string;
   let testProjectDir: string;
   let originalCwd: typeof process.cwd;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: any;
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -58,7 +58,7 @@ describe('install --json', () => {
     await executeInstall(sourceDir, { json: true });
 
     const jsonCalls = stdoutSpy.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('"installed"')
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('"installed"')
     );
     expect(jsonCalls.length).toBeGreaterThan(0);
 
@@ -79,7 +79,7 @@ describe('install --json', () => {
     ).rejects.toThrow('process.exit');
 
     const jsonCalls = stdoutSpy.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('"error"')
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('"error"')
     );
     expect(jsonCalls.length).toBeGreaterThan(0);
 

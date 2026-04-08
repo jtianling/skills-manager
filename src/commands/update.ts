@@ -1,22 +1,37 @@
 import { Command } from 'commander';
-import { basename, join, resolve } from 'path';
+import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { BundleManager, BundleSyncResult } from '../services/bundle-manager.js';
 import { GitHubService } from '../services/github.js';
 import { RegistryService } from '../services/registry.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
+import { SkillsService } from '../services/skills.js';
+import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { detectSourceType } from '../utils/source-detection.js';
-import { findInstalledCustomSkill } from './install-utils.js';
 import { ensureSetup } from './setup.js';
 
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
+const registryService = new RegistryService();
+const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+const sourceResolver = new SourceResolver(
+  sourcesService,
+  skillsService,
+  githubService
+);
+const bundleManager = new BundleManager(sourcesService, githubService);
 
 interface UpdateResult {
   updated: number;
   upToDate: number;
   failed: number;
   skipped: number;
+}
+
+interface UpdateOptions {
+  sync?: boolean;
+  verbose?: boolean;
 }
 
 function getInstalledSkillDirs(targetBase: string): Array<{ name: string; path: string }> {
@@ -75,33 +90,35 @@ function updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
   return result;
 }
 
-const registryService = new RegistryService();
-
-async function updateRegistrySource(key: string, info: SourceInfo): Promise<UpdateResult> {
+async function updateRegistrySource(
+  key: string,
+  info: SourceInfo,
+  targetVersion?: string
+): Promise<UpdateResult> {
   const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
 
-  // Extract package name from key (e.g., "registry/code-review" -> "code-review")
   const packageName = key.replace(/^registry\//, '');
 
   try {
     const packument = await registryService.getPackument(packageName);
     const latestVersion = packument['dist-tags']?.latest;
+    const version = targetVersion ?? latestVersion;
 
-    if (!latestVersion) {
+    if (!version) {
       console.log(`  ⚠ ${packageName}: no latest version found`);
       result.failed++;
       return result;
     }
 
-    if (info.version === latestVersion) {
-      console.log(`  ✓ ${packageName}: up to date (${latestVersion})`);
+    if (info.version === version) {
+      console.log(`  ✓ ${packageName}: up to date (${version})`);
       result.upToDate++;
       return result;
     }
 
-    const versionData = packument.versions[latestVersion];
+    const versionData = packument.versions[version];
     if (!versionData?.dist?.tarball) {
-      console.log(`  ⚠ ${packageName}: no tarball URL for ${latestVersion}`);
+      console.log(`  ⚠ ${packageName}: no tarball URL for ${version}`);
       result.failed++;
       return result;
     }
@@ -118,11 +135,11 @@ async function updateRegistrySource(key: string, info: SourceInfo): Promise<Upda
       type: 'registry',
       repoName: info.repoName,
       installMethod: info.installMethod,
-      version: latestVersion,
+      version,
       registryUrl: info.registryUrl,
     });
 
-    console.log(`  ↑ ${packageName}: ${info.version} → ${latestVersion}`);
+    console.log(`  ↑ ${packageName}: ${info.version} → ${version}`);
     result.updated++;
   } catch (error) {
     console.log(`  ✗ ${packageName}: ${(error as Error).message}`);
@@ -132,11 +149,16 @@ async function updateRegistrySource(key: string, info: SourceInfo): Promise<Upda
   return result;
 }
 
-async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult> {
+async function updateSource(
+  key: string,
+  info: SourceInfo,
+  selectedSkillNames?: Set<string>,
+  targetVersion?: string
+): Promise<UpdateResult> {
   const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
 
   if (info.type === 'registry') {
-    return updateRegistrySource(key, info);
+    return updateRegistrySource(key, info, targetVersion);
   }
 
   if (info.installMethod === 'zip') {
@@ -166,32 +188,19 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
   const localSkills = getInstalledSkillDirs(targetBase);
 
   if (localSkills.length > 0) {
-    // Try common skills directory locations to find remote path pattern
-    let skillsBasePath = 'skills';
-    const skillsPaths = ['skills', '.', 'src/skills'];
+    const { skillsPath: skillsBasePath } = await githubService.listSkillsWithFallbackPaths(
+      owner,
+      repo,
+    );
 
-    for (const skillsPath of skillsPaths) {
-      try {
-        const testList = await githubService.listSkills(owner, repo, skillsPath);
-        if (testList.length > 0) {
-          skillsBasePath = skillsPath;
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // Update only locally installed skills
     for (const localSkill of localSkills) {
       const skillName = localSkill.name;
-      // Skip residual commands directory
       if (skillName === 'commands') continue;
+      if (selectedSkillNames && !selectedSkillNames.has(skillName)) continue;
 
       const targetDir = localSkill.path;
       const localSkillMd = join(targetDir, 'SKILL.md');
 
-      // Check if local skill has SKILL.md
       if (!fileExists(localSkillMd)) {
         continue;
       }
@@ -258,7 +267,49 @@ async function updateSource(key: string, info: SourceInfo): Promise<UpdateResult
   return result;
 }
 
+async function updateSingleSkill(
+  key: string,
+  info: SourceInfo,
+  target: ResolvedTarget
+): Promise<UpdateResult> {
+  const selectedNames = new Set((target.skills ?? []).map((skill) => skill.name));
+  return updateSource(key, info, selectedNames, target.requestedVersion);
+}
+
+function printUpdateNotFound(source: string, target: ResolvedTarget): void {
+  if (detectSourceType(source) === 'local-path' && target.reason) {
+    console.log(target.reason);
+    return;
+  }
+
+  console.log(`Source '${source}' not found.`);
+  if (target.reason) {
+    console.log(target.reason);
+  }
+
+  const allSources = sourcesService.getAllSources();
+  console.log('\nInstalled sources:');
+  for (const key of Object.keys(allSources)) {
+    console.log(`  ${key}`);
+  }
+}
+
 export async function executeUpdate(source?: string): Promise<void> {
+  return executeUpdateWithOptions(source);
+}
+
+function printBundleUpdateSummary(result: BundleSyncResult): void {
+  console.log(
+    `\nDone! ${result.updated} updated, ${result.added} added, ` +
+      `${result.removedKept} removed (kept), ${result.removedHard} removed, ` +
+      `${result.upToDate} up to date, ${result.failed} failed`
+  );
+}
+
+export async function executeUpdateWithOptions(
+  source?: string,
+  options: UpdateOptions = {},
+): Promise<void> {
   await ensureSetup();
 
   const allSources = sourcesService.getAllSources();
@@ -271,72 +322,57 @@ export async function executeUpdate(source?: string): Promise<void> {
 
   // If specific source provided, only update that one
   if (source) {
-    const sourceType = detectSourceType(source);
+    const target = await sourceResolver.resolve(source);
 
-    if (sourceType === 'local-path') {
-      const sourcePath = resolve(process.cwd(), source);
-
-      if (!fileExists(sourcePath)) {
-        console.log(`Source path not found: ${sourcePath}`);
-        return;
-      }
-
-      if (!fileExists(join(sourcePath, 'SKILL.md'))) {
-        console.log(`SKILL.md not found at: ${sourcePath}`);
-        return;
-      }
-
-      const skillName = basename(sourcePath);
-      const installed = findInstalledCustomSkill(skillName);
-
-      if (!installed) {
-        console.log(`No installed skill found: ${skillName}`);
-        return;
-      }
-
-      console.log(`Updating ${installed.key} from ${sourcePath}...\n`);
-      const result = updateLocalCopy(installed.key, { ...allSources[installed.key], url: sourcePath } as SourceInfo);
-
-      if (result.updated > 0 || result.upToDate > 0) {
-        const existing = allSources[installed.key];
-        if (existing) {
-          sourcesService.addSource(installed.key, {
-            url: sourcePath,
-            type: existing.type,
-            repoName: existing.repoName,
-            installMethod: existing.installMethod,
-          });
-        } else {
-          sourcesService.addSource(installed.key, {
-            url: sourcePath,
-            type: 'custom',
-            repoName: skillName,
-            installMethod: 'local-copy',
-          });
-        }
-      }
-
-      console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed, ${result.skipped} skipped`);
+    if (target.kind === 'not-found') {
+      printUpdateNotFound(source, target);
       return;
     }
 
-    // Other types: match by key or repoName
-    const matchingKey = Object.keys(allSources).find(
-      (k) => k === source || k.endsWith(`/${source}`) || allSources[k].repoName === source
+    if (target.kind === 'bundle') {
+      const bundleId = target.bundleId;
+      if (!bundleId) {
+        throw new Error(`Missing bundle id for ${source}`);
+      }
+
+      console.log(`Updating ${bundleId}...\n`);
+      const result = await bundleManager.sync(bundleId, {
+        sync: options.sync,
+        verbose: options.verbose,
+      });
+      if (result.failed > 0) {
+        process.exitCode = 1;
+      }
+      printBundleUpdateSummary(result);
+      return;
+    }
+
+    const sourceKeys = target.kind === 'skill'
+      ? [...new Set((target.skills ?? []).map((skill) => skill.source))]
+      : target.sourceKeys;
+    const totals: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+
+    for (const key of sourceKeys) {
+      const info = allSources[key];
+      if (!info) {
+        totals.failed++;
+        continue;
+      }
+
+      console.log(`Updating ${key}...\n`);
+      const result = target.kind === 'skill'
+        ? await updateSingleSkill(key, info, target)
+        : await updateSource(key, info, undefined, target.requestedVersion);
+      totals.updated += result.updated;
+      totals.upToDate += result.upToDate;
+      totals.failed += result.failed;
+      totals.skipped += result.skipped;
+    }
+
+    console.log(
+      `\nDone! ${totals.updated} updated, ${totals.upToDate} up to date, ` +
+        `${totals.failed} failed, ${totals.skipped} skipped`
     );
-
-    if (!matchingKey) {
-      console.log(`Source '${source}' not found.`);
-      console.log('\nInstalled sources:');
-      for (const key of Object.keys(allSources)) {
-        console.log(`  ${key}`);
-      }
-      return;
-    }
-
-    console.log(`Updating ${matchingKey}...\n`);
-    const result = await updateSource(matchingKey, allSources[matchingKey]);
-    console.log(`\nDone! ${result.updated} updated, ${result.upToDate} up to date, ${result.failed} failed, ${result.skipped} skipped`);
     return;
   }
 
@@ -364,6 +400,8 @@ export async function executeUpdate(source?: string): Promise<void> {
 export const updateCommand = new Command('update')
   .description('Update installed skills to latest version')
   .argument('[source]', 'Specific source to update (e.g., "anthropic")')
-  .action(async (source?: string) => {
-    await executeUpdate(source);
+  .option('--sync', 'Remove bundle members that no longer exist in the source')
+  .option('-v, --verbose', 'Show every bundle member status during sync')
+  .action(async (source: string | undefined, options: UpdateOptions) => {
+    await executeUpdateWithOptions(source, options);
   });

@@ -1,0 +1,26 @@
+# Unified Source Detection (delta)
+
+## MODIFIED Requirements
+
+### Requirement: 统一的 source 类型识别
+`detectSourceType` SHALL 对未匹配任何已知格式的裸词返回 `'unknown'`, 不再 fallback 到 `'local-path'`.  SourceType 联合类型新增 `'unknown'`.  `update` 和 `uninstall` 命令 SHALL 委托 SourceResolver 处理所有 input 形式, 包括 `'unknown'` 类型的裸词兜底匹配.
+
+#### Scenario: 裸词返回 unknown
+- **WHEN** 输入为不含路径前缀的裸词 (如 `my-skill`, `anthropic`)
+- **THEN** `detectSourceType` 返回 `'unknown'`
+
+#### Scenario: 显式本地路径仍返回 local-path
+- **WHEN** 输入以 `/`, `./`, `../`, `~` 开头
+- **THEN** `detectSourceType` 返回 `'local-path'`
+
+#### Scenario: install 命令处理 unknown 类型
+- **WHEN** `detectSourceType` 返回 `'unknown'`
+- **THEN** install 命令报错: "Unknown source format '{input}'. Use ./name for local, owner/repo for GitHub."
+
+#### Scenario: update 命令处理 unknown 类型
+- **WHEN** `detectSourceType` 返回 `'unknown'` 且 `update` 命令收到此输入
+- **THEN** update 命令委托 SourceResolver.resolve, 走裸词兜底路径 (registry → source key 后缀 → repoName → skill name)
+
+#### Scenario: uninstall 命令处理 unknown 类型
+- **WHEN** `detectSourceType` 返回 `'unknown'` 且 `uninstall` 命令收到此输入
+- **THEN** uninstall 命令委托 SourceResolver.resolve, 走裸词兜底路径, 与 update 行为一致

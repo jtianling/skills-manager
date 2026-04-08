@@ -456,10 +456,15 @@ export async function promptSkillsToUninstall(
   });
 }
 
+export interface PromptSkillsToInstallResult {
+  names: string[];
+  isAll: boolean;
+}
+
 export async function promptSkillsToInstall(
   skills: Array<{ name: string; description: string }>,
   installedNames?: Set<string>,
-): Promise<string[]> {
+): Promise<PromptSkillsToInstallResult> {
   const choices = skills.map((skill) => {
     const isInstalled = installedNames?.has(skill.name) ?? false;
     return {
@@ -478,7 +483,13 @@ export async function promptSkillsToInstall(
     pageSize: 15,
   });
 
-  return selected.filter((name) => !installedNames?.has(name));
+  const names = selected.filter((name) => !installedNames?.has(name));
+  const availableCount = skills.filter((skill) => !installedNames?.has(skill.name)).length;
+
+  return {
+    names,
+    isAll: availableCount > 0 && names.length === availableCount,
+  };
 }
 
 export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {

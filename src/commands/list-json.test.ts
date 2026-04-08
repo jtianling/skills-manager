@@ -14,7 +14,7 @@ describe('list --json', () => {
   let testManagerDir: string;
   let testProjectDir: string;
   let originalCwd: typeof process.cwd;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: any;
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;

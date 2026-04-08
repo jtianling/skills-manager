@@ -139,8 +139,12 @@ export function detectSourceType(input: string): SourceType {
     return 'local-path';
   }
 
-  if (parseRegistryInput(input)) {
-    return 'registry';
+  const registry = parseRegistryInput(input);
+  if (registry) {
+    if (input.startsWith('@') || registry.requestedVersion) {
+      return 'registry';
+    }
+    return 'unknown';
   }
 
   return 'unknown';

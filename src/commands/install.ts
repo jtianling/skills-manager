@@ -1,13 +1,20 @@
 import { Command } from 'commander';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { type InstallOptions, collect } from '../types.js';
+import { SourcesService } from '../services/sources.js';
 import { ensureSetup } from './setup.js';
-import { detectSourceType, parseRegistryInput } from '../utils/source-detection.js';
+import {
+  detectSourceType,
+  parseOwnerRepoSkill,
+  parseRegistryInput,
+} from '../utils/source-detection.js';
 import { installViaGitClone } from './install-git.js';
 import { installFromLocalDir, installFromRemoteZip, installFromZip } from './install-local.js';
 import { installFromRegistry } from './install-registry.js';
 import type { InstallResult } from './install-utils.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
+
+const sourcesService = new SourcesService();
 
 async function installBySourceType(source: string, options: InstallOptions): Promise<InstallResult> {
   const sourceType = detectSourceType(source);
@@ -20,6 +27,16 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
     case 'owner-repo': {
       const normalizedSource = source.replace(/\/$/, '');
       return installViaGitClone(`https://github.com/${normalizedSource}`, options);
+    }
+    case 'owner-repo-skill': {
+      const parsed = parseOwnerRepoSkill(source);
+      if (!parsed) {
+        throw new Error(`Invalid owner/repo:skill input: '${source}'`);
+      }
+      return installViaGitClone(`https://github.com/${parsed.owner}/${parsed.repo}`, {
+        ...options,
+        skill: [parsed.skillName],
+      });
     }
     case 'remote-url':
       return installViaGitClone(source, options);
@@ -34,7 +51,7 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
     }
     case 'unknown':
       throw new Error(
-        `Unknown source format '${source}'. Use ./name for local, owner/repo for GitHub.`
+        `Unknown source format "${source}". Use ./name for local, owner/repo for GitHub.`
       );
     default: {
       const _exhaustive: never = sourceType;
@@ -72,6 +89,10 @@ export async function executeInstall(source: string, options: InstallOptions): P
 
   try {
     const result = await installBySourceType(source, options);
+
+    if (result.bundleInfo) {
+      sourcesService.addBundle(result.bundleInfo.id, result.bundleInfo.info);
+    }
 
     const groupName = options.group ?? result.batchGroupName;
     if (groupName && result.sourceKeys && result.sourceKeys.length > 0) {

@@ -1,8 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+const gitCloneState = vi.hoisted(() => ({ repoPath: '' }));
+
+vi.mock('child_process', async () => {
+  const { cpSync } = await import('fs');
+
+  return {
+    execFileSync: vi.fn((command: string, args: string[]) => {
+      if (command === 'git' && args[0] === 'clone') {
+        const repoDir = args[args.length - 1];
+        cpSync(gitCloneState.repoPath, repoDir, { recursive: true });
+        return Buffer.from('');
+      }
+
+      throw new Error(`Unexpected execFileSync call: ${command} ${args.join(' ')}`);
+    }),
+  };
+});
+
+import * as constants from '../constants.js';
 import { collectGitCloneSkills } from './install-git.js';
+import { executeInstall } from './install.js';
 
 function writeSkillMd(dir: string, name: string, description: string): void {
   mkdirSync(dir, { recursive: true });
@@ -175,5 +195,64 @@ describe('collectGitCloneSkills', () => {
       'azure-identity-ts',
       'azure-storage-py',
     ]);
+  });
+});
+
+describe('executeInstall git bundle tracking', () => {
+  let repoPath: string;
+  let testManagerDir: string;
+  let testProjectDir: string;
+  let originalCwd: typeof process.cwd;
+
+  beforeEach(() => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    repoPath = join(tmpdir(), `skillsmgr-git-fixture-${id}`);
+    testManagerDir = join(tmpdir(), `skillsmgr-git-install-mgr-${id}`);
+    testProjectDir = join(tmpdir(), `skillsmgr-git-install-proj-${id}`);
+
+    mkdirSync(repoPath, { recursive: true });
+    mkdirSync(testManagerDir, { recursive: true });
+    mkdirSync(testProjectDir, { recursive: true });
+
+    Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', { value: testManagerDir, writable: true });
+
+    originalCwd = process.cwd;
+    process.cwd = () => testProjectDir;
+
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    process.cwd = originalCwd;
+    gitCloneState.repoPath = '';
+    rmSync(repoPath, { recursive: true, force: true });
+    rmSync(testManagerDir, { recursive: true, force: true });
+    rmSync(testProjectDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function readSources() {
+    return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+  }
+
+  it('writes a git bundle entry for repo installs', async () => {
+    writeSkillMd(join(repoPath, 'skills', 'alpha'), 'alpha', 'Alpha');
+    writeSkillMd(join(repoPath, 'skills', 'beta'), 'beta', 'Beta');
+    gitCloneState.repoPath = repoPath;
+
+    await executeInstall('anthropics/skills', { all: true });
+
+    expect(existsSync(join(testManagerDir, 'official', 'anthropic', 'skills', 'alpha', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(testManagerDir, 'official', 'anthropic', 'skills', 'beta', 'SKILL.md'))).toBe(true);
+
+    const sources = readSources();
+    expect(sources.bundles['git:https://github.com/anthropics/skills']).toMatchObject({
+      type: 'git',
+      url: 'https://github.com/anthropics/skills',
+      selectionMode: 'all',
+      members: ['official/anthropic/skills'],
+    });
   });
 });

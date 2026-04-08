@@ -30,7 +30,7 @@ describe('remove --json', () => {
   let testProjectDir: string;
   let testGlobalDir: string;
   let originalCwd: typeof process.cwd;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: any;
   const savedGlobalDirs = new Map<string, string>();
 
   beforeEach(() => {

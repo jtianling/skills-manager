@@ -11,7 +11,7 @@ vi.mock('../services/registry.js', () => ({
 import { executeSearch } from './search.js';
 
 describe('search --json', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: any;
 
   beforeEach(() => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);

@@ -7,10 +7,12 @@ vi.mock('./interactive-select.js', () => ({
 import {
   buildVirtualGroupChoices,
   buildSourceGroupedChoices,
+  type ExpandYesFlagOptions,
   expandYesFlag,
   getSourceSuffix,
   loadGroupsData,
   promptSkills,
+  promptSkillsToInstall,
   promptSkillsToUninstall,
   resolveTargetAgents,
 } from './prompts.js';
@@ -216,6 +218,50 @@ describe('prompts', () => {
         },
       ],
       pageSize: 15,
+    });
+  });
+
+  it('returns isAll true when all non-locked skills are selected', async () => {
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['alpha', 'beta', 'gamma']);
+
+    const result = await promptSkillsToInstall(
+      [
+        { name: 'alpha', description: 'A' },
+        { name: 'beta', description: 'B' },
+        { name: 'gamma', description: 'C' },
+      ],
+      new Set(['alpha']),
+    );
+
+    expect(result).toEqual({
+      names: ['beta', 'gamma'],
+      isAll: true,
+    });
+  });
+
+  it('returns isAll false for partial or empty selections', async () => {
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['beta']);
+
+    const partial = await promptSkillsToInstall([
+      { name: 'alpha', description: 'A' },
+      { name: 'beta', description: 'B' },
+    ]);
+
+    expect(partial).toEqual({
+      names: ['beta'],
+      isAll: false,
+    });
+
+    vi.mocked(interactiveCheckbox).mockResolvedValueOnce([]);
+
+    const empty = await promptSkillsToInstall([
+      { name: 'alpha', description: 'A' },
+      { name: 'beta', description: 'B' },
+    ]);
+
+    expect(empty).toEqual({
+      names: [],
+      isAll: false,
     });
   });
 
@@ -745,49 +791,65 @@ describe('expandYesFlag', () => {
   });
 
   it('sets sameAgents and all when -y alone', () => {
-    const result = expandYesFlag({ yes: true });
+    const result = expandYesFlag<ExpandYesFlagOptions>({ yes: true });
     expect(result.sameAgents).toBe(true);
     expect(result.all).toBe(true);
   });
 
   it('does not set sameAgents when -a is specified', () => {
-    const result = expandYesFlag({ yes: true, agent: ['claude-code'] });
+    const result = expandYesFlag<ExpandYesFlagOptions>({
+      yes: true,
+      agent: ['claude-code'],
+    });
     expect(result.sameAgents).toBeUndefined();
     expect(result.all).toBe(true);
   });
 
   it('does not set sameAgents when --same-agents is already set', () => {
-    const result = expandYesFlag({ yes: true, sameAgents: true });
+    const result = expandYesFlag<ExpandYesFlagOptions>({
+      yes: true,
+      sameAgents: true,
+    });
     expect(result.sameAgents).toBe(true);
     expect(result.all).toBe(true);
   });
 
   it('does not set all when -s is specified', () => {
-    const result = expandYesFlag({ yes: true, skill: ['my-skill'] });
+    const result = expandYesFlag<ExpandYesFlagOptions>({
+      yes: true,
+      skill: ['my-skill'],
+    });
     expect(result.sameAgents).toBe(true);
     expect(result.all).toBeUndefined();
   });
 
   it('does not set all when --all is already set', () => {
-    const result = expandYesFlag({ yes: true, all: true });
+    const result = expandYesFlag<ExpandYesFlagOptions>({ yes: true, all: true });
     expect(result.sameAgents).toBe(true);
     expect(result.all).toBe(true);
   });
 
   it('does not expand anything when -a and -s both specified', () => {
-    const result = expandYesFlag({ yes: true, agent: ['claude-code'], skill: ['my-skill'] });
+    const result = expandYesFlag<ExpandYesFlagOptions>({
+      yes: true,
+      agent: ['claude-code'],
+      skill: ['my-skill'],
+    });
     expect(result.sameAgents).toBeUndefined();
     expect(result.all).toBeUndefined();
   });
 
   it('does not expand agent when -a set, expands all when no -s', () => {
-    const result = expandYesFlag({ yes: true, agent: ['claude-code'] });
+    const result = expandYesFlag<ExpandYesFlagOptions>({
+      yes: true,
+      agent: ['claude-code'],
+    });
     expect(result.sameAgents).toBeUndefined();
     expect(result.all).toBe(true);
   });
 
   it('does not expand all when --all set, expands sameAgents when no -a', () => {
-    const result = expandYesFlag({ yes: true, all: true });
+    const result = expandYesFlag<ExpandYesFlagOptions>({ yes: true, all: true });
     expect(result.sameAgents).toBe(true);
     expect(result.all).toBe(true);
   });

@@ -75,6 +75,27 @@ export interface ListOptions {
   json?: boolean;
 }
 
+export type BundleType = 'local-batch' | 'git' | 'zip';
+
+export type SelectionMode = 'all' | 'subset';
+
+export interface BundleInfo {
+  type: BundleType;
+  url: string;
+  selectionMode: SelectionMode;
+  members: string[];
+  installedAt: string;
+  updatedAt: string;
+}
+
+export type Bundle = BundleInfo;
+
+export interface SourcesData {
+  version: '1.0' | '2.0';
+  sources: Record<string, unknown>;
+  bundles: Record<string, Bundle>;
+}
+
 export interface SkillManifest {
   name: string;
   version: string;

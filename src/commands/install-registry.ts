@@ -94,7 +94,7 @@ export async function installFromRegistry(
     console.log(`Warning: No SKILL.md found in ${packageName}@${version}`);
   }
 
-  const selectedSkills = await selectSkills(skills, options);
+  const { skills: selectedSkills } = await selectSkills(skills, options);
   const allScriptFiles: string[] = [];
 
   for (const skill of selectedSkills) {

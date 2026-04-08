@@ -30,7 +30,7 @@ describe('add --json', () => {
   let testProjectDir: string;
   let testGlobalDir: string;
   let originalCwd: typeof process.cwd;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: any;
   const savedGlobalDirs = new Map<string, string>();
 
   beforeEach(() => {
@@ -105,7 +105,7 @@ describe('add --json', () => {
     // but --agent is explicitly set so it uses that.
     // Should output JSON with deployed array
     const calls = stdoutSpy.mock.calls.filter(
-      (call) => typeof call[0] === 'string' && call[0].includes('"deployed"')
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('"deployed"')
     );
     expect(calls.length).toBeGreaterThan(0);
   });

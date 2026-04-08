@@ -25,6 +25,13 @@ vi.mock('../services/github.js', () => {
       return [{ name: 'grouped-skill', path: 'skills/grouped-skill' }];
     }
 
+    async listSkillsWithFallbackPaths() {
+      return {
+        skillsPath: 'skills',
+        skills: [{ name: 'grouped-skill', path: 'skills/grouped-skill' }],
+      };
+    }
+
     async fetchRootFile() {
       return null;
     }
@@ -41,9 +48,34 @@ vi.mock('../services/github.js', () => {
   return { GitHubService };
 });
 
+vi.mock('../services/registry.js', () => {
+  class RegistryService {
+    async getPackument(name: string) {
+      return {
+        'dist-tags': { latest: '2.0.0' },
+        versions: {
+          '1.2.0': {
+            dist: { tarball: `https://registry.test/${name}/1.2.0.tgz` },
+          },
+          '2.0.0': {
+            dist: { tarball: `https://registry.test/${name}/2.0.0.tgz` },
+          },
+        },
+      };
+    }
+
+    async downloadTarball(_url: string, destDir: string) {
+      mkdirSync(destDir, { recursive: true });
+      writeFileSync(join(destDir, 'SKILL.md'), 'registry content');
+    }
+  }
+
+  return { RegistryService };
+});
+
 import * as constants from '../constants.js';
 import { SourcesService } from '../services/sources.js';
-import { executeUpdate } from './update.js';
+import { executeUpdate, executeUpdateWithOptions } from './update.js';
 
 describe('update command', () => {
   let testManagerDir: string;
@@ -147,7 +179,7 @@ describe('update command', () => {
     expect(console.log).toHaveBeenCalledWith('  ⚠ gone-skill: original path not found: /nonexistent/path');
   });
 
-  it('updates local-copy source by path argument (name-based matching)', async () => {
+  it('updates local-copy source by tracked path argument', async () => {
     const originalDir = join(tmpdir(), `skillsmgr-original-path-${Date.now()}`, 'path-skill');
     mkdirSync(originalDir, { recursive: true });
     writeFileSync(join(originalDir, 'SKILL.md'), 'updated content');
@@ -158,7 +190,7 @@ describe('update command', () => {
 
     const sourcesService = new SourcesService();
     sourcesService.addSource('custom/path-skill', {
-      url: '/old/path/path-skill',
+      url: originalDir,
       type: 'custom',
       repoName: 'path-skill',
       installMethod: 'local-copy',
@@ -168,13 +200,10 @@ describe('update command', () => {
 
     expect(console.log).toHaveBeenCalledWith('  ↑ path-skill: updated');
 
-    const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
-    expect(sourcesData.sources['custom/path-skill'].url).toBe(originalDir);
-
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
 
-  it('updates from different CWD by matching skill name', async () => {
+  it('reports not found for untracked local path even if skill name matches', async () => {
     const originalDir = join(tmpdir(), `skillsmgr-diffcwd-${Date.now()}`, 'my-skill');
     mkdirSync(originalDir, { recursive: true });
     writeFileSync(join(originalDir, 'SKILL.md'), 'new content');
@@ -193,7 +222,9 @@ describe('update command', () => {
 
     await executeUpdate(originalDir);
 
-    expect(console.log).toHaveBeenCalledWith('  ↑ my-skill: updated');
+    expect(console.log).toHaveBeenCalledWith(
+      `No installed skill found from path: ${originalDir}`
+    );
 
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
@@ -209,7 +240,7 @@ describe('update command', () => {
 
     await executeUpdate('/nonexistent/path/some-skill');
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Source path not found'));
+    expect(console.log).toHaveBeenCalledWith('No installed skill found from path: /nonexistent/path/some-skill');
   });
 
   it('reports not found when skill is not installed', async () => {
@@ -229,12 +260,14 @@ describe('update command', () => {
 
     await executeUpdate(originalDir);
 
-    expect(console.log).toHaveBeenCalledWith('No installed skill found: unknown-skill');
+    expect(console.log).toHaveBeenCalledWith(
+      `No installed skill found from path: ${originalDir}`
+    );
 
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
 
-  it('creates sources.json entry when none exists for update by path', async () => {
+  it('does not create sources.json entry for untracked local path', async () => {
     const originalDir = join(tmpdir(), `skillsmgr-nosource-${Date.now()}`, 'orphan-skill');
     mkdirSync(originalDir, { recursive: true });
     writeFileSync(join(originalDir, 'SKILL.md'), 'new content');
@@ -253,14 +286,12 @@ describe('update command', () => {
 
     await executeUpdate(originalDir);
 
-    expect(console.log).toHaveBeenCalledWith('  ↑ orphan-skill: updated');
+    expect(console.log).toHaveBeenCalledWith(
+      `No installed skill found from path: ${originalDir}`
+    );
 
     const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
-    expect(sourcesData.sources['custom/orphan-skill']).toMatchObject({
-      url: originalDir,
-      type: 'custom',
-      installMethod: 'local-copy',
-    });
+    expect(sourcesData.sources['custom/orphan-skill']).toBeUndefined();
 
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
@@ -295,5 +326,171 @@ describe('update command', () => {
 
     const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
     expect(sourcesData.sources['custom/grouped-skill'].installMethod).toBe('git');
+  });
+
+  it('updates official source via owner alias input', async () => {
+    const installedDir = join(testManagerDir, 'official', 'anthropic', 'skills', 'commit');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), '---\nname: commit\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('official/anthropic/skills', {
+      url: 'https://github.com/anthropics/skills',
+      type: 'official',
+      repoName: 'skills',
+      installMethod: 'git',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      if (String(input).includes('/skills/commit/SKILL.md')) {
+        return { ok: true, text: async () => '---\nname: commit\n---\n' };
+      }
+      throw new Error(`Unexpected fetch: ${input}`);
+    }));
+
+    await executeUpdate('anthropics/skills');
+
+    expect(console.log).toHaveBeenCalledWith('Updating official/anthropic/skills...\n');
+    expect(console.log).toHaveBeenCalledWith('  ✓ commit: up to date');
+  });
+
+  it('updates source via repository URL input', async () => {
+    const installedDir = join(testManagerDir, 'community', 'obra', 'superpowers', 'grouped-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), '---\nname: grouped-skill\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('community/obra/superpowers', {
+      url: 'https://github.com/obra/superpowers',
+      type: 'community',
+      repoName: 'superpowers',
+      installMethod: 'git',
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      if (String(input).includes('/skills/grouped-skill/SKILL.md')) {
+        return { ok: true, text: async () => '---\nname: grouped-skill\n---\n' };
+      }
+      throw new Error(`Unexpected fetch: ${input}`);
+    }));
+
+    await executeUpdate('https://github.com/obra/superpowers');
+
+    expect(console.log).toHaveBeenCalledWith('Updating community/obra/superpowers...\n');
+    expect(console.log).toHaveBeenCalledWith('  ✓ grouped-skill: up to date');
+  });
+
+  it('updates registry source to requested version', async () => {
+    const installedDir = join(testManagerDir, 'registry', 'code-review');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), 'old registry content');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('registry/code-review', {
+      url: 'https://skillsmgr.dev/api/r/code-review',
+      type: 'registry',
+      repoName: 'code-review',
+      installMethod: 'registry',
+      version: '1.0.0',
+    });
+
+    await executeUpdate('code-review@1.2.0');
+
+    expect(console.log).toHaveBeenCalledWith('  ↑ code-review: 1.0.0 → 1.2.0');
+    const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+    expect(sourcesData.sources['registry/code-review'].version).toBe('1.2.0');
+  });
+
+  it('syncs local batch bundle when updating by batch path', async () => {
+    const batchDir = join(tmpdir(), `skillsmgr-batch-${Date.now()}`, 'spec-tdd');
+    mkdirSync(join(batchDir, 'skill-a'), { recursive: true });
+    mkdirSync(join(batchDir, 'skill-b'), { recursive: true });
+    writeFileSync(join(batchDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+    writeFileSync(join(batchDir, 'skill-b', 'SKILL.md'), '---\nname: skill-b\n---\n');
+
+    const installedDir = join(testManagerDir, 'custom', 'spec-tdd');
+    mkdirSync(join(installedDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(installedDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/spec-tdd/skill-a', {
+      url: batchDir,
+      type: 'custom',
+      repoName: 'skill-a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(`local-batch:${batchDir}`, {
+      type: 'local-batch',
+      url: batchDir,
+      selectionMode: 'all',
+      members: ['custom/spec-tdd/skill-a'],
+    });
+
+    await executeUpdateWithOptions(batchDir);
+
+    expect(console.log).toHaveBeenCalledWith(`Updating local-batch:${batchDir}...\n`);
+    expect(console.log).toHaveBeenCalledWith('  + skill-b: new in source (installed)');
+    expect(console.log).toHaveBeenCalledWith('  ✓ 1 skills up to date');
+    expect(console.log).toHaveBeenCalledWith(
+      '\nDone! 0 updated, 1 added, 0 removed (kept), 0 removed, 1 up to date, 0 failed'
+    );
+    expect(readFileSync(join(installedDir, 'skill-b', 'SKILL.md'), 'utf-8')).toContain('skill-b');
+
+    rmSync(join(batchDir, '..'), { recursive: true, force: true });
+  });
+
+  it('syncs git bundle when updating by owner/repo input', async () => {
+    const installedDir = join(testManagerDir, 'official', 'anthropic', 'skills', 'grouped-skill');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), '---\nname: grouped-skill\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('official/anthropic/skills', {
+      url: 'https://github.com/anthropics/skills',
+      type: 'official',
+      repoName: 'skills',
+      installMethod: 'git',
+    });
+    sourcesService.addBundle('git:https://github.com/anthropics/skills', {
+      type: 'git',
+      url: 'https://github.com/anthropics/skills',
+      selectionMode: 'all',
+      members: ['official/anthropic/skills'],
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      if (String(input).includes('/skills/grouped-skill/SKILL.md')) {
+        return { ok: true, text: async () => '---\nname: grouped-skill\n---\n' };
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    }));
+
+    await executeUpdateWithOptions('anthropics/skills');
+
+    expect(console.log).toHaveBeenCalledWith('Updating git:https://github.com/anthropics/skills...\n');
+    expect(console.log).toHaveBeenCalledWith('  ✓ 1 skills up to date');
+    expect(console.log).toHaveBeenCalledWith(
+      '\nDone! 0 updated, 0 added, 0 removed (kept), 0 removed, 1 up to date, 0 failed'
+    );
+  });
+
+  it('reports not found for untracked batch directory path', async () => {
+    const batchDir = join(tmpdir(), `skillsmgr-batch-missing-${Date.now()}`, 'spec-tdd');
+    mkdirSync(join(batchDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(batchDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/dummy', {
+      url: '/dummy',
+      type: 'custom',
+      repoName: 'dummy',
+      installMethod: 'local-copy',
+    });
+
+    await executeUpdate(batchDir);
+    expect(console.log).toHaveBeenCalledWith(`No installed skill found from path: ${batchDir}`);
+
+    rmSync(join(batchDir, '..'), { recursive: true, force: true });
   });
 });

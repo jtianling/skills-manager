@@ -1,16 +1,18 @@
 import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
-import { join, resolve, basename } from 'path';
-import { homedir, tmpdir } from 'os';
+import { join, basename } from 'path';
+import { tmpdir } from 'os';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, warnScriptFiles } from '../utils/fs.js';
+import { makeBundleId, normalizeLocalPath } from '../utils/url-normalize.js';
 import {
   createInstallResult,
   findInstalledCustomSkill,
   getCustomSkillDir,
   getCustomSkillKey,
   getLocalOverwriteMessage,
+  installSingleSkillToLocalTarget,
   prepareTargetDir,
   scanSkillDirectories,
   selectSkills,
@@ -19,29 +21,12 @@ import type { InstallResult } from './install-utils.js';
 
 const sourcesService = new SourcesService();
 
-export function expandHomePath(input: string): string {
-  if (input === '~') {
-    return homedir();
-  }
-
-  if (input.startsWith('~/')) {
-    return join(homedir(), input.slice(2));
-  }
-
-  return input;
-}
-
 function isBareLocalSource(input: string): boolean {
   return !input.includes('/') && !input.startsWith('~');
 }
 
 export function resolveLocalSourcePath(input: string): string {
-  const normalized = expandHomePath(input);
-  if (normalized.startsWith('/')) {
-    return normalized;
-  }
-
-  return resolve(process.cwd(), normalized);
+  return normalizeLocalPath(input);
 }
 
 export async function installFromLocalDir(source: string, options: InstallOptions): Promise<InstallResult> {
@@ -76,8 +61,7 @@ export async function installFromLocalDir(source: string, options: InstallOption
     return createInstallResult([], []);
   }
 
-  copyDir(skillDir, targetDir);
-  warnScriptFiles(findScriptFiles(targetDir));
+  installSingleSkillToLocalTarget(skillDir, targetDir);
 
   sourcesService.addSource(sourceKey, {
     url: skillDir,
@@ -105,7 +89,11 @@ async function installFromLocalDirBatch(skillDir: string, options: InstallOption
     }
   }
 
-  const selectedSkills = await selectSkills(scannedSkills, options, installedNames);
+  const { skills: selectedSkills, isAll } = await selectSkills(
+    scannedSkills,
+    options,
+    installedNames,
+  );
   if (selectedSkills.length === 0) {
     return createInstallResult([], []);
   }
@@ -123,7 +111,7 @@ async function installFromLocalDirBatch(skillDir: string, options: InstallOption
       break;
     }
 
-    copyDir(skill.path, targetDir);
+    installSingleSkillToLocalTarget(skill.path, targetDir);
     installedPaths.push(targetDir);
     allScriptFiles.push(...findScriptFiles(targetDir));
 
@@ -142,10 +130,18 @@ async function installFromLocalDirBatch(skillDir: string, options: InstallOption
     console.log(`✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} from ${dirName}`);
   }
 
-  return {
-    ...createInstallResult(installedPaths, sourceKeys),
+  return createInstallResult(installedPaths, sourceKeys, {
     batchGroupName: dirName,
-  };
+    bundleInfo: {
+      id: makeBundleId('local-batch', skillDir),
+      info: {
+        type: 'local-batch',
+        url: skillDir,
+        selectionMode: isAll ? 'all' : 'subset',
+        members: sourceKeys,
+      },
+    },
+  });
 }
 
 export async function installFromZip(source: string, options: InstallOptions, originalSource = source): Promise<InstallResult> {
@@ -166,7 +162,7 @@ export async function installFromZip(source: string, options: InstallOptions, or
       throw new Error('No skills found in zip file');
     }
 
-    const selectedSkills = await selectSkills(scannedSkills, options);
+    const { skills: selectedSkills, isAll } = await selectSkills(scannedSkills, options);
     if (selectedSkills.length === 0) {
       return createInstallResult([], []);
     }
@@ -202,7 +198,21 @@ export async function installFromZip(source: string, options: InstallOptions, or
       console.log(`✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} from zip`);
     }
 
-    return createInstallResult(installedPaths, sourceKeys);
+    const bundleUrl = originalSource.startsWith('http://') || originalSource.startsWith('https://')
+      ? originalSource
+      : zipPath;
+
+    return createInstallResult(installedPaths, sourceKeys, {
+      bundleInfo: {
+        id: makeBundleId('zip', bundleUrl),
+        info: {
+          type: 'zip',
+          url: bundleUrl,
+          selectionMode: isAll ? 'all' : 'subset',
+          members: sourceKeys,
+        },
+      },
+    });
   } catch (error) {
     if (error instanceof Error) {
       throw error;

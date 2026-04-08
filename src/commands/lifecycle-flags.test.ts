@@ -124,7 +124,8 @@ describe('lifecycle with -s/--skill and -a/--agent flags', () => {
       const result = await selectSkills(skills, {
         skill: ['code-review', 'debugging'],
       });
-      expect(result.map((s) => s.name)).toEqual(['code-review', 'debugging']);
+      expect(result.skills.map((s) => s.name)).toEqual(['code-review', 'debugging']);
+      expect(result.isAll).toBe(false);
       expect(interactiveCheckbox).not.toHaveBeenCalled();
     });
 
@@ -335,8 +336,9 @@ describe('lifecycle with -s/--skill and -a/--agent flags', () => {
       const selected = await selectSkills(allSkills, {
         skill: ['code-review', 'tdd'],
       });
-      expect(selected.length).toBe(2);
-      expect(selected.map((s) => s.name)).toEqual(['code-review', 'tdd']);
+      expect(selected.skills.length).toBe(2);
+      expect(selected.skills.map((s) => s.name)).toEqual(['code-review', 'tdd']);
+      expect(selected.isAll).toBe(false);
 
       // Add to project with -s -a (no interaction)
       await executeAdd('anthropics/skills', {

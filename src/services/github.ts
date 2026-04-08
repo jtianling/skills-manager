@@ -62,6 +62,37 @@ export class GitHubService {
       .map((item) => ({ name: item.name, path: item.path }));
   }
 
+  async listSkillsWithFallbackPaths(
+    owner: string,
+    repo: string,
+    skillsPaths: string[] = ['skills', '.', 'src/skills']
+  ): Promise<{
+    skillsPath: string;
+    skills: Array<{ name: string; path: string }>;
+  }> {
+    for (const skillsPath of skillsPaths) {
+      try {
+        const skills = await this.listSkills(owner, repo, skillsPath);
+        if (skills.length > 0) {
+          return { skillsPath, skills };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const defaultBranch = await this.getDefaultBranch(owner, repo);
+    const rootSkill = await this.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
+    if (rootSkill !== null) {
+      return {
+        skillsPath: '.',
+        skills: [{ name: repo, path: '.' }],
+      };
+    }
+
+    throw new Error(`Failed to list skills for ${owner}/${repo}`);
+  }
+
   /**
    * Download a specific skill directory from GitHub
    */

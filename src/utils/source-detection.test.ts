@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo, parseRegistryInput, parseOwnerRepoSkill } from './source-detection.js';
 
 describe('detectSourceType', () => {
-  it('detects bare package names as registry', () => {
-    expect(detectSourceType('my-skill')).toBe('registry');
-    expect(detectSourceType('anthropic')).toBe('registry');
-    expect(detectSourceType('foo-bar')).toBe('registry');
-    expect(detectSourceType('code-review')).toBe('registry');
+  it('detects bare words as unknown', () => {
+    expect(detectSourceType('my-skill')).toBe('unknown');
+    expect(detectSourceType('anthropic')).toBe('unknown');
+    expect(detectSourceType('foo-bar')).toBe('unknown');
+    expect(detectSourceType('code-review')).toBe('unknown');
   });
 
   it('detects explicit local path prefixes', () => {
@@ -26,7 +26,7 @@ describe('detectSourceType', () => {
     expect(detectSourceType('../my-skill.zip')).toBe('local-zip');
     expect(detectSourceType('/tmp/my-skill.zip')).toBe('local-zip');
     expect(detectSourceType('~/my-skill.zip')).toBe('local-zip');
-    expect(detectSourceType('my-skill.zip')).toBe('registry');
+    expect(detectSourceType('my-skill.zip')).toBe('unknown');
     expect(detectSourceType('http://example.com/my-skill.zip')).toBe('remote-zip');
     expect(detectSourceType('https://example.com/my-skill.zip')).toBe('remote-zip');
   });
@@ -40,7 +40,7 @@ describe('detectSourceType', () => {
     expect(detectSourceType('../foo.skill')).toBe('local-zip');
     expect(detectSourceType('/path/to/foo.skill')).toBe('local-zip');
     expect(detectSourceType('~/foo.skill')).toBe('local-zip');
-    expect(detectSourceType('foo.skill')).toBe('registry');
+    expect(detectSourceType('foo.skill')).toBe('unknown');
     expect(detectSourceType('http://example.com/foo.skill')).toBe('remote-zip');
     expect(detectSourceType('https://example.com/foo.skill')).toBe('remote-zip');
   });
@@ -59,6 +59,11 @@ describe('detectSourceType', () => {
   it('detects owner/repo:skillName format', () => {
     expect(detectSourceType('anthropics/skills:git-diff-parser')).toBe('owner-repo-skill');
     expect(detectSourceType('obra/superpowers:brainstorming')).toBe('owner-repo-skill');
+  });
+
+  it('keeps scoped or versioned registry inputs as registry', () => {
+    expect(detectSourceType('code-review@1.0.0')).toBe('registry');
+    expect(detectSourceType('@anthropic/code-review')).toBe('registry');
   });
 });
 

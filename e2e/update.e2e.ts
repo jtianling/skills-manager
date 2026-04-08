@@ -79,7 +79,7 @@ describe('update E2E', () => {
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 
-  it('update local-path by name matching from different directory', async () => {
+  it('update bareword matches installed local-copy source by source key suffix', async () => {
     env = createTestEnv();
     await setup();
 
@@ -95,15 +95,13 @@ describe('update E2E', () => {
     await tmux.waitForText('Installed', 30_000);
     tmux.destroy();
 
-    const diffDir = join(env.homeDir, 'source-b', 'my-local-skill');
-    mkdirSync(diffDir, { recursive: true });
     writeFileSync(
-      join(diffDir, 'SKILL.md'),
-      '---\nname: my-local-skill\ndescription: A test skill\n---\nUpdated from different dir',
+      join(originalDir, 'SKILL.md'),
+      '---\nname: my-local-skill\ndescription: A test skill\n---\nUpdated from original dir',
     );
 
     tmux = new TmuxSession(env);
-    await tmux.start(`skillsmgr update "${diffDir}"`);
+    await tmux.start('skillsmgr update my-local-skill');
     const output = await tmux.waitForText('Done!', 10_000);
     expect(output).toContain('1 updated');
     tmux.destroy();

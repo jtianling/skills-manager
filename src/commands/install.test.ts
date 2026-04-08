@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 
 vi.mock('../utils/prompts.js', () => ({
   promptConfirm: vi.fn().mockResolvedValue(true),
-  promptSkillsToInstall: vi.fn().mockResolvedValue([]),
+  promptSkillsToInstall: vi.fn().mockResolvedValue({ names: [], isAll: false }),
 }));
 
 vi.mock('../utils/interactive-select.js', () => ({
@@ -15,6 +15,7 @@ vi.mock('../utils/interactive-select.js', () => ({
 
 import * as constants from '../constants.js';
 import { executeInstall } from './install.js';
+import { promptSkillsToInstall } from '../utils/prompts.js';
 
 describe('install command', () => {
   let testManagerDir: string;
@@ -50,20 +51,14 @@ describe('install command', () => {
     return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
   }
 
-  it('treats bare words as registry source and fails on 404', async () => {
+  it('rejects bare words with unknown source format', async () => {
     const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit');
     }) as never);
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      statusText: 'Not Found',
-    }));
-
     await expect(executeInstall('local-skill', {})).rejects.toThrow('process.exit');
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('not found in registry'),
+      'Error: Unknown source format "local-skill". Use ./name for local, owner/repo for GitHub.',
     );
     mockExit.mockRestore();
   });
@@ -85,6 +80,7 @@ describe('install command', () => {
       repoName: 'local-skill',
       installMethod: 'local-copy',
     });
+    expect(sources.bundles).toEqual({});
   });
 
   it('installs a local skill and adds it to virtual group', async () => {
@@ -133,6 +129,12 @@ describe('install command', () => {
         repoName: 'zip-skill',
         installMethod: 'zip',
       });
+      expect(sources.bundles[`zip:${archivePath}`]).toMatchObject({
+        type: 'zip',
+        url: archivePath,
+        selectionMode: 'all',
+        members: ['custom/zip-skill'],
+      });
     }
   );
 
@@ -168,6 +170,12 @@ describe('install command', () => {
     expect(sources.sources['custom/remote-zip-skill']).toMatchObject({
       url: 'https://example.com/skills.zip',
       installMethod: 'zip',
+    });
+    expect(sources.bundles['zip:https://example.com/skills.zip']).toMatchObject({
+      type: 'zip',
+      url: 'https://example.com/skills.zip',
+      selectionMode: 'all',
+      members: ['custom/remote-zip-skill'],
     });
   });
 
@@ -206,6 +214,12 @@ describe('install command', () => {
       const sources = readSources();
       expect(sources.sources['custom/my-skills/skill-a']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
       expect(sources.sources['custom/my-skills/skill-b']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
+      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
+        type: 'local-batch',
+        url: batchDir,
+        selectionMode: 'all',
+        members: ['custom/my-skills/skill-a', 'custom/my-skills/skill-b'],
+      });
     });
 
     it('auto-creates group with directory name after batch install', async () => {
@@ -242,6 +256,31 @@ describe('install command', () => {
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-a', 'SKILL.md'))).toBe(true);
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-c', 'SKILL.md'))).toBe(true);
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-b', 'SKILL.md'))).toBe(false);
+
+      const sources = readSources();
+      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
+        selectionMode: 'subset',
+        members: ['custom/my-skills/skill-a', 'custom/my-skills/skill-c'],
+      });
+    });
+
+    it('uses interactive isAll=false for subset batch bundles', async () => {
+      const batchDir = join(testProjectDir, 'my-skills');
+      createSkillDir(batchDir, 'skill-a');
+      createSkillDir(batchDir, 'skill-b');
+
+      vi.mocked(promptSkillsToInstall).mockResolvedValueOnce({
+        names: ['skill-b'],
+        isAll: false,
+      });
+
+      await executeInstall('./my-skills', {});
+
+      const sources = readSources();
+      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
+        selectionMode: 'subset',
+        members: ['custom/my-skills/skill-b'],
+      });
     });
 
     it('errors when directory has no skills', async () => {

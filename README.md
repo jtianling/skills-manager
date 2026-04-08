@@ -144,6 +144,32 @@ project/
 | `-y, --yes` | Skip all prompts (equivalent to --all --force) |
 | `-s, --skill <name>` | Specific skill to uninstall (repeatable) |
 
+**update**
+
+| Flag | Description |
+|------|-------------|
+| `--sync` | For bundle updates, hard-remove members that no longer exist in the source |
+| `-v, --verbose` | Show per-skill status for bundle updates instead of collapsing up-to-date items |
+
+### Update / Uninstall 输入格式
+
+`update` 和 `uninstall` 现在共享同一套 source 解析规则, 支持下面这些输入:
+
+- `owner/repo`: 如 `anthropics/skills`, `obra/superpowers`
+- `owner/repo:skill`: 精确到单个 skill, 如 `obra/superpowers:my-skill`
+- Git URL: 支持 HTTPS, SSH, `.git` 后缀, 如 `https://github.com/obra/superpowers`, `git@github.com:obra/superpowers.git`
+- registry 包: 如 `code-review`, `code-review@1.2.0`, `@acme/skill-x`
+- 本地单 skill 路径: 如 `./my-skill`, `/abs/path/to/my-skill`, `~/skills/my-skill`
+- bareword fallback: 按 `registry -> source key 后缀 -> repoName -> skill name` 顺序尝试
+
+限制:
+
+- zip source 仍然需要手动重新安装, `update` / `uninstall` 不直接处理
+- 本地 batch 目录现在会解析为 bundle, `update ./batch-dir` 会同步整个目录, `uninstall ./batch-dir` 会批量删除整个 bundle
+- bundle update 默认会保留"源里已删除, 本地仍存在"的成员, 并提示使用 `--sync` 做硬删除
+- `-v` / `--verbose` 会展开显示每个 bundle 成员的状态, 默认只显示变化项并折叠 up-to-date 计数
+- `update code-review@1.2.0` 的语义是切换到指定版本, 不是检查最新版本
+
 **group**
 
 | Subcommand | Description |

@@ -2,8 +2,17 @@ import { basename, join } from 'path';
 import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import type { InstallOptions } from '../types.js';
 import { SourcesService } from '../services/sources.js';
-import { fileExists, getDirectoriesInDir, readFileContent, removeDir } from '../utils/fs.js';
+import {
+  copyDir,
+  fileExists,
+  findScriptFiles,
+  getDirectoriesInDir,
+  readFileContent,
+  removeDir,
+  warnScriptFiles,
+} from '../utils/fs.js';
 import { promptConfirm, promptSkillsToInstall } from '../utils/prompts.js';
+import type { BundleInfo } from '../types.js';
 
 export interface InstalledCustomSkill {
   key: string;
@@ -68,6 +77,15 @@ export interface InstallResult {
   installedPaths?: string[];
   sourceKeys?: string[];
   batchGroupName?: string;
+  bundleInfo?: {
+    id: string;
+    info: Omit<BundleInfo, 'installedAt' | 'updatedAt'>;
+  };
+}
+
+export interface SelectedSkillsResult {
+  skills: InstallableSkill[];
+  isAll: boolean;
 }
 
 export function parseMdFrontmatter(content: string): Record<string, string> {
@@ -207,7 +225,19 @@ export async function prepareTargetDir(targetDir: string, overwriteMessage: stri
   return true;
 }
 
-export async function selectSkills(skills: InstallableSkill[], options: InstallOptions, installedNames?: Set<string>): Promise<InstallableSkill[]> {
+export function installSingleSkillToLocalTarget(
+  sourcePath: string,
+  targetDir: string,
+): void {
+  copyDir(sourcePath, targetDir);
+  warnScriptFiles(findScriptFiles(targetDir));
+}
+
+export async function selectSkills(
+  skills: InstallableSkill[],
+  options: InstallOptions,
+  installedNames?: Set<string>,
+): Promise<SelectedSkillsResult> {
   if (options.skill && options.skill.length > 0) {
     for (const name of options.skill) {
       if (!skills.some((s) => s.name === name)) {
@@ -215,32 +245,43 @@ export async function selectSkills(skills: InstallableSkill[], options: InstallO
         process.exit(1);
       }
     }
-    return skills.filter((s) => options.skill!.includes(s.name));
+    return {
+      skills: skills.filter((s) => options.skill!.includes(s.name)),
+      isAll: false,
+    };
   }
 
   if (options.all || skills.length <= 1) {
-    return skills;
+    return { skills, isAll: true };
   }
 
   if (installedNames && skills.every((s) => installedNames.has(s.name))) {
     console.log(`All ${skills.length} skills already installed.`);
-    return [];
+    return { skills: [], isAll: false };
   }
 
-  const newNames = await promptSkillsToInstall(skills, installedNames);
-  if (newNames.length === 0) {
+  const selected = await promptSkillsToInstall(skills, installedNames);
+  if (selected.names.length === 0) {
     console.log(installedNames?.size ? 'No new skills to install' : 'No skills selected');
-    return [];
+    return { skills: [], isAll: false };
   }
 
-  return skills.filter((skill) => newNames.includes(skill.name));
+  return {
+    skills: skills.filter((skill) => selected.names.includes(skill.name)),
+    isAll: selected.isAll,
+  };
 }
 
-export function createInstallResult(installedPaths: string[], sourceKeys: string[]): InstallResult {
+export function createInstallResult(
+  installedPaths: string[],
+  sourceKeys: string[],
+  extra: Partial<InstallResult> = {},
+): InstallResult {
   return {
     basePath: installedPaths[0] ?? '',
     sourceKey: sourceKeys[0] ?? '',
     installedPaths,
     sourceKeys,
+    ...extra,
   };
 }

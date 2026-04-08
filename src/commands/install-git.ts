@@ -7,6 +7,7 @@ import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
 import { getPluginSkillPaths } from '../services/plugin-manifest.js';
+import { makeBundleId, normalizeGitUrl } from '../utils/url-normalize.js';
 import {
   createInstallResult,
   getLocalOverwriteMessage,
@@ -265,6 +266,29 @@ function computeRepoTargetBase(context: GitCloneContext): string {
   return join(SKILLS_MANAGER_DIR, 'community', resolvedOwner || repoName, repoName);
 }
 
+function createGitBundleInfo(
+  context: GitCloneContext,
+  members: string[],
+  isAll: boolean,
+): InstallResult['bundleInfo'] {
+  const url = buildGitSourceUrl(
+    context.source,
+    context.resolvedOwner,
+    context.resolvedRepo,
+  );
+  const normalizedUrl = normalizeGitUrl(url) ?? url;
+
+  return {
+    id: makeBundleId('git', normalizedUrl),
+    info: {
+      type: 'git',
+      url: normalizedUrl,
+      selectionMode: isAll ? 'all' : 'subset',
+      members,
+    },
+  };
+}
+
 async function installRepoWithSelection(context: GitCloneContext): Promise<InstallResult> {
   const tempDir = await cloneToTemp(context.source);
   const repoPath = join(tempDir, 'repo');
@@ -283,14 +307,19 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
     );
 
     let selectedSkills: InstallableSkill[];
+    let isAll = false;
     if (context.options.skill?.length) {
-      selectedSkills = await selectSkills(skills, context.options);
+      const selected = await selectSkills(skills, context.options);
+      selectedSkills = selected.skills;
+      isAll = selected.isAll;
       console.log(`Found ${selectedSkills.length} skill${selectedSkills.length === 1 ? '' : 's'}.\n`);
     } else {
       console.log(`Found ${skills.length} skill${skills.length === 1 ? '' : 's'}.\n`);
-      selectedSkills = context.options.all
-        ? skills
+      const selected = context.options.all
+        ? { skills, isAll: true }
         : await selectSkills(skills, context.options, installedNames);
+      selectedSkills = selected.skills;
+      isAll = selected.isAll;
     }
     if (selectedSkills.length === 0) {
       return createInstallResult([], []);
@@ -324,7 +353,9 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
     );
 
     console.log(`\n✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} to ${targetBase}`);
-    return createInstallResult(installedPaths, [sourceKey]);
+    return createInstallResult(installedPaths, [sourceKey], {
+      bundleInfo: createGitBundleInfo(context, [sourceKey], isAll),
+    });
   } finally {
     removeDir(tempDir);
   }

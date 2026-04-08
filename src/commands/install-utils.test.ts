@@ -7,7 +7,7 @@ import type { InstallableSkill } from './install-utils.js';
 import * as constants from '../constants.js';
 
 vi.mock('../utils/prompts.js', () => ({
-  promptSkillsToInstall: vi.fn().mockResolvedValue([]),
+  promptSkillsToInstall: vi.fn().mockResolvedValue({ names: [], isAll: false }),
   promptConfirm: vi.fn().mockResolvedValue(true),
 }));
 
@@ -38,10 +38,13 @@ describe('selectSkills with --skill flag', () => {
   it('filters by --skill when provided', async () => {
     const result = await selectSkills(skills, { skill: ['skill-a', 'skill-c'] });
 
-    expect(result).toEqual([
-      { name: 'skill-a', description: 'A', path: '/a' },
-      { name: 'skill-c', description: 'C', path: '/c' },
-    ]);
+    expect(result).toEqual({
+      skills: [
+        { name: 'skill-a', description: 'A', path: '/a' },
+        { name: 'skill-c', description: 'C', path: '/c' },
+      ],
+      isAll: false,
+    });
     expect(promptSkillsToInstall).not.toHaveBeenCalled();
   });
 
@@ -56,16 +59,77 @@ describe('selectSkills with --skill flag', () => {
   it('--skill takes precedence over --all', async () => {
     const result = await selectSkills(skills, { all: true, skill: ['skill-a'] });
 
-    expect(result).toEqual([{ name: 'skill-a', description: 'A', path: '/a' }]);
+    expect(result).toEqual({
+      skills: [{ name: 'skill-a', description: 'A', path: '/a' }],
+      isAll: false,
+    });
   });
 
   it('falls back to interactive when --skill is empty array', async () => {
-    vi.mocked(promptSkillsToInstall).mockResolvedValue(['skill-b']);
+    vi.mocked(promptSkillsToInstall).mockResolvedValue({
+      names: ['skill-b'],
+      isAll: false,
+    });
 
     const result = await selectSkills(skills, { skill: [] });
 
     expect(promptSkillsToInstall).toHaveBeenCalled();
-    expect(result).toEqual([{ name: 'skill-b', description: 'B', path: '/b' }]);
+    expect(result).toEqual({
+      skills: [{ name: 'skill-b', description: 'B', path: '/b' }],
+      isAll: false,
+    });
+  });
+});
+
+describe('selectSkills selection mode semantics', () => {
+  const skills: InstallableSkill[] = [
+    { name: 'skill-a', description: 'A', path: '/a' },
+    { name: 'skill-b', description: 'B', path: '/b' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns isAll true for --all', async () => {
+    const result = await selectSkills(skills, { all: true });
+
+    expect(result).toEqual({
+      skills,
+      isAll: true,
+    });
+  });
+
+  it('returns isAll true when there is only one selectable skill', async () => {
+    const result = await selectSkills([skills[0]], {});
+
+    expect(result).toEqual({
+      skills: [skills[0]],
+      isAll: true,
+    });
+  });
+
+  it('returns empty with isAll false when everything is already installed', async () => {
+    const result = await selectSkills(skills, {}, new Set(['skill-a', 'skill-b']));
+
+    expect(result).toEqual({
+      skills: [],
+      isAll: false,
+    });
+  });
+
+  it('passes through interactive isAll results', async () => {
+    vi.mocked(promptSkillsToInstall).mockResolvedValueOnce({
+      names: ['skill-a', 'skill-b'],
+      isAll: true,
+    });
+
+    const result = await selectSkills(skills, {}, new Set(['installed-only']));
+
+    expect(result).toEqual({
+      skills,
+      isAll: true,
+    });
   });
 });
 
