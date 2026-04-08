@@ -20,6 +20,8 @@ import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ensureSetup } from './setup.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
+import { readManifest } from '../services/manifest.js';
+import { parseDependencyIdentifier } from '../services/dependency.js';
 
 async function promptSkillsFromRepo(
   repoSkills: SkillInfo[],
@@ -65,6 +67,68 @@ async function deploySkills(
     deployer.deploySkill(skill, deployMode);
     results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
     if (!json) console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+
+    // Deploy dependencies
+    const depResults = await deployDependencies(
+      skill.path, skillsService, deployer, scanner, deployMode, json,
+    );
+    results.push(...depResults);
+  }
+
+  return results;
+}
+
+async function deployDependencies(
+  skillPath: string,
+  skillsService: SkillsService,
+  deployer: Deployer,
+  scanner: DeploymentScanner,
+  deployMode: 'link' | 'copy',
+  json?: boolean,
+  visited: Set<string> = new Set(),
+): Promise<Array<{ name: string; mode: string }>> {
+  const manifest = readManifest(skillPath);
+  if (!manifest?.dependencies || manifest.dependencies.length === 0) return [];
+
+  const deployedNames = new Set(scanner.getDeployedSkills().map((s) => s.name));
+  const results: Array<{ name: string; mode: string }> = [];
+  const missing: string[] = [];
+
+  for (const dep of manifest.dependencies) {
+    const parsed = parseDependencyIdentifier(dep);
+    const depName = parsed.type === 'registry'
+      ? parsed.packageName
+      : parsed.type === 'github-skill'
+        ? parsed.skillName
+        : `${parsed.owner}/${parsed.repo}`;
+
+    if (visited.has(dep) || deployedNames.has(depName)) continue;
+    visited.add(dep);
+
+    const skill = skillsService.getSkillByName(depName);
+
+    if (!skill) {
+      missing.push(dep);
+      continue;
+    }
+
+    if (!deployedNames.has(skill.name)) {
+      deployer.deploySkill(skill, deployMode);
+      deployedNames.add(skill.name);
+      results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
+      if (!json) console.log(`  ✓ ${skill.name} (dependency, ${deployMode === 'link' ? 'linked' : 'copied'})`);
+    }
+
+    // Recurse into dependency's dependencies
+    const subResults = await deployDependencies(
+      skill.path, skillsService, deployer, scanner, deployMode, json, visited,
+    );
+    results.push(...subResults);
+  }
+
+  if (missing.length > 0 && !json) {
+    console.log(`\n  Dependencies not installed: ${missing.join(', ')}`);
+    console.log(`  Run: skillsmgr install <source> to install them first.`);
   }
 
   return results;
@@ -151,12 +215,21 @@ async function handleSkillName(
   const deployMode = options.copy ? 'copy' : 'link';
 
   deployer.deploySkill(skill, deployMode);
-  if (options.json) {
-    jsonOutput({
-      deployed: [{ name: skill.name, agents: selectedAgents, mode: deployMode === 'link' ? 'linked' : 'copied' }],
-    });
-  } else {
+  if (!options.json) {
     console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
+  }
+
+  // Deploy dependencies
+  const depResults = await deployDependencies(
+    skill.path, skillsService, deployer, scanner, deployMode, options.json,
+  );
+
+  if (options.json) {
+    const allDeployed = [
+      { name: skill.name, agents: selectedAgents, mode: deployMode === 'link' ? 'linked' : 'copied' },
+      ...depResults.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+    ];
+    jsonOutput({ deployed: allDeployed });
   }
 
   ensureSymlinkBridges(selectedAgents, deployer);

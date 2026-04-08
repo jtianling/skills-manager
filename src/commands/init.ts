@@ -65,6 +65,11 @@ export async function executeInit(options: { yes?: boolean }): Promise<void> {
         message: 'License:',
         default: 'MIT',
       },
+      {
+        type: 'input',
+        name: 'dependencies',
+        message: 'Dependencies (comma-separated, e.g. pkg-name, owner/repo:skill):',
+      },
     ]);
   } catch (error) {
     handlePromptError(error);
@@ -78,6 +83,12 @@ export async function executeInit(options: { yes?: boolean }): Promise<void> {
 
   if (answers.author) manifest.author = answers.author;
   if (answers.license) manifest.license = answers.license;
+
+  const deps = (answers.dependencies as string)
+    .split(',')
+    .map((d: string) => d.trim())
+    .filter(Boolean);
+  if (deps.length > 0) manifest.dependencies = deps;
 
   const { valid, errors } = validateManifest(manifest);
   if (!valid) {
