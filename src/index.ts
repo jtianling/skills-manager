@@ -13,6 +13,7 @@ import { logoutCommand } from './commands/logout.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { publishCommand } from './commands/publish.js';
 import { searchCommand } from './commands/search.js';
+import { initCommand } from './commands/init.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -37,5 +38,6 @@ program.addCommand(logoutCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(publishCommand);
 program.addCommand(searchCommand);
+program.addCommand(initCommand);
 
 program.parse();

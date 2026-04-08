@@ -148,7 +148,7 @@ export async function executePublish(dir: string): Promise<void> {
 
   const manifest = readManifest(dir);
   if (!manifest) {
-    console.error('No skill.json found. Create one manually or run "skillsmgr init-manifest".');
+    console.error('No skill.json found. Run "skillsmgr init" to create one.');
     process.exit(1);
   }
 

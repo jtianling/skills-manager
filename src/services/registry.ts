@@ -12,7 +12,8 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 function withTimeout(init?: RequestInit): RequestInit {
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  timer.unref();
   return { ...init, signal: controller.signal };
 }
 

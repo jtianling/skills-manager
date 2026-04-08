@@ -7,6 +7,7 @@ import { installViaGitClone } from './install-git.js';
 import { installFromLocalDir, installFromRemoteZip, installFromZip } from './install-local.js';
 import { installFromRegistry } from './install-registry.js';
 import type { InstallResult } from './install-utils.js';
+import { jsonOutput, jsonError } from '../utils/json-output.js';
 
 async function installBySourceType(source: string, options: InstallOptions): Promise<InstallResult> {
   const sourceType = detectSourceType(source);
@@ -47,13 +48,24 @@ export async function installSource(source: string, options: InstallOptions = {}
 }
 
 export async function executeInstall(source: string, options: InstallOptions): Promise<void> {
+  // In json mode, redirect console.log to stderr so only JSON goes to stdout
+  const origLog = console.log;
+  if (options.json) {
+    console.log = (...args: unknown[]) => console.error(...args);
+  }
+
   await ensureSetup();
 
   if (options.group) {
     try {
       validateGroupName(options.group);
     } catch (e) {
-      console.error(`Error: ${(e as Error).message}`);
+      if (options.json) {
+        console.log = origLog;
+        jsonError((e as Error).message, 'INVALID_GROUP');
+      } else {
+        console.error(`Error: ${(e as Error).message}`);
+      }
       process.exit(1);
     }
   }
@@ -68,8 +80,23 @@ export async function executeInstall(source: string, options: InstallOptions): P
         groupsService.addSkill(groupName, key);
       }
     }
+
+    if (options.json) {
+      console.log = origLog;
+      jsonOutput({
+        installed: {
+          source,
+          basePath: result.basePath,
+          skills: result.sourceKeys ?? [],
+          group: groupName ?? null,
+        },
+      });
+    }
   } catch (error) {
-    if (error instanceof Error) {
+    if (options.json) {
+      console.log = origLog;
+      jsonError(error instanceof Error ? error.message : 'Unknown error', 'INSTALL_ERROR');
+    } else if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
     }
     process.exit(1);
@@ -87,6 +114,7 @@ export const installCommand = new Command('install')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
   .option('--group <name>', 'Add installed skills to a virtual group')
   .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
+  .option('--json', 'Output as JSON (logs to stderr)')
   .action(async (source: string, options: InstallOptions) => {
     await executeInstall(source, options);
   });

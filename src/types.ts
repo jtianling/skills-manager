@@ -33,6 +33,7 @@ export interface InstallOptions {
   force?: boolean;
   group?: string;
   skill?: string[];
+  json?: boolean;
 }
 
 export interface DeployOptions {
