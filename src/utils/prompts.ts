@@ -604,27 +604,6 @@ export async function promptGroupAddConflictResolution(
   );
 }
 
-export interface ExpandYesFlagOptions {
-  yes?: boolean;
-  agent?: string[];
-  sameAgents?: boolean;
-  skill?: string[];
-  all?: boolean;
-}
-
-export function expandYesFlag<T extends ExpandYesFlagOptions>(options: T): T {
-  if (!options.yes) return options;
-
-  const hasAgent = (options.agent && options.agent.length > 0) || options.sameAgents;
-  const hasSkill = (options.skill && options.skill.length > 0) || options.all;
-
-  return {
-    ...options,
-    sameAgents: hasAgent ? options.sameAgents : true,
-    all: hasSkill ? options.all : true,
-  };
-}
-
 export interface ResolveAgentsOptions {
   agent?: string[];
   sameAgents?: boolean;

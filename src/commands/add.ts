@@ -9,7 +9,6 @@ import { installSource } from './install.js';
 import { AddOptions, SkillInfo, ToolName, collect } from '../types.js';
 import {
   buildSourceGroupedChoices,
-  expandYesFlag,
   loadGroupsData,
   resolveTargetAgents,
   type VirtualGroupsData,
@@ -534,10 +533,10 @@ export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
 ): Promise<void> {
-  if (options.json) {
-    options.yes = true;
+  if (options.json || options.y) {
+    if (!options.all) options.all = true;
+    if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
   }
-  options = expandYesFlag(options);
 
   if (options.group && arg) {
     console.log('Cannot use --group with a skill argument.');
@@ -589,14 +588,14 @@ export const addCommand = new Command('add')
   .description('Add a skill to the project (or globally with -g)')
   .argument('[arg]', 'Skill name, owner/repo, or URL')
   .option('--all', 'Add all skills without prompting')
+  .option('-y', 'Skip all prompts (implies --all --same-agents)')
   .option('--copy', 'Copy files instead of creating symlinks')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('-g, --global', 'Install globally to agent user-level directories')
   .option('--group <name>', 'Batch deploy all skills from a group')
   .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
-  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
   .option('--same-agents', 'Use currently configured agents')
-  .option('--json', 'Output as JSON (implies --yes)')
+  .option('--json', 'Output as JSON (implies --all)')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);
   });

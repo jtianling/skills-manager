@@ -9,12 +9,10 @@ import { Deployer } from '../services/deployer.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { DeployOptions, ToolName, collect } from '../types.js';
 import {
-  expandYesFlag,
   loadGroupsData,
   promptAgents,
   promptAgentsGlobal,
   promptSkills,
-  resolveTargetAgents,
 } from '../utils/prompts.js';
 import { ensureSetup } from './setup.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
@@ -75,10 +73,10 @@ async function executeDeployGlobal(
 }
 
 export async function executeDeploy(options: DeployOptions): Promise<void> {
-  if (options.json) {
-    options.yes = true;
+  if (options.json || options.y) {
+    if (!options.all) options.all = true;
+    if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
   }
-  options = expandYesFlag(options);
 
   await ensureSetup();
 
@@ -241,8 +239,8 @@ export const deployCommand = new Command('deploy')
   .option('--all', 'Deploy all skills without prompting')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('--same-agents', 'Use currently configured agents')
-  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
-  .option('--json', 'Output as JSON (implies --yes)')
+  .option('-y', 'Skip all prompts (implies --all --same-agents)')
+  .option('--json', 'Output as JSON (implies --all)')
   .action(async (options: DeployOptions) => {
     await executeDeploy(options);
   });

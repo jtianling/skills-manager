@@ -495,7 +495,7 @@ describe('uninstall command', () => {
       createSkillDir(skill2);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await executeUninstall('org/repo', { yes: true });
+      await executeUninstall('org/repo', { y: true });
 
       expect(promptSkillsToUninstall).not.toHaveBeenCalled();
       expect(promptConfirm).not.toHaveBeenCalled();
@@ -510,7 +510,7 @@ describe('uninstall command', () => {
       createSkillDir(skill);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await executeUninstall('org/repo', { yes: true, all: true, force: true });
+      await executeUninstall('org/repo', { y: true, all: true, force: true });
 
       expect(promptSkillsToUninstall).not.toHaveBeenCalled();
       expect(promptConfirm).not.toHaveBeenCalled();
@@ -524,7 +524,7 @@ describe('uninstall command', () => {
       createSkillDir(skillDir);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await executeUninstall('my-tool', { yes: true });
+      await executeUninstall('my-tool', { y: true });
 
       expect(promptConfirm).not.toHaveBeenCalled();
       expect(existsSync(skillDir)).toBe(false);
@@ -539,7 +539,7 @@ describe('uninstall command', () => {
       createSkillDir(otherSkill);
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await executeUninstall('anthropics/skills', { yes: true });
+      await executeUninstall('anthropics/skills', { y: true });
 
       expect(existsSync(targetSkill)).toBe(false);
       expect(existsSync(otherSkill)).toBe(true);

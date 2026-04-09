@@ -21,7 +21,7 @@ import { ensureSetup } from './setup.js';
 interface UninstallOptions {
   all?: boolean;
   force?: boolean;
-  yes?: boolean;
+  y?: boolean;
   skill?: string[];
 }
 
@@ -289,9 +289,9 @@ export async function executeUninstall(
   identifier: string | undefined,
   options: UninstallOptions
 ): Promise<void> {
-  if (options.yes) {
-    options.all = true;
-    options.force = true;
+  if (options.y) {
+    if (!options.all) options.all = true;
+    if (!options.force) options.force = true;
   }
 
   await ensureSetup();
@@ -357,7 +357,7 @@ export const uninstallCommand = new Command('uninstall')
   .argument('[identifier]', 'owner/repo or skill name')
   .option('--all', 'Skip selection prompt and uninstall all matching skills')
   .option('-f, --force', 'Skip confirmation prompt')
-  .option('-y, --yes', 'Skip all prompts (equivalent to --all --force)')
+  .option('-y', 'Skip all prompts (implies --all --force)')
   .option('-s, --skill <name>', 'Specific skill to uninstall (repeatable)', collect, [])
   .action(async (identifier: string | undefined, options: UninstallOptions) => {
     await executeUninstall(identifier, options);

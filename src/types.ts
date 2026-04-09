@@ -29,6 +29,7 @@ export interface ToolConfig {
 
 export interface InstallOptions {
   all?: boolean;
+  y?: boolean;
   custom?: boolean;
   force?: boolean;
   group?: string;
@@ -40,7 +41,7 @@ export interface DeployOptions {
   copy?: boolean;
   global?: boolean;
   json?: boolean;
-  yes?: boolean;
+  y?: boolean;
   sameAgents?: boolean;
   agent?: string[];
   skill?: string[];
@@ -55,7 +56,7 @@ export interface AddOptions {
   global?: boolean;
   group?: string;
   all?: boolean;
-  yes?: boolean;
+  y?: boolean;
   json?: boolean;
 }
 
@@ -65,8 +66,8 @@ export interface RemoveOptions {
   agent?: string[];
   sameAgents?: boolean;
   all?: boolean;
+  y?: boolean;
   group?: string;
-  yes?: boolean;
   json?: boolean;
 }
 

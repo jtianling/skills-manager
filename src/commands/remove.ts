@@ -11,7 +11,6 @@ import { ensureSetup } from './setup.js';
 import {
   buildSourceGroupedChoices,
   buildVirtualGroupChoices,
-  expandYesFlag,
   loadGroupsData,
   resolveTargetAgents,
 } from '../utils/prompts.js';
@@ -466,10 +465,10 @@ export async function executeRemove(
   name: string | undefined,
   options: RemoveOptions = {},
 ): Promise<void> {
-  if (options.json) {
-    options.yes = true;
+  if (options.json || options.y) {
+    if (!options.all) options.all = true;
+    if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
   }
-  options = expandYesFlag(options);
 
   await ensureSetup();
 
@@ -596,13 +595,13 @@ export const removeCommand = new Command('remove')
   .description('Remove a skill from the project (or globally with -g)')
   .argument('[name]', 'Skill name to remove')
   .option('--all', 'Remove all matching skills without prompting')
+  .option('-y', 'Skip all prompts (implies --all --same-agents)')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
   .option('-g, --global', 'Remove from global agent directories')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('--same-agents', 'Use currently configured agents')
   .option('--group <name>', 'Batch remove deployed skills from a group')
-  .option('--json', 'Output as JSON (implies --yes)')
-  .option('-y, --yes', 'Skip all prompts, auto-infer missing flags')
+  .option('--json', 'Output as JSON (implies --all)')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);
   });

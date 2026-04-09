@@ -65,6 +65,10 @@ export async function installSource(source: string, options: InstallOptions = {}
 }
 
 export async function executeInstall(source: string, options: InstallOptions): Promise<void> {
+  if (options.y) {
+    if (!options.all) options.all = true;
+  }
+
   // In json mode, redirect console.log to stderr so only JSON goes to stdout
   const origLog = console.log;
   if (options.json) {
@@ -131,6 +135,7 @@ export const installCommand = new Command('install')
   .description('Install skills from a local path, zip archive, repository, URL, or registry')
   .argument('<source>', 'Local path, zip file, owner/repo, URL, or package name')
   .option('--all', 'Install all skills without prompting')
+  .option('-y', 'Skip all prompts (implies --all)')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
   .option('--group <name>', 'Add installed skills to a virtual group')
