@@ -1,30 +1,4 @@
-# Local Update
-
-从原始路径更新 installMethod 为 `'local-copy'` 的已安装 skill.
-
-## Requirements
-
-### Requirement: 从原始路径更新 local-copy skill
-update 命令 SHALL 支持更新 installMethod 为 `'local-copy'` 的 source.  系统从 sources.json 中记录的 `url` (原始绝对路径) 读取最新内容, 对比已安装目录中的 SKILL.md, 有变化则重新拷贝.
-
-#### Scenario: 原始路径有更新
-- **WHEN** local-copy source 的原始路径中 SKILL.md 内容与已安装版本不同
-- **THEN** 系统删除已安装目录并从原始路径重新拷贝
-- **THEN** 输出 "↑ {skillName}: updated"
-
-#### Scenario: 原始路径无变化
-- **WHEN** local-copy source 的原始路径中 SKILL.md 内容与已安装版本相同
-- **THEN** 输出 "✓ {skillName}: up to date"
-
-#### Scenario: 原始路径不存在
-- **WHEN** local-copy source 的原始路径已不存在
-- **THEN** 输出 "⚠ {skillName}: original path not found: {path}"
-- **THEN** 计入 failed 计数
-
-#### Scenario: 原始路径中无 SKILL.md
-- **WHEN** local-copy source 的原始路径存在但不含 SKILL.md
-- **THEN** 输出 "⚠ {skillName}: SKILL.md not found at original path"
-- **THEN** 计入 failed 计数
+## MODIFIED Requirements
 
 ### Requirement: 通过本地路径参数指定更新
 update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/skill`, `~/skill`), 按路径匹配已安装的 local-copy source 或 local-batch bundle 并更新.  匹配失败时 SHALL 进入 basename fallback 流程 (见 `basename fallback 与 rebind` 需求); fallback 也未命中则报错.
@@ -38,6 +12,8 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 #### Scenario: 路径未匹配任何已安装 source 且 fallback 未命中
 - **WHEN** 用户执行 `skillsmgr update ./unknown-skill`, 精确路径匹配失败, basename fallback 也未找到候选
 - **THEN** 系统 SHALL 报错 "No installed skill found from path: {absPath}"
+
+## ADDED Requirements
 
 ### Requirement: basename fallback 与 rebind
 update 命令在 `resolveLocalPath` 精确路径匹配失败时, SHALL 按 basename 在已安装的 local-copy source 和 local-batch bundle 中查找候选, 并根据旧路径状态和类型匹配决定是否进入 rebind 流程.

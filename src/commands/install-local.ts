@@ -21,8 +21,37 @@ import type { InstallResult } from './install-utils.js';
 
 const sourcesService = new SourcesService();
 
+function formatReinstallConflictMessage(
+  kind: 'Skill' | 'A local bundle',
+  name: string,
+  existingPath: string,
+  newPath: string,
+): string {
+  return (
+    `${kind} '${name}' is already installed from ${existingPath}. ` +
+    `To move it to ${newPath}, run: skillsmgr update ${newPath}`
+  );
+}
+
+function formatBatchConflictList(
+  dirName: string,
+  candidates: Array<{ id: string; url: string }>,
+): string {
+  const lines = candidates
+    .map((candidate) => `  - ${candidate.id}: ${candidate.url}`)
+    .join('\n');
+  return (
+    `Multiple local bundles named '${dirName}' are already installed:\n${lines}\n` +
+    'Clean up the duplicate bundle entries and try again.'
+  );
+}
+
 function isBareLocalSource(input: string): boolean {
   return !input.includes('/') && !input.startsWith('~');
+}
+
+function isTopLevelCustomSkillKey(sourceKey: string): boolean {
+  return sourceKey.split('/').length === 2;
 }
 
 export function resolveLocalSourcePath(input: string): string {
@@ -48,9 +77,23 @@ export async function installFromLocalDir(source: string, options: InstallOption
   let targetDir: string;
   let sourceKey: string;
 
-  if (existing) {
+  if (existing && isTopLevelCustomSkillKey(existing.key)) {
     targetDir = existing.path;
     sourceKey = existing.key;
+    const existingSource = sourcesService.getSource(sourceKey);
+    if (
+      existingSource?.installMethod === 'local-copy' &&
+      normalizeLocalPath(existingSource.url) !== skillDir
+    ) {
+      throw new Error(
+        formatReinstallConflictMessage(
+          'Skill',
+          skillName,
+          normalizeLocalPath(existingSource.url),
+          skillDir,
+        ),
+      );
+    }
   } else {
     targetDir = getCustomSkillDir(skillName);
     sourceKey = getCustomSkillKey(skillName);
@@ -76,6 +119,26 @@ export async function installFromLocalDir(source: string, options: InstallOption
 
 async function installFromLocalDirBatch(skillDir: string, options: InstallOptions): Promise<InstallResult> {
   const dirName = basename(skillDir);
+  const bundleCandidates = sourcesService
+    .findLocalBatchBundlesByBasename(dirName)
+    .map(({ id, bundle }) => ({
+      id,
+      url: normalizeLocalPath(bundle.url),
+    }));
+  if (bundleCandidates.length > 1) {
+    throw new Error(formatBatchConflictList(dirName, bundleCandidates));
+  }
+  if (bundleCandidates.length === 1 && bundleCandidates[0].url !== skillDir) {
+    throw new Error(
+      formatReinstallConflictMessage(
+        'A local bundle',
+        dirName,
+        bundleCandidates[0].url,
+        skillDir,
+      ),
+    );
+  }
+
   const scannedSkills = scanSkillDirectories(skillDir, 1);
 
   if (scannedSkills.length === 0) {

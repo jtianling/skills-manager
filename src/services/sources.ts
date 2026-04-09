@@ -1,5 +1,5 @@
 import { renameSync, rmSync } from 'fs';
-import { dirname, join } from 'path';
+import { basename as pathBasename, dirname, join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import type {
   Bundle,
@@ -277,6 +277,82 @@ export class SourcesService {
     const data = this.load();
     delete data.bundles[id];
     this.save(data);
+  }
+
+  rebindLocalBundle(oldBundleId: string, newUrl: string): { newBundleId: string } {
+    const data = this.load();
+    const bundle = data.bundles[oldBundleId];
+    if (!bundle || bundle.type !== 'local-batch') {
+      throw new Error(`Local bundle not found: ${oldBundleId}`);
+    }
+
+    const normalizedUrl = normalizeLocalPath(newUrl);
+    const newBundleId = makeBundleId('local-batch', normalizedUrl);
+    const now = new Date().toISOString();
+    const reboundBundle: Bundle = {
+      ...bundle,
+      url: normalizedUrl,
+      updatedAt: now,
+    };
+    const danglingMembers = bundle.members.filter((member) => data.sources[member] === undefined);
+
+    if (danglingMembers.length > 0) {
+      throw new Error(
+        `Cannot rebind bundle ${oldBundleId}: dangling members in sources.json: ` +
+          `${danglingMembers.join(', ')}. Clean up sources.json and retry.`,
+      );
+    }
+
+    for (const member of bundle.members) {
+      const source = data.sources[member]!;
+      data.sources[member] = {
+        ...source,
+        url: normalizedUrl,
+        updatedAt: now,
+      };
+    }
+
+    delete data.bundles[oldBundleId];
+    data.bundles[newBundleId] = reboundBundle;
+    this.save(data);
+
+    return { newBundleId };
+  }
+
+  rebindLocalSource(sourceKey: string, newUrl: string): void {
+    const data = this.load();
+    const source = data.sources[sourceKey];
+    if (!source) {
+      throw new Error(`Local source not found: ${sourceKey}`);
+    }
+
+    data.sources[sourceKey] = {
+      ...source,
+      url: normalizeLocalPath(newUrl),
+      updatedAt: new Date().toISOString(),
+    };
+    this.save(data);
+  }
+
+  findLocalBatchBundlesByBasename(basename: string): Array<{ id: string; bundle: Bundle }> {
+    return Object.entries(this.getAllBundles())
+      .filter(([, bundle]) =>
+        bundle.type === 'local-batch' &&
+        pathBasename(normalizeLocalPath(bundle.url)) === basename
+      )
+      .map(([id, bundle]) => ({ id, bundle }));
+  }
+
+  findLocalCopySourcesByBasename(
+    basename: string,
+  ): Array<{ key: string; info: SourceInfo }> {
+    return Object.entries(this.getAllSources())
+      .filter(([key, info]) =>
+        info.installMethod === 'local-copy' &&
+        info.repoName === basename &&
+        key.split('/').length === 2
+      )
+      .map(([key, info]) => ({ key, info }));
   }
 
   findBundleByUrl(normalizedUrl: string, type: BundleType): Bundle | undefined {

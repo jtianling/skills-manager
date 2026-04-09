@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { BundleManager, BundleSyncResult } from '../services/bundle-manager.js';
 import { GitHubService } from '../services/github.js';
@@ -8,6 +8,7 @@ import { SourcesService, SourceInfo } from '../services/sources.js';
 import { SkillsService } from '../services/skills.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
+import { promptConfirm } from '../utils/prompts.js';
 import { detectSourceType } from '../utils/source-detection.js';
 import { ensureSetup } from './setup.js';
 
@@ -32,6 +33,7 @@ interface UpdateResult {
 interface UpdateOptions {
   sync?: boolean;
   verbose?: boolean;
+  force?: boolean;
 }
 
 function getInstalledSkillDirs(targetBase: string): Array<{ name: string; path: string }> {
@@ -276,7 +278,83 @@ async function updateSingleSkill(
   return updateSource(key, info, selectedNames, target.requestedVersion);
 }
 
+function isRebindCandidate(
+  target: ResolvedTarget,
+): target is ResolvedTarget & {
+  kind: 'rebind-candidate';
+  candidateType: 'source' | 'bundle';
+  candidateKey: string;
+  candidateUrl: string;
+  newAbsolutePath: string;
+  candidateStructureType: 'single' | 'batch';
+} {
+  return (
+    target.kind === 'rebind-candidate' &&
+    target.candidateType !== undefined &&
+    target.candidateKey !== undefined &&
+    target.candidateUrl !== undefined &&
+    target.newAbsolutePath !== undefined &&
+    target.candidateStructureType !== undefined
+  );
+}
+
+function getRebindPromptMessage(target: ResolvedTarget & {
+  candidateType: 'source' | 'bundle';
+  candidateUrl: string;
+  newAbsolutePath: string;
+}): string {
+  const name = basename(target.newAbsolutePath);
+  const noun = target.candidateType === 'bundle' ? 'bundle' : 'skill';
+  return (
+    `Rebind local ${noun} '${name}'?\n` +
+    `Old path: ${target.candidateUrl}\n` +
+    `New path: ${target.newAbsolutePath}`
+  );
+}
+
+async function maybeRebindTarget(
+  source: string,
+  target: ResolvedTarget,
+  options: UpdateOptions,
+): Promise<ResolvedTarget | null> {
+  if (!isRebindCandidate(target)) {
+    return target;
+  }
+
+  if (!options.force) {
+    const confirmed = await promptConfirm(getRebindPromptMessage(target), false);
+    if (!confirmed) {
+      console.log('Cancelled.');
+      return null;
+    }
+  }
+
+  if (target.candidateType === 'bundle') {
+    sourcesService.rebindLocalBundle(target.candidateKey, target.newAbsolutePath);
+  } else {
+    sourcesService.rebindLocalSource(target.candidateKey, target.newAbsolutePath);
+  }
+
+  const reboundTarget = await sourceResolver.resolve(source);
+  if (reboundTarget.kind === 'rebind-candidate' || reboundTarget.kind === 'not-found') {
+    throw new Error(`Failed to resolve ${source} after rebinding`);
+  }
+
+  return reboundTarget;
+}
+
 function printUpdateNotFound(source: string, target: ResolvedTarget): void {
+  if (
+    detectSourceType(source) === 'local-path' &&
+    target.reason?.includes('(still exists)')
+  ) {
+    console.log(
+      'Hint: The old path still exists. Remove or rename the old directory before running update again.',
+    );
+    console.log(target.reason);
+    return;
+  }
+
   if (detectSourceType(source) === 'local-path' && target.reason) {
     console.log(target.reason);
     return;
@@ -312,7 +390,7 @@ export async function executeUpdateWithOptions(
 ): Promise<void> {
   await ensureSetup();
 
-  const allSources = sourcesService.getAllSources();
+  let allSources = sourcesService.getAllSources();
 
   if (Object.keys(allSources).length === 0) {
     console.log('No installed sources found.');
@@ -322,7 +400,16 @@ export async function executeUpdateWithOptions(
 
   // If specific source provided, only update that one
   if (source) {
-    const target = await sourceResolver.resolve(source);
+    let target = await sourceResolver.resolve(source);
+
+    if (target.kind === 'rebind-candidate') {
+      const reboundTarget = await maybeRebindTarget(source, target, options);
+      if (!reboundTarget) {
+        return;
+      }
+      target = reboundTarget;
+      allSources = sourcesService.getAllSources();
+    }
 
     if (target.kind === 'not-found') {
       printUpdateNotFound(source, target);
@@ -400,6 +487,7 @@ export async function executeUpdateWithOptions(
 export const updateCommand = new Command('update')
   .description('Update installed skills to latest version')
   .argument('[source]', 'Specific source to update (e.g., "anthropic")')
+  .option('-y, --force', 'Skip rebind confirmation when a moved local path is detected')
   .option('--sync', 'Remove bundle members that no longer exist in the source')
   .option('-v, --verbose', 'Show every bundle member status during sync')
   .action(async (source: string | undefined, options: UpdateOptions) => {

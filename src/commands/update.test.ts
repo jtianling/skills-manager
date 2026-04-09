@@ -73,8 +73,14 @@ vi.mock('../services/registry.js', () => {
   return { RegistryService };
 });
 
+vi.mock('../utils/prompts.js', () => ({
+  promptConfirm: vi.fn().mockResolvedValue(true),
+}));
+
 import * as constants from '../constants.js';
 import { SourcesService } from '../services/sources.js';
+import { makeBundleId } from '../utils/url-normalize.js';
+import { promptConfirm } from '../utils/prompts.js';
 import { executeUpdate, executeUpdateWithOptions } from './update.js';
 
 describe('update command', () => {
@@ -88,6 +94,7 @@ describe('update command', () => {
 
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(promptConfirm).mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -203,10 +210,90 @@ describe('update command', () => {
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
 
-  it('reports not found for untracked local path even if skill name matches', async () => {
-    const originalDir = join(tmpdir(), `skillsmgr-diffcwd-${Date.now()}`, 'my-skill');
-    mkdirSync(originalDir, { recursive: true });
-    writeFileSync(join(originalDir, 'SKILL.md'), 'new content');
+  it('rebinds a moved batch bundle after confirmation and continues update', async () => {
+    const oldBatchDir = join(tmpdir(), `skillsmgr-old-batch-${Date.now()}`, 'tdd-spec');
+    const newBatchDir = join(tmpdir(), `skillsmgr-new-batch-${Date.now()}`, 'tdd-spec');
+    mkdirSync(join(newBatchDir, 'skill-a'), { recursive: true });
+    mkdirSync(join(newBatchDir, 'skill-b'), { recursive: true });
+    writeFileSync(join(newBatchDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+    writeFileSync(join(newBatchDir, 'skill-b', 'SKILL.md'), '---\nname: skill-b\n---\n');
+
+    const installedDir = join(testManagerDir, 'custom', 'tdd-spec');
+    mkdirSync(join(installedDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(installedDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+
+    const sourcesService = new SourcesService();
+    const oldBundleId = makeBundleId('local-batch', oldBatchDir);
+    sourcesService.addSource('custom/tdd-spec/skill-a', {
+      url: oldBatchDir,
+      type: 'custom',
+      repoName: 'skill-a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(oldBundleId, {
+      type: 'local-batch',
+      url: oldBatchDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/skill-a'],
+    });
+
+    await executeUpdateWithOptions(newBatchDir);
+
+    expect(promptConfirm).toHaveBeenCalledWith(
+      expect.stringContaining(`Old path: ${oldBatchDir}`),
+      false,
+    );
+    expect(console.log).toHaveBeenCalledWith('  + skill-b: new in source (installed)');
+    const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+    const newBundleId = makeBundleId('local-batch', newBatchDir);
+    expect(sourcesData.bundles[oldBundleId]).toBeUndefined();
+    expect(sourcesData.bundles[newBundleId]).toMatchObject({
+      url: newBatchDir,
+      members: ['custom/tdd-spec/skill-a', 'custom/tdd-spec/skill-b'],
+    });
+    expect(sourcesData.sources['custom/tdd-spec/skill-a'].url).toBe(newBatchDir);
+    expect(readFileSync(join(installedDir, 'skill-b', 'SKILL.md'), 'utf-8')).toContain('skill-b');
+
+    rmSync(join(newBatchDir, '..'), { recursive: true, force: true });
+  });
+
+  it('cancels rebind when the user declines the prompt', async () => {
+    const oldBatchDir = join(tmpdir(), `skillsmgr-old-batch-${Date.now()}`, 'tdd-spec');
+    const newBatchDir = join(tmpdir(), `skillsmgr-new-batch-${Date.now()}`, 'tdd-spec');
+    mkdirSync(join(newBatchDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(newBatchDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+    vi.mocked(promptConfirm).mockResolvedValueOnce(false);
+
+    const sourcesService = new SourcesService();
+    const oldBundleId = makeBundleId('local-batch', oldBatchDir);
+    sourcesService.addSource('custom/tdd-spec/skill-a', {
+      url: oldBatchDir,
+      type: 'custom',
+      repoName: 'skill-a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(oldBundleId, {
+      type: 'local-batch',
+      url: oldBatchDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/skill-a'],
+    });
+
+    await executeUpdateWithOptions(newBatchDir);
+
+    expect(console.log).toHaveBeenCalledWith('Cancelled.');
+    const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+    expect(sourcesData.bundles[oldBundleId]).toBeDefined();
+    expect(sourcesData.bundles[makeBundleId('local-batch', newBatchDir)]).toBeUndefined();
+
+    rmSync(join(newBatchDir, '..'), { recursive: true, force: true });
+  });
+
+  it('rebinds without prompting when --force is used', async () => {
+    const oldDir = join(tmpdir(), `skillsmgr-old-force-${Date.now()}`, 'my-skill');
+    const newDir = join(tmpdir(), `skillsmgr-new-force-${Date.now()}`, 'my-skill');
+    mkdirSync(newDir, { recursive: true });
+    writeFileSync(join(newDir, 'SKILL.md'), 'new content');
 
     const installedDir = join(testManagerDir, 'custom', 'my-skill');
     mkdirSync(installedDir, { recursive: true });
@@ -214,19 +301,20 @@ describe('update command', () => {
 
     const sourcesService = new SourcesService();
     sourcesService.addSource('custom/my-skill', {
-      url: '/original/install/path/my-skill',
+      url: oldDir,
       type: 'custom',
       repoName: 'my-skill',
       installMethod: 'local-copy',
     });
 
-    await executeUpdate(originalDir);
+    await executeUpdateWithOptions(newDir, { force: true });
 
-    expect(console.log).toHaveBeenCalledWith(
-      `No installed skill found from path: ${originalDir}`
-    );
+    expect(promptConfirm).not.toHaveBeenCalled();
+    const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+    expect(sourcesData.sources['custom/my-skill'].url).toBe(newDir);
+    expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe('new content');
 
-    rmSync(join(originalDir, '..'), { recursive: true, force: true });
+    rmSync(join(newDir, '..'), { recursive: true, force: true });
   });
 
   it('reports not found when source path does not exist', async () => {
@@ -265,6 +353,118 @@ describe('update command', () => {
     );
 
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
+  });
+
+  it('reports a specific reason when the old path still exists', async () => {
+    const oldDir = join(tmpdir(), `skillsmgr-old-exists-${Date.now()}`, 'tdd-spec');
+    const newDir = join(tmpdir(), `skillsmgr-new-exists-${Date.now()}`, 'tdd-spec');
+    mkdirSync(join(oldDir, 'skill-a'), { recursive: true });
+    mkdirSync(join(newDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(oldDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+    writeFileSync(join(newDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/tdd-spec/skill-a', {
+      url: oldDir,
+      type: 'custom',
+      repoName: 'skill-a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', oldDir), {
+      type: 'local-batch',
+      url: oldDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/skill-a'],
+    });
+
+    await executeUpdate(newDir);
+
+    expect(console.log).toHaveBeenCalledWith(
+      'Hint: The old path still exists. Remove or rename the old directory before running update again.',
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      `No installed skill found from path: ${newDir}. ` +
+      `A bundle with the same name is installed from ${oldDir} ` +
+      '(still exists). Remove or rename the old path first to rebind.',
+    );
+
+    rmSync(join(oldDir, '..'), { recursive: true, force: true });
+    rmSync(join(newDir, '..'), { recursive: true, force: true });
+  });
+
+  it('reports path type mismatch for rebind candidates', async () => {
+    const oldDir = join(tmpdir(), `skillsmgr-old-mismatch-${Date.now()}`, 'tdd-spec');
+    const newDir = join(tmpdir(), `skillsmgr-new-mismatch-${Date.now()}`, 'tdd-spec');
+    mkdirSync(newDir, { recursive: true });
+    writeFileSync(join(newDir, 'SKILL.md'), '---\nname: tdd-spec\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/tdd-spec/skill-a', {
+      url: oldDir,
+      type: 'custom',
+      repoName: 'skill-a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', oldDir), {
+      type: 'local-batch',
+      url: oldDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/skill-a'],
+    });
+
+    await executeUpdate(newDir);
+
+    expect(console.log).toHaveBeenCalledWith(
+      `Path type mismatch: existing bundle 'tdd-spec' is batch, ` +
+      `but ${newDir} looks like a single skill.`,
+    );
+
+    rmSync(join(newDir, '..'), { recursive: true, force: true });
+  });
+
+  it('reports all matching rebind candidates when basename is ambiguous', async () => {
+    const oldDirA = join(tmpdir(), `skillsmgr-old-a-${Date.now()}`, 'tdd-spec');
+    const oldDirB = join(tmpdir(), `skillsmgr-old-b-${Date.now()}`, 'tdd-spec');
+    const newDir = join(tmpdir(), `skillsmgr-new-ambiguous-${Date.now()}`, 'tdd-spec');
+    mkdirSync(join(newDir, 'skill-a'), { recursive: true });
+    writeFileSync(join(newDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/tdd-spec/a', {
+      url: oldDirA,
+      type: 'custom',
+      repoName: 'a',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addSource('custom/tdd-spec/b', {
+      url: oldDirB,
+      type: 'custom',
+      repoName: 'b',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', oldDirA), {
+      type: 'local-batch',
+      url: oldDirA,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/a'],
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', oldDirB), {
+      type: 'local-batch',
+      url: oldDirB,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/b'],
+    });
+
+    await executeUpdate(newDir);
+
+    expect(console.log).toHaveBeenCalledWith(
+      `No installed skill found from path: ${newDir}. ` +
+      "Multiple installed local sources share basename 'tdd-spec':\n" +
+      `  - ${makeBundleId('local-batch', oldDirA)}: ${oldDirA}\n` +
+      `  - ${makeBundleId('local-batch', oldDirB)}: ${oldDirB}`,
+    );
+
+    rmSync(join(newDir, '..'), { recursive: true, force: true });
   });
 
   it('does not create sources.json entry for untracked local path', async () => {

@@ -1,4 +1,4 @@
-import { join } from 'path';
+import { basename, join } from 'path';
 import { findOfficialProvider, SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from './github.js';
 import { SourceInfo, SourcesService } from './sources.js';
@@ -18,7 +18,14 @@ import {
   normalizeLocalPath,
 } from '../utils/url-normalize.js';
 
-export type ResolvedTargetKind = 'source' | 'skill' | 'bundle' | 'not-found';
+export type ResolvedTargetKind =
+  | 'source'
+  | 'skill'
+  | 'bundle'
+  | 'rebind-candidate'
+  | 'not-found';
+
+type LocalStructureType = 'single' | 'batch';
 
 export interface ResolvedTarget {
   kind: ResolvedTargetKind;
@@ -28,6 +35,11 @@ export interface ResolvedTarget {
   reason?: string;
   originalInput: string;
   requestedVersion?: string;
+  candidateType?: 'source' | 'bundle';
+  candidateKey?: string;
+  candidateUrl?: string;
+  newAbsolutePath?: string;
+  candidateStructureType?: LocalStructureType;
 }
 
 function createTarget(
@@ -222,10 +234,7 @@ export class SourceResolver {
       if (matchedKeys.length > 0) {
         return createTarget(input, 'source', matchedKeys, {});
       }
-
-      return createTarget(input, 'not-found', [], {
-        reason: `No installed skill found from path: ${absolutePath}`,
-      });
+      return this.resolveLocalRebindCandidate(input, absolutePath, 'single');
     }
 
     const hasNestedSkills = getDirectoriesInDir(absolutePath).some((dir) =>
@@ -240,15 +249,10 @@ export class SourceResolver {
           makeBundleId('local-batch', absolutePath),
         );
       }
-
-      return createTarget(input, 'not-found', [], {
-        reason: `No installed skill found from path: ${absolutePath}`,
-      });
+      return this.resolveLocalRebindCandidate(input, absolutePath, 'batch');
     }
 
-    return createTarget(input, 'not-found', [], {
-      reason: `No installed skill found from path: ${absolutePath}`,
-    });
+    return this.resolveLocalRebindCandidate(input, absolutePath, null);
   }
 
   private resolveRegistry(input: string): ResolvedTarget {
@@ -333,5 +337,99 @@ export class SourceResolver {
     return createTarget(input, 'bundle', [...bundle.members], {
       bundleId,
     });
+  }
+
+  private resolveLocalRebindCandidate(
+    input: string,
+    absolutePath: string,
+    detectedStructureType: LocalStructureType | null,
+  ): ResolvedTarget {
+    const lookupBasename = basename(absolutePath);
+    const bundleCandidates = this.sourcesService
+      .findLocalBatchBundlesByBasename(lookupBasename)
+      .map(({ id, bundle }) => ({
+        candidateType: 'bundle' as const,
+        candidateKey: id,
+        candidateUrl: normalizeLocalPath(bundle.url),
+        candidateStructureType: 'batch' as const,
+      }));
+    const sourceCandidates = this.sourcesService
+      .findLocalCopySourcesByBasename(lookupBasename)
+      .map(({ key, info }) => ({
+        candidateType: 'source' as const,
+        candidateKey: key,
+        candidateUrl: normalizeLocalPath(info.url),
+        candidateStructureType: 'single' as const,
+      }));
+    const candidates = [...bundleCandidates, ...sourceCandidates];
+
+    if (candidates.length === 0) {
+      return createTarget(input, 'not-found', [], {
+        reason: `No installed skill found from path: ${absolutePath}`,
+      });
+    }
+
+    if (candidates.length > 1) {
+      const lines = candidates
+        .map((candidate) => `  - ${candidate.candidateKey}: ${candidate.candidateUrl}`)
+        .join('\n');
+      return createTarget(input, 'not-found', [], {
+        reason:
+          `No installed skill found from path: ${absolutePath}. ` +
+          `Multiple installed local sources share basename '${lookupBasename}':\n${lines}`,
+      });
+    }
+
+    const [candidate] = candidates;
+    if (fileExists(candidate.candidateUrl)) {
+      const noun = candidate.candidateType === 'bundle' ? 'bundle' : 'skill';
+      return createTarget(input, 'not-found', [], {
+        reason:
+          `No installed skill found from path: ${absolutePath}. ` +
+          `A ${noun} with the same name is installed from ${candidate.candidateUrl} ` +
+          `(still exists). Remove or rename the old path first to rebind.`,
+      });
+    }
+
+    if (detectedStructureType !== candidate.candidateStructureType) {
+      return createTarget(input, 'not-found', [], {
+        reason: this.createPathTypeMismatchReason(candidate, absolutePath, detectedStructureType),
+      });
+    }
+
+    return createTarget(input, 'rebind-candidate', [], {
+      candidateType: candidate.candidateType,
+      candidateKey: candidate.candidateKey,
+      candidateUrl: candidate.candidateUrl,
+      newAbsolutePath: absolutePath,
+      candidateStructureType: candidate.candidateStructureType,
+    });
+  }
+
+  private createPathTypeMismatchReason(
+    candidate: {
+      candidateType: 'source' | 'bundle';
+      candidateKey: string;
+      candidateUrl: string;
+      candidateStructureType: LocalStructureType;
+    },
+    absolutePath: string,
+    detectedStructureType: LocalStructureType | null,
+  ): string {
+    const existingName = basename(candidate.candidateUrl);
+    const existingType = candidate.candidateStructureType === 'batch'
+      ? 'batch'
+      : 'single skill';
+    const detectedType = detectedStructureType === 'batch'
+      ? 'a batch'
+      : detectedStructureType === 'single'
+        ? 'a single skill'
+        : 'neither a single skill nor a batch';
+    const noun = candidate.candidateType === 'bundle' ? 'bundle' : 'skill';
+
+    return (
+      `Path type mismatch: existing ${noun} '${existingName}' is ${existingType}, ` +
+      `but ${absolutePath} looks like ${detectedType}.`
+    );
   }
 }

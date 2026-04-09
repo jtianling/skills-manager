@@ -290,4 +290,211 @@ describe('SourcesService', () => {
       },
     });
   });
+
+  it('rebinds a local batch bundle atomically and keeps unrelated entries intact', () => {
+    const oldUrl = normalizeLocalPath('./fixtures/spec-tdd');
+    const newUrl = normalizeLocalPath('./fixtures/spec-tdd-renamed');
+    const bundleId = makeBundleId('local-batch', oldUrl);
+    const saveSpy = vi.spyOn(service as never, 'save' as never);
+
+    service.addSource('custom/spec-tdd/a', {
+      url: oldUrl,
+      type: 'custom',
+      repoName: 'a',
+      installMethod: 'local-copy',
+    });
+    service.addSource('custom/spec-tdd/b', {
+      url: oldUrl,
+      type: 'custom',
+      repoName: 'b',
+      installMethod: 'local-copy',
+    });
+    service.addSource('custom/other', {
+      url: normalizeLocalPath('./fixtures/other'),
+      type: 'custom',
+      repoName: 'other',
+      installMethod: 'local-copy',
+    });
+    service.addBundle(bundleId, {
+      type: 'local-batch',
+      url: oldUrl,
+      selectionMode: 'all',
+      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
+    });
+
+    saveSpy.mockClear();
+
+    const result = service.rebindLocalBundle(bundleId, newUrl);
+    const reboundBundle = service.getBundle(result.newBundleId);
+
+    expect(result.newBundleId).toBe(makeBundleId('local-batch', newUrl));
+    expect(service.getBundle(bundleId)).toBeUndefined();
+    expect(reboundBundle).toMatchObject({
+      type: 'local-batch',
+      url: newUrl,
+      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
+    });
+    expect(service.getSource('custom/spec-tdd/a')!.url).toBe(newUrl);
+    expect(service.getSource('custom/spec-tdd/b')!.url).toBe(newUrl);
+    expect(service.getSource('custom/other')!.url).toBe(
+      normalizeLocalPath('./fixtures/other'),
+    );
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails rebindLocalBundle when bundle members are missing and does not modify sources.json', () => {
+    const oldUrl = normalizeLocalPath('./fixtures/spec-tdd');
+    const newUrl = normalizeLocalPath('./fixtures/spec-tdd-renamed');
+    const bundleId = makeBundleId('local-batch', oldUrl);
+
+    service.addSource('custom/spec-tdd/a', {
+      url: oldUrl,
+      type: 'custom',
+      repoName: 'a',
+      installMethod: 'local-copy',
+    });
+    service.addBundle(bundleId, {
+      type: 'local-batch',
+      url: oldUrl,
+      selectionMode: 'all',
+      members: ['custom/spec-tdd/a', 'custom/spec-tdd/missing'],
+    });
+
+    const before = readFileSync(sourcesFile, 'utf-8');
+
+    expect(() => service.rebindLocalBundle(bundleId, newUrl)).toThrow(
+      `Cannot rebind bundle ${bundleId}: dangling members in sources.json: ` +
+        'custom/spec-tdd/missing. Clean up sources.json and retry.',
+    );
+    expect(readFileSync(sourcesFile, 'utf-8')).toBe(before);
+  });
+
+  it('rebinds a local single source', () => {
+    const oldUrl = normalizeLocalPath('./fixtures/my-lint');
+    const newUrl = normalizeLocalPath('./fixtures/my-lint-renamed');
+
+    service.addSource('custom/my-lint', {
+      url: oldUrl,
+      type: 'custom',
+      repoName: 'my-lint',
+      installMethod: 'local-copy',
+    });
+
+    service.rebindLocalSource('custom/my-lint', newUrl);
+
+    expect(service.getSource('custom/my-lint')).toMatchObject({
+      url: newUrl,
+      repoName: 'my-lint',
+      installMethod: 'local-copy',
+    });
+  });
+
+  it('finds local bundle and source candidates by basename', () => {
+    const bundleUrlA = normalizeLocalPath('./fixtures/tdd-spec');
+    const bundleUrlB = normalizeLocalPath('./other/tdd-spec');
+    const sourceUrl = normalizeLocalPath('./fixtures/my-lint');
+
+    service.addBundle(makeBundleId('local-batch', bundleUrlA), {
+      type: 'local-batch',
+      url: bundleUrlA,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/a'],
+    });
+    service.addBundle(makeBundleId('local-batch', bundleUrlB), {
+      type: 'local-batch',
+      url: bundleUrlB,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/b'],
+    });
+    service.addBundle(makeBundleId('git', 'https://github.com/acme/repo'), {
+      type: 'git',
+      url: 'https://github.com/acme/repo',
+      selectionMode: 'all',
+      members: ['community/acme/repo'],
+    });
+    service.addSource('custom/my-lint', {
+      url: sourceUrl,
+      type: 'custom',
+      repoName: 'my-lint',
+      installMethod: 'local-copy',
+    });
+    service.addSource('custom/other', {
+      url: normalizeLocalPath('./fixtures/other'),
+      type: 'custom',
+      repoName: 'other',
+      installMethod: 'local-copy',
+    });
+
+    expect(service.findLocalBatchBundlesByBasename('missing')).toEqual([]);
+    expect(service.findLocalBatchBundlesByBasename('tdd-spec')).toHaveLength(2);
+    expect(service.findLocalCopySourcesByBasename('missing')).toEqual([]);
+    expect(service.findLocalCopySourcesByBasename('my-lint')).toEqual([
+      {
+        key: 'custom/my-lint',
+        info: expect.objectContaining({
+          url: sourceUrl,
+          repoName: 'my-lint',
+        }),
+      },
+    ]);
+  });
+
+  it('does not return batch-member local-copy sources when searching by basename', () => {
+    service.addSource('custom/my-tools/foo', {
+      url: normalizeLocalPath('./fixtures/my-tools'),
+      type: 'custom',
+      repoName: 'foo',
+      installMethod: 'local-copy',
+    });
+
+    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([]);
+  });
+
+  it('returns top-level custom local-copy sources when searching by basename', () => {
+    const sourceUrl = normalizeLocalPath('./fixtures/foo');
+
+    service.addSource('custom/foo', {
+      url: sourceUrl,
+      type: 'custom',
+      repoName: 'foo',
+      installMethod: 'local-copy',
+    });
+
+    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([
+      {
+        key: 'custom/foo',
+        info: expect.objectContaining({
+          url: sourceUrl,
+          repoName: 'foo',
+        }),
+      },
+    ]);
+  });
+
+  it('returns only the top-level custom local-copy source when top-level and batch-member keys coexist', () => {
+    const topLevelUrl = normalizeLocalPath('./fixtures/foo');
+
+    service.addSource('custom/foo', {
+      url: topLevelUrl,
+      type: 'custom',
+      repoName: 'foo',
+      installMethod: 'local-copy',
+    });
+    service.addSource('custom/bar/foo', {
+      url: normalizeLocalPath('./fixtures/bar'),
+      type: 'custom',
+      repoName: 'foo',
+      installMethod: 'local-copy',
+    });
+
+    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([
+      {
+        key: 'custom/foo',
+        info: expect.objectContaining({
+          url: topLevelUrl,
+          repoName: 'foo',
+        }),
+      },
+    ]);
+  });
 });

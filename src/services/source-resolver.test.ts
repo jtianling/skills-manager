@@ -65,6 +65,21 @@ describe('SourceResolver', () => {
         getAllSources: () => sources,
         findBundleByUrl: (normalizedUrl: string, type: 'local-batch' | 'git' | 'zip') =>
           bundles[makeBundleId(type, normalizedUrl)],
+        findLocalBatchBundlesByBasename: (lookupBasename: string) =>
+          Object.entries(bundles)
+            .filter(([, bundle]) =>
+              bundle.type === 'local-batch' &&
+              bundle.url.split('/').pop() === lookupBasename
+            )
+            .map(([id, bundle]) => ({ id, bundle })),
+        findLocalCopySourcesByBasename: (lookupBasename: string) =>
+          Object.entries(sources)
+            .filter(([key, info]) =>
+              info.installMethod === 'local-copy' &&
+              info.repoName === lookupBasename &&
+              key.split('/').length === 2
+            )
+            .map(([key, info]) => ({ key, info })),
       } as never,
       {
         getAllSkills: () => skills,
@@ -427,6 +442,172 @@ describe('SourceResolver', () => {
     await expect(resolver.resolve('https://example.com/archive.zip')).resolves.toMatchObject({
       kind: 'not-found',
       reason: 'Zip sources require manual reinstall',
+    });
+  });
+
+  it('returns a rebind candidate for a moved local single skill', async () => {
+    const oldDir = join(testRoot, 'old', 'my-lint');
+    const newDir = join(testRoot, 'new', 'my-lint');
+    createSkillDir(newDir, 'my-lint');
+
+    const resolver = createResolver({
+      sources: {
+        'custom/my-lint': {
+          url: oldDir,
+          type: 'custom',
+          repoName: 'my-lint',
+          installMethod: 'local-copy',
+        },
+      },
+    });
+
+    await expect(resolver.resolve(newDir)).resolves.toMatchObject({
+      kind: 'rebind-candidate',
+      candidateType: 'source',
+      candidateKey: 'custom/my-lint',
+      candidateUrl: oldDir,
+      newAbsolutePath: newDir,
+      candidateStructureType: 'single',
+    });
+  });
+
+  it('does not offer a rebind candidate for a new single skill when only a batch member shares the basename', async () => {
+    const oldBatchDir = join(testRoot, 'old', 'my-tools');
+    const newSingleDir = join(testRoot, 'new', 'foo');
+    createSkillDir(newSingleDir, 'foo');
+
+    const resolver = createResolver({
+      sources: {
+        'custom/my-tools/foo': {
+          url: oldBatchDir,
+          type: 'custom',
+          repoName: 'foo',
+          installMethod: 'local-copy',
+        },
+      },
+      bundles: {
+        [makeBundleId('local-batch', oldBatchDir)]: {
+          type: 'local-batch',
+          url: oldBatchDir,
+          selectionMode: 'all',
+          members: ['custom/my-tools/foo'],
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    await expect(resolver.resolve(newSingleDir)).resolves.toMatchObject({
+      kind: 'not-found',
+      reason: `No installed skill found from path: ${newSingleDir}`,
+    });
+  });
+
+  it('rejects rebind when the old path still exists', async () => {
+    const oldDir = join(testRoot, 'old', 'my-lint');
+    const newDir = join(testRoot, 'new', 'my-lint');
+    createSkillDir(oldDir, 'my-lint');
+    createSkillDir(newDir, 'my-lint');
+
+    const resolver = createResolver({
+      sources: {
+        'custom/my-lint': {
+          url: oldDir,
+          type: 'custom',
+          repoName: 'my-lint',
+          installMethod: 'local-copy',
+        },
+      },
+    });
+
+    await expect(resolver.resolve(newDir)).resolves.toMatchObject({
+      kind: 'not-found',
+      reason: expect.stringContaining('(still exists)'),
+    });
+  });
+
+  it('rejects rebind when the new path type mismatches the tracked bundle', async () => {
+    const oldDir = join(testRoot, 'old', 'tdd-spec');
+    const newDir = join(testRoot, 'new', 'tdd-spec');
+    createSkillDir(newDir, 'tdd-spec');
+
+    const resolver = createResolver({
+      bundles: {
+        [makeBundleId('local-batch', oldDir)]: {
+          type: 'local-batch',
+          url: oldDir,
+          selectionMode: 'all',
+          members: ['custom/tdd-spec/a'],
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    await expect(resolver.resolve(newDir)).resolves.toMatchObject({
+      kind: 'not-found',
+      reason: expect.stringContaining('Path type mismatch'),
+    });
+  });
+
+  it('rejects rebind when basename lookup returns multiple candidates', async () => {
+    const oldDirA = join(testRoot, 'old-a', 'tdd-spec');
+    const oldDirB = join(testRoot, 'old-b', 'tdd-spec');
+    const newDir = join(testRoot, 'new', 'tdd-spec');
+    createSkillDir(join(newDir, 'child-a'), 'child-a');
+
+    const resolver = createResolver({
+      bundles: {
+        [makeBundleId('local-batch', oldDirA)]: {
+          type: 'local-batch',
+          url: oldDirA,
+          selectionMode: 'all',
+          members: ['custom/tdd-spec/a'],
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        [makeBundleId('local-batch', oldDirB)]: {
+          type: 'local-batch',
+          url: oldDirB,
+          selectionMode: 'all',
+          members: ['custom/tdd-spec/b'],
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    await expect(resolver.resolve(newDir)).resolves.toMatchObject({
+      kind: 'not-found',
+      reason: expect.stringContaining("Multiple installed local sources share basename 'tdd-spec'"),
+    });
+  });
+
+  it('does not apply basename fallback to bareword inputs', async () => {
+    const resolver = createResolver({
+      sources: {
+        'custom/tdd-spec/child-a': {
+          url: join(testRoot, 'old', 'tdd-spec'),
+          type: 'custom',
+          repoName: 'child-a',
+          installMethod: 'local-copy',
+        },
+      },
+      bundles: {
+        [makeBundleId('local-batch', join(testRoot, 'old', 'tdd-spec'))]: {
+          type: 'local-batch',
+          url: join(testRoot, 'old', 'tdd-spec'),
+          selectionMode: 'all',
+          members: ['custom/tdd-spec/child-a'],
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    await expect(resolver.resolve('tdd-spec')).resolves.toMatchObject({
+      kind: 'not-found',
+      reason: expect.stringContaining('Tried:'),
     });
   });
 });
