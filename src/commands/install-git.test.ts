@@ -108,6 +108,43 @@ describe('collectGitCloneSkills', () => {
     expect(skills.map((s) => s.name)).toEqual(['plain-skill']);
   });
 
+  it('prefers child skills over root skill in flat multi-skill repos', () => {
+    writeSkillMd(repoPath, 'gstack', 'Repo root');
+    writeSkillMd(join(repoPath, 'ship'), 'ship', 'Ship skill');
+    writeSkillMd(join(repoPath, 'qa'), 'qa', 'QA skill');
+    writeSkillMd(join(repoPath, 'browse'), 'browse', 'Browse skill');
+
+    const skills = collectGitCloneSkills(repoPath);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual(['browse', 'qa', 'ship']);
+  });
+
+  it('returns root skill when no child skills exist', () => {
+    writeSkillMd(repoPath, 'solo-skill', 'Root only');
+
+    const skills = collectGitCloneSkills(repoPath);
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.name).toBe('solo-skill');
+    expect(skills[0]?.path).toBe(repoPath);
+  });
+
+  it('discovers nested skills up to depth 3', () => {
+    writeSkillMd(repoPath, 'repo-root', 'Root');
+    writeSkillMd(join(repoPath, 'openclaw', 'skills', 'my-skill'), 'my-skill', 'Deep skill');
+
+    const skills = collectGitCloneSkills(repoPath);
+    expect(skills.map((s) => s.name)).toEqual(['my-skill']);
+  });
+
+  it('discovers both depth-1 and depth-3 skills in fallback scan', () => {
+    writeSkillMd(join(repoPath, 'qa'), 'qa', 'QA skill');
+    writeSkillMd(join(repoPath, 'openclaw', 'skills', 'deep-skill'), 'deep-skill', 'Deep skill');
+
+    const skills = collectGitCloneSkills(repoPath);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual(['deep-skill', 'qa']);
+  });
+
   it('discovers skills at repo root when no standard paths exist', () => {
     writeSkillMd(join(repoPath, 'tdd'), 'tdd', 'TDD skill');
     writeSkillMd(join(repoPath, 'qa'), 'qa', 'QA skill');

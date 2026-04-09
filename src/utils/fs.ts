@@ -122,8 +122,10 @@ export function copyDir(src: string, dest: string): void {
     const destPath = join(dest, entry.name);
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
-    } else {
+    } else if (entry.isFile()) {
       copyFile(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      symlinkSync(readlinkSync(srcPath), destPath);
     }
   }
 }

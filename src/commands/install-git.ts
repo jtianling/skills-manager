@@ -107,15 +107,20 @@ export function collectGitCloneSkills(repoPath: string): InstallableSkill[] {
   if (skills.length === 0) {
     const rootSkillMd = join(repoPath, 'SKILL.md');
     if (fileExists(rootSkillMd)) {
-      const content = readFileContent(rootSkillMd);
-      const frontmatter = parseMdFrontmatter(content);
-      skills = [{
-        name: frontmatter.name || basename(repoPath),
-        description: frontmatter.description ?? '',
-        path: repoPath,
-      }];
+      const nestedSkills = scanForSkills(repoPath, 3);
+      if (nestedSkills.length > 0) {
+        skills = nestedSkills;
+      } else {
+        const content = readFileContent(rootSkillMd);
+        const frontmatter = parseMdFrontmatter(content);
+        skills = [{
+          name: frontmatter.name || basename(repoPath),
+          description: frontmatter.description ?? '',
+          path: repoPath,
+        }];
+      }
     } else {
-      skills = scanForSkills(repoPath, 1);
+      skills = scanForSkills(repoPath, 3);
     }
   }
 
