@@ -164,19 +164,16 @@ export async function executeLogin(options: { token?: string; web?: boolean } = 
 
   // Default: prompt for login method
   try {
-    const { method } = await inquirer.prompt([
+    const { useBrowser } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'method',
-        message: 'How would you like to log in?',
-        choices: [
-          { name: 'Log in with browser (GitHub, email, etc.)', value: 'browser' },
-          { name: 'Log in with username and password', value: 'credentials' },
-        ],
+        type: 'confirm',
+        name: 'useBrowser',
+        message: 'Log in with browser? (supports GitHub, email, etc.)',
+        default: true,
       },
     ]);
 
-    if (method === 'browser') {
+    if (useBrowser) {
       await loginWithBrowser();
     } else {
       await loginInteractive();
