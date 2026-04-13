@@ -81,6 +81,53 @@ async function loginWithBrowser(): Promise<void> {
   }
 }
 
+function readStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => resolve(data.trim()));
+    process.stdin.on('error', reject);
+  });
+}
+
+async function resolveToken(tokenFlag: boolean | undefined): Promise<string | null> {
+  // --token flag not used
+  if (!tokenFlag) {
+    return null;
+  }
+
+  // 1. Environment variable
+  const envToken = process.env.SKILLSMGR_TOKEN;
+  if (envToken) {
+    return envToken;
+  }
+
+  // 3. Stdin pipe
+  if (!process.stdin.isTTY) {
+    const stdinToken = await readStdin();
+    if (stdinToken) {
+      return stdinToken;
+    }
+  }
+
+  // 4. Interactive masked input
+  try {
+    const { token } = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'token',
+        message: 'Token:',
+        mask: '*',
+        validate: (input: string) => input.length > 0 || 'Token is required',
+      },
+    ]);
+    return token;
+  } catch (error) {
+    handlePromptError(error);
+  }
+}
+
 async function loginWithToken(token: string): Promise<void> {
   try {
     const result = await registryService.whoami(token);
@@ -102,8 +149,8 @@ async function loginInteractive(): Promise<void> {
       {
         type: 'input',
         name: 'username',
-        message: 'Username:',
-        validate: (input: string) => input.length > 0 || 'Username is required',
+        message: 'Email:',
+        validate: (input: string) => input.length > 0 || 'Email is required',
       },
       {
         type: 'password',
@@ -131,9 +178,10 @@ async function loginInteractive(): Promise<void> {
   }
 }
 
-export async function executeLogin(options: { token?: string; web?: boolean } = {}): Promise<void> {
-  if (options.token) {
-    await loginWithToken(options.token);
+export async function executeLogin(options: { token?: boolean; web?: boolean } = {}): Promise<void> {
+  const resolved = await resolveToken(options.token);
+  if (resolved) {
+    await loginWithToken(resolved);
     return;
   }
 
@@ -185,8 +233,8 @@ export async function executeLogin(options: { token?: string; web?: boolean } = 
 
 export const loginCommand = new Command('login')
   .description('Log in to the skillsmgr.dev registry')
-  .option('--token <token>', 'Log in with an API token (for CI/CD)')
+  .option('--token', 'Log in with an API token (or set SKILLSMGR_TOKEN env var)')
   .option('--web', 'Log in via browser directly')
-  .action(async (options: { token?: string; web?: boolean }) => {
+  .action(async (options: { token?: boolean; web?: boolean }) => {
     await executeLogin(options);
   });
