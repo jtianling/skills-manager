@@ -190,10 +190,6 @@ export interface BuildVirtualGroupChoicesOptions<
 
 export function loadGroupsData(groupsService: GroupsService): VirtualGroupsData {
   return groupsService.listGroups().reduce<VirtualGroupsData>((acc, groupName) => {
-    if (groupsService.getGroupKind(groupName) !== 'virtual') {
-      return acc;
-    }
-
     const skillKeys = groupsService.getGroupMembers(groupName);
 
     return {
