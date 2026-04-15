@@ -38,6 +38,7 @@ function getGhToken(): string | undefined {
 export class TmuxSession {
   readonly sessionName: string;
   private readonly env: Record<string, string>;
+  private wrapperPath?: string;
 
   constructor(testEnv: TestEnv) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -60,12 +61,12 @@ export class TmuxSession {
   async start(cmd: string, cwd?: string): Promise<void> {
     const dir = cwd ?? this.env.HOME;
 
-    const wrapperPath = join(tmpdir(), `e2e-wrapper-${this.sessionName}.sh`);
+    this.wrapperPath = join(tmpdir(), `e2e-wrapper-${this.sessionName}.sh`);
     const exports = Object.entries(this.env)
       .map(([k, v]) => `export ${k}="${v}"`)
       .join('\n');
-    writeFileSync(wrapperPath, `#!/bin/bash\n${exports}\ncd "${dir}"\nexec "$@"\n`);
-    chmodSync(wrapperPath, 0o755);
+    writeFileSync(this.wrapperPath, `#!/bin/bash\n${exports}\ncd "${dir}"\nexec "$@"\n`);
+    chmodSync(this.wrapperPath, 0o755);
 
     execSync(
       `tmux new-session -d -s "${this.sessionName}" -x 120 -y 40`,
@@ -83,7 +84,7 @@ export class TmuxSession {
     );
 
     execSync(
-      `tmux send-keys -t "${this.sessionName}" '${wrapperPath} ${cmd.replace(/'/g, "'\\''")}' Enter`,
+      `tmux send-keys -t "${this.sessionName}" '${this.wrapperPath} ${cmd.replace(/'/g, "'\\''")}' Enter`,
       { stdio: 'pipe' },
     );
 
@@ -200,6 +201,14 @@ export class TmuxSession {
       });
     } catch {
       // Session already gone
+    }
+    if (this.wrapperPath) {
+      try {
+        rmSync(this.wrapperPath, { force: true });
+      } catch {
+        // Wrapper already gone
+      }
+      this.wrapperPath = undefined;
     }
   }
 }
