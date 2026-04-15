@@ -385,6 +385,24 @@ describe('uninstall command', () => {
       expect(mockExit).toHaveBeenCalledWith(1);
       mockExit.mockRestore();
     });
+
+    it('removes physical group entry after last member uninstalled via -s', async () => {
+      const groupsService = new GroupsService();
+      const groupName = 'tdd-spec';
+      createSkillDir(join(SKILLS_MANAGER_DIR, 'custom', groupName, 'ts-apply'), 'ts-apply');
+      createSkillDir(join(SKILLS_MANAGER_DIR, 'custom', groupName, 'ts-verify'), 'ts-verify');
+      groupsService.createLocalBatchGroup(groupName, '/tmp/tdd-spec');
+
+      expect(groupsService.getGroupKind(groupName)).toBe('local-batch');
+
+      await executeUninstall(undefined, {
+        force: true,
+        skill: ['ts-apply', 'ts-verify'],
+      });
+
+      expect(existsSync(join(SKILLS_MANAGER_DIR, 'custom', groupName))).toBe(false);
+      expect(groupsService.getGroupKind(groupName)).toBeNull();
+    });
   });
 
   describe('user cancellation', () => {

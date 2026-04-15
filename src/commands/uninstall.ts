@@ -63,6 +63,7 @@ function removeSkills(
   sourcesService: SourcesService,
   groupsService: GroupsService
 ): void {
+  const affectedPhysicalGroups = new Set<string>();
   for (const skill of skills) {
     removeDir(skill.path);
 
@@ -74,6 +75,18 @@ function removeSkills(
     cleanSourcesForDir(skill.source, sourcesService);
     groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
     console.log(`Removed: ${skill.name}`);
+
+    if (sourceParts[0] === 'custom' && sourceParts.length === 2) {
+      affectedPhysicalGroups.add(sourceParts[1]);
+    }
+  }
+
+  for (const groupName of affectedPhysicalGroups) {
+    if (groupsService.getGroupKind(groupName) !== 'local-batch') continue;
+    const groupDir = join(SKILLS_MANAGER_DIR, 'custom', groupName);
+    if (!fileExists(groupDir) || getDirectoriesInDir(groupDir).length === 0) {
+      groupsService.deletePhysicalGroup(groupName);
+    }
   }
 }
 
@@ -146,20 +159,8 @@ async function uninstallExplicitSkillName(name: string, options: UninstallOption
     return;
   }
 
-  const skillParent = join(skill.path, '..');
-  removeDir(skill.path);
-
-  const sourceParts = skill.source.split('/');
-  const categoryDir = join(SKILLS_MANAGER_DIR, sourceParts[0]);
-  cleanEmptyParents(skillParent, categoryDir);
-
-  const sourceDir = join(SKILLS_MANAGER_DIR, skill.source);
-  if (!fileExists(sourceDir) || getDirectoriesInDir(sourceDir).length === 0) {
-    sourcesService.removeSource(skill.source);
-  }
-
   const groupsService = new GroupsService();
-  groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
+  removeSkills([skill], sourcesService, groupsService);
 
   console.log(`Uninstalled ${skill.name}`);
 }
