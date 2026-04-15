@@ -376,6 +376,192 @@ describe('BundleManager', () => {
     await expect(manager.sync(bundleId, {})).rejects.toThrow(/Bundle source path not found/);
   });
 
+  it('local-batch sync adds new skill to same-name auto group when group exists', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-bundle-group-add-${Date.now()}`, 'tdd-spec');
+    const bundleId = `local-batch:${sourceDir}`;
+
+    writeSkill(join(sourceDir, 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(sourceDir, 'ts-new-one'), 'ts-new-one', 'ts-new-one');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-apply'), 'ts-apply', 'ts-apply');
+
+    const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
+    sourcesService.addSource('custom/tdd-spec/ts-apply', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-apply',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(bundleId, {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+    });
+    groupsService.addSkill('tdd-spec', 'custom/tdd-spec/ts-apply');
+
+    const manager = new BundleManager(sourcesService, undefined as never, groupsService);
+    const result = await manager.sync(bundleId, {});
+
+    expect(result.added).toBe(1);
+    expect(groupsService.getGroup('tdd-spec')).toEqual([
+      'custom/tdd-spec/ts-apply',
+      'custom/tdd-spec/ts-new-one',
+    ]);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
+  it('local-batch sync skips group sync when same-name group does not exist', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-bundle-group-skip-${Date.now()}`, 'tdd-spec');
+    const bundleId = `local-batch:${sourceDir}`;
+
+    writeSkill(join(sourceDir, 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(sourceDir, 'ts-new-one'), 'ts-new-one', 'ts-new-one');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-apply'), 'ts-apply', 'ts-apply');
+
+    const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
+    sourcesService.addSource('custom/tdd-spec/ts-apply', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-apply',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(bundleId, {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+    });
+
+    const manager = new BundleManager(sourcesService, undefined as never, groupsService);
+    const result = await manager.sync(bundleId, {});
+
+    expect(result.added).toBe(1);
+    expect(groupsService.getGroup('tdd-spec')).toBeNull();
+    expect(sourcesService.getSource('custom/tdd-spec/ts-new-one')).toMatchObject({
+      repoName: 'ts-new-one',
+    });
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
+  it('local-batch sync appends multiple new skills to same-name auto group', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-bundle-group-multi-${Date.now()}`, 'tdd-spec');
+    const bundleId = `local-batch:${sourceDir}`;
+
+    writeSkill(join(sourceDir, 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(sourceDir, 'ts-debugging'), 'ts-debugging', 'ts-debugging');
+    writeSkill(join(sourceDir, 'ts-ff-explore'), 'ts-ff-explore', 'ts-ff-explore');
+    writeSkill(join(sourceDir, 'ts-ff-propose'), 'ts-ff-propose', 'ts-ff-propose');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-apply'), 'ts-apply', 'ts-apply');
+
+    const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
+    sourcesService.addSource('custom/tdd-spec/ts-apply', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-apply',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(bundleId, {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+    });
+    groupsService.addSkill('tdd-spec', 'custom/tdd-spec/ts-apply');
+
+    const manager = new BundleManager(sourcesService, undefined as never, groupsService);
+    const result = await manager.sync(bundleId, {});
+
+    expect(result.added).toBe(3);
+    expect(groupsService.getGroup('tdd-spec')).toEqual([
+      'custom/tdd-spec/ts-apply',
+      'custom/tdd-spec/ts-debugging',
+      'custom/tdd-spec/ts-ff-explore',
+      'custom/tdd-spec/ts-ff-propose',
+    ]);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
+  it('local-batch sync does not touch group when source has no new skills', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-bundle-group-noop-${Date.now()}`, 'tdd-spec');
+    const bundleId = `local-batch:${sourceDir}`;
+
+    writeSkill(join(sourceDir, 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-apply'), 'ts-apply', 'ts-apply');
+
+    const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
+    sourcesService.addSource('custom/tdd-spec/ts-apply', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-apply',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(bundleId, {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+    });
+    groupsService.addSkill('tdd-spec', 'custom/tdd-spec/ts-apply');
+
+    const addSkillSpy = vi.spyOn(groupsService, 'addSkill');
+    const manager = new BundleManager(sourcesService, undefined as never, groupsService);
+    const result = await manager.sync(bundleId, {});
+
+    expect(result.added).toBe(0);
+    expect(result.upToDate).toBe(1);
+    expect(addSkillSpy).not.toHaveBeenCalled();
+    expect(groupsService.getGroup('tdd-spec')).toEqual(['custom/tdd-spec/ts-apply']);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
+  it('local-batch sync --sync removes skill from group via removeSkillFromAll', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-bundle-group-remove-${Date.now()}`, 'tdd-spec');
+    const bundleId = `local-batch:${sourceDir}`;
+
+    writeSkill(join(sourceDir, 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-apply'), 'ts-apply', 'ts-apply');
+    writeSkill(join(testManagerDir, 'custom', 'tdd-spec', 'ts-gone'), 'ts-gone', 'ts-gone');
+
+    const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
+    sourcesService.addSource('custom/tdd-spec/ts-apply', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-apply',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addSource('custom/tdd-spec/ts-gone', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'ts-gone',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(bundleId, {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply', 'custom/tdd-spec/ts-gone'],
+    });
+    groupsService.addSkill('tdd-spec', 'custom/tdd-spec/ts-apply');
+    groupsService.addSkill('tdd-spec', 'custom/tdd-spec/ts-gone');
+
+    const manager = new BundleManager(sourcesService, undefined as never, groupsService);
+    const result = await manager.sync(bundleId, { sync: true });
+
+    expect(result.removedHard).toBe(1);
+    expect(groupsService.getGroup('tdd-spec')).toEqual(['custom/tdd-spec/ts-apply']);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
   it('remove handles pre-deleted member directory', async () => {
     const sourceDir = join(tmpdir(), `skillsmgr-bundle-remove-missing-${Date.now()}`, 'batch');
     const bundleId = `local-batch:${sourceDir}`;

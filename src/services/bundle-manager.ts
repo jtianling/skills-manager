@@ -383,6 +383,12 @@ export class BundleManager {
         repoName: skillName,
         installMethod: 'local-copy',
       });
+
+      const autoGroupName = this.getLocalBatchAutoGroupName(bundle);
+      if (this.groupsService.getGroup(autoGroupName) !== null) {
+        this.groupsService.addSkill(autoGroupName, sourceKey);
+      }
+
       return sourceKey;
     }
 
@@ -465,6 +471,10 @@ export class BundleManager {
 
   private getLocalBatchTargetDir(bundle: Bundle, skillName: string): string {
     return join(SKILLS_MANAGER_DIR, 'custom', basename(bundle.url), skillName);
+  }
+
+  private getLocalBatchAutoGroupName(bundle: Bundle): string {
+    return basename(bundle.url);
   }
 
   private getLocalBatchMemberKey(bundle: Bundle, skillName: string): string {
