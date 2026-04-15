@@ -279,6 +279,25 @@ describe('prompts', () => {
     });
   });
 
+  it('includes physical (local-batch) groups with members derived from filesystem', () => {
+    const groupsService = {
+      listGroups: () => ['tdd-spec', 'develop'],
+      getGroupKind: (name: string) => ({
+        'tdd-spec': 'local-batch',
+        develop: 'virtual',
+      }[name]),
+      getGroupMembers: (name: string) => ({
+        'tdd-spec': ['custom/tdd-spec/ts-apply', 'custom/tdd-spec/ts-verify'],
+        develop: ['custom/jt-codex'],
+      }[name] ?? []),
+    };
+
+    expect(loadGroupsData(groupsService as never)).toEqual({
+      'tdd-spec': ['custom/tdd-spec/ts-apply', 'custom/tdd-spec/ts-verify'],
+      develop: ['custom/jt-codex'],
+    });
+  });
+
   it('builds virtual group choices with ungrouped last', () => {
     const choices = buildVirtualGroupChoices(
       [
