@@ -46,6 +46,8 @@ export interface DeployOptions {
   agent?: string[];
   skill?: string[];
   all?: boolean;
+  followGroup?: string[];
+  refresh?: boolean;
 }
 
 export interface AddOptions {

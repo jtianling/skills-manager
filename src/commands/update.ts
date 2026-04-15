@@ -2,6 +2,10 @@ import { Command } from 'commander';
 import { basename, join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { BundleManager, BundleSyncResult } from '../services/bundle-manager.js';
+import {
+  AffectedProjects,
+  DeploymentsRegistryService,
+} from '../services/deployments-registry.js';
 import { GitHubService } from '../services/github.js';
 import { RegistryService } from '../services/registry.js';
 import { SourcesService, SourceInfo } from '../services/sources.js';
@@ -10,6 +14,7 @@ import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { promptConfirm } from '../utils/prompts.js';
 import { detectSourceType } from '../utils/source-detection.js';
+import { Bundle } from '../types.js';
 import { ensureSetup } from './setup.js';
 
 const sourcesService = new SourcesService();
@@ -376,12 +381,60 @@ export async function executeUpdate(source?: string): Promise<void> {
   return executeUpdateWithOptions(source);
 }
 
-function printBundleUpdateSummary(result: BundleSyncResult): void {
+const GENERIC_REFRESH_REMINDER =
+  "Note: projects following this bundle's group may need `skillsmgr deploy --refresh` to pick up changes.";
+
+function computeAffectedProjects(bundle: Bundle | undefined): AffectedProjects | null {
+  if (!bundle || bundle.type !== 'local-batch') {
+    return null;
+  }
+  try {
+    const groupName = basename(bundle.url);
+    return new DeploymentsRegistryService().findAffectedByGroup(groupName, bundle.members);
+  } catch (e) {
+    console.warn(`⚠ ${(e as Error).message}`);
+    return null;
+  }
+}
+
+function printAffectedProjects(affected: AffectedProjects): void {
+  console.log("Projects using this bundle's group:");
+  if (affected.follow.length > 0) {
+    console.log('  follow (will auto-add on next refresh):');
+    for (const entry of affected.follow) {
+      console.log(`    - ${entry.path}`);
+    }
+  }
+  if (affected.pinned.length > 0) {
+    console.log('  pinned (re-deploy to include):');
+    for (const entry of affected.pinned) {
+      console.log(`    - ${entry.path}`);
+    }
+  }
+  if (affected.missing.length > 0) {
+    console.log('  (path missing, run `skillsmgr deployments prune`):');
+    for (const entry of affected.missing) {
+      console.log(`    - ${entry.path}`);
+    }
+  }
+}
+
+function printBundleUpdateSummary(result: BundleSyncResult, bundle?: Bundle): void {
   console.log(
     `\nDone! ${result.updated} updated, ${result.added} added, ` +
       `${result.removedKept} removed (kept), ${result.removedHard} removed, ` +
       `${result.upToDate} up to date, ${result.failed} failed`
   );
+
+  const hasChanges = result.added + result.removedHard + result.removedKept > 0;
+  if (!hasChanges) return;
+
+  const affected = computeAffectedProjects(bundle);
+  if (affected && affected.follow.length + affected.pinned.length + affected.missing.length > 0) {
+    printAffectedProjects(affected);
+  } else {
+    console.log(GENERIC_REFRESH_REMINDER);
+  }
 }
 
 export async function executeUpdateWithOptions(
@@ -430,7 +483,8 @@ export async function executeUpdateWithOptions(
       if (result.failed > 0) {
         process.exitCode = 1;
       }
-      printBundleUpdateSummary(result);
+      const bundle = sourcesService.getBundle(bundleId) ?? undefined;
+      printBundleUpdateSummary(result, bundle);
       return;
     }
 

@@ -693,4 +693,149 @@ describe('update command', () => {
 
     rmSync(join(batchDir, '..'), { recursive: true, force: true });
   });
+
+  it('prints refresh reminder when bundle has new skills', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-update-reminder-${Date.now()}`, 'reminder-batch');
+    mkdirSync(join(sourceDir, 'existing'), { recursive: true });
+    mkdirSync(join(sourceDir, 'new-one'), { recursive: true });
+    writeFileSync(join(sourceDir, 'existing', 'SKILL.md'), '---\nname: existing\n---\n');
+    writeFileSync(join(sourceDir, 'new-one', 'SKILL.md'), '---\nname: new-one\n---\n');
+
+    mkdirSync(join(testManagerDir, 'custom', 'reminder-batch', 'existing'), { recursive: true });
+    writeFileSync(
+      join(testManagerDir, 'custom', 'reminder-batch', 'existing', 'SKILL.md'),
+      '---\nname: existing\n---\n',
+    );
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/reminder-batch/existing', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'existing',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/reminder-batch/existing'],
+    });
+
+    await executeUpdate(sourceDir);
+
+    expect(console.log).toHaveBeenCalledWith(
+      "Note: projects following this bundle's group may need `skillsmgr deploy --refresh` to pick up changes.",
+    );
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
+
+  it('lists affected projects from global registry when bundle changes', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-update-affected-${Date.now()}`, 'reg-batch');
+    mkdirSync(join(sourceDir, 'existing'), { recursive: true });
+    mkdirSync(join(sourceDir, 'new-one'), { recursive: true });
+    writeFileSync(join(sourceDir, 'existing', 'SKILL.md'), '---\nname: existing\n---\n');
+    writeFileSync(join(sourceDir, 'new-one', 'SKILL.md'), '---\nname: new-one\n---\n');
+
+    mkdirSync(join(testManagerDir, 'custom', 'reg-batch', 'existing'), { recursive: true });
+    writeFileSync(
+      join(testManagerDir, 'custom', 'reg-batch', 'existing', 'SKILL.md'),
+      '---\nname: existing\n---\n',
+    );
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/reg-batch/existing', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'existing',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/reg-batch/existing'],
+    });
+
+    const projectA = join(tmpdir(), `skillsmgr-affected-a-${Date.now()}`);
+    const projectB = join(tmpdir(), `skillsmgr-affected-b-${Date.now()}`);
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(projectB, { recursive: true });
+    writeFileSync(
+      join(testManagerDir, 'deployments.json'),
+      JSON.stringify({
+        version: '1.0',
+        deployments: {
+          [projectA]: {
+            mode: 'link',
+            followGroups: ['reg-batch'],
+            pinnedSkills: [],
+            lastDeployedAt: '',
+          },
+          [projectB]: {
+            mode: 'link',
+            followGroups: [],
+            pinnedSkills: ['custom/reg-batch/existing'],
+            lastDeployedAt: '',
+          },
+          '/missing-proj': {
+            mode: 'link',
+            followGroups: ['reg-batch'],
+            pinnedSkills: [],
+            lastDeployedAt: '',
+          },
+        },
+      }),
+    );
+
+    await executeUpdate(sourceDir);
+
+    const calls = vi.mocked(console.log).mock.calls.map((args) => String(args[0]));
+    expect(calls.some((line) => line.includes("Projects using this bundle's group"))).toBe(true);
+    expect(calls.some((line) => line.includes(projectA))).toBe(true);
+    expect(calls.some((line) => line.includes(projectB))).toBe(true);
+    expect(calls.some((line) => line.includes('/missing-proj'))).toBe(true);
+    expect(calls.some((line) => line.includes('path missing'))).toBe(true);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+    rmSync(projectA, { recursive: true, force: true });
+    rmSync(projectB, { recursive: true, force: true });
+  });
+
+  it('does not print refresh reminder when bundle is fully up to date', async () => {
+    const sourceDir = join(tmpdir(), `skillsmgr-update-noreminder-${Date.now()}`, 'noreminder-batch');
+    mkdirSync(join(sourceDir, 'existing'), { recursive: true });
+    writeFileSync(join(sourceDir, 'existing', 'SKILL.md'), '---\nname: existing\n---\n');
+
+    mkdirSync(join(testManagerDir, 'custom', 'noreminder-batch', 'existing'), { recursive: true });
+    writeFileSync(
+      join(testManagerDir, 'custom', 'noreminder-batch', 'existing', 'SKILL.md'),
+      '---\nname: existing\n---\n',
+    );
+
+    const sourcesService = new SourcesService();
+    sourcesService.addSource('custom/noreminder-batch/existing', {
+      url: sourceDir,
+      type: 'custom',
+      repoName: 'existing',
+      installMethod: 'local-copy',
+    });
+    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
+      type: 'local-batch',
+      url: sourceDir,
+      selectionMode: 'all',
+      members: ['custom/noreminder-batch/existing'],
+    });
+
+    await executeUpdate(sourceDir);
+
+    const reminderCalled = vi
+      .mocked(console.log)
+      .mock.calls.some(
+        (args) => typeof args[0] === 'string' && args[0].includes('deploy --refresh'),
+      );
+    expect(reminderCalled).toBe(false);
+
+    rmSync(join(sourceDir, '..'), { recursive: true, force: true });
+  });
 });

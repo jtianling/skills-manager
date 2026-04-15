@@ -6,8 +6,14 @@ import { SkillsService } from '../services/skills.js';
 import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
+import {
+  DeploymentManifest,
+  DeploymentManifestService,
+  skillToKey,
+} from '../services/deployment-manifest.js';
+import { DeploymentsRegistryService } from '../services/deployments-registry.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { DeployOptions, ToolName, collect } from '../types.js';
+import { DeployOptions, SkillInfo, ToolName, collect } from '../types.js';
 import {
   loadGroupsData,
   promptAgents,
@@ -73,6 +79,12 @@ async function executeDeployGlobal(
 }
 
 export async function executeDeploy(options: DeployOptions): Promise<void> {
+  if (options.refresh) {
+    await ensureSetup();
+    await executeDeployRefresh(options);
+    return;
+  }
+
   if (options.json || options.y) {
     if (!options.all) options.all = true;
     if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
@@ -82,6 +94,24 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const deployer = new Deployer(process.cwd());
+  const groupsService = new GroupsService();
+  const manifestService = new DeploymentManifestService();
+
+  const followGroupNames = options.followGroup ?? [];
+  if (followGroupNames.length > 0) {
+    const existingGroups = new Set(groupsService.listGroups());
+    for (const name of followGroupNames) {
+      if (!existingGroups.has(name)) {
+        const msg = `Unknown group: ${name}.  Run \`skillsmgr group list\` to see available groups.`;
+        if (options.json) {
+          jsonError(msg, 'UNKNOWN_GROUP');
+        } else {
+          console.error(`Error: ${msg}`);
+        }
+        process.exit(1);
+      }
+    }
+  }
 
   const allSkills = skillsService.getAllSkills();
 
@@ -133,18 +163,43 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
 
   const deployedSkills = scanner.getDeployedSkills();
   const deployedSkillNames = deployedSkills.map((s) => s.name);
-  const groupsData = loadGroupsData(new GroupsService());
+  const groupsData = loadGroupsData(groupsService);
 
-  const selectedSkillNames = options.all
-    ? allSkills.map((s) => s.name)
-    : await promptSkills(allSkills, deployedSkillNames, groupsData);
+  const followKeys = new Set<string>();
+  const followSkills: SkillInfo[] = [];
+  for (const groupName of followGroupNames) {
+    const members = groupsService.getGroup(groupName) ?? [];
+    for (const key of members) {
+      followKeys.add(key);
+    }
+  }
+  for (const skill of allSkills) {
+    if (followKeys.has(skillToKey(skill))) {
+      followSkills.push(skill);
+    }
+  }
+  const followNames = new Set(followSkills.map((s) => s.name));
+  const promptableSkills = allSkills.filter((s) => !followNames.has(s.name));
 
-  if (selectedSkillNames.length === 0) {
+  const promptedNames = options.all
+    ? promptableSkills.map((s) => s.name)
+    : await promptSkills(promptableSkills, deployedSkillNames, groupsData);
+
+  if (promptedNames.length === 0 && followSkills.length === 0) {
     console.log('No skills selected');
     return;
   }
 
-  const selectedSkills = skillsService.getSkillsByNames(selectedSkillNames);
+  const promptedSkills = skillsService.getSkillsByNames(promptedNames);
+  const seenKey = new Set<string>();
+  const selectedSkills: SkillInfo[] = [];
+  for (const skill of [...followSkills, ...promptedSkills]) {
+    const key = skillToKey(skill);
+    if (seenKey.has(key)) continue;
+    seenKey.add(key);
+    selectedSkills.push(skill);
+  }
+  const selectedSkillNames = selectedSkills.map((s) => s.name);
   const deployMode = options.copy ? 'copy' : 'link';
 
   if (!options.json) {
@@ -168,6 +223,13 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   for (const skill of toAdd) {
     deployer.deploySkill(skill, deployMode);
   }
+
+  writeProjectManifest({
+    manifestService,
+    deployMode,
+    followGroupNames,
+    pinnedSkills: promptedSkills.map(skillToKey),
+  });
 
   if (options.json) {
     const deployed: Array<{ name: string; agents: string[]; mode: string }> = [];
@@ -232,6 +294,134 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   );
 }
 
+interface WriteManifestArgs {
+  manifestService: DeploymentManifestService;
+  deployMode: 'link' | 'copy';
+  followGroupNames: string[];
+  pinnedSkills: string[];
+}
+
+function writeProjectManifest(args: WriteManifestArgs): void {
+  const projectRoot = process.cwd();
+  let prev: DeploymentManifest | null = null;
+  try {
+    prev = args.manifestService.readManifest(projectRoot);
+  } catch (e) {
+    console.warn(`⚠ ${(e as Error).message}`);
+  }
+  const merged = args.manifestService.mergeForDeploy(prev, {
+    mode: args.deployMode,
+    followGroups: args.followGroupNames,
+    pinnedSkills: args.pinnedSkills,
+  });
+  try {
+    args.manifestService.writeManifest(projectRoot, merged);
+  } catch (e) {
+    console.warn(`⚠ Failed to write deployment manifest: ${(e as Error).message}`);
+  }
+
+  try {
+    new DeploymentsRegistryService().recordDeploy(projectRoot, {
+      mode: merged.mode,
+      followGroups: merged.followGroups,
+      pinnedSkills: merged.pinnedSkills,
+      lastDeployedAt: merged.deployedAt,
+    });
+  } catch (e) {
+    console.warn(`⚠ Failed to update global deployments registry: ${(e as Error).message}`);
+  }
+}
+
+async function executeDeployRefresh(options: DeployOptions): Promise<void> {
+  const projectRoot = process.cwd();
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  const groupsService = new GroupsService();
+  const manifestService = new DeploymentManifestService();
+  const deployer = new Deployer(projectRoot);
+  const scanner = new DeploymentScanner(projectRoot, SKILLS_MANAGER_DIR);
+
+  let manifest: DeploymentManifest | null;
+  try {
+    manifest = manifestService.readManifest(projectRoot);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (options.json) {
+      jsonError(msg, 'INVALID_MANIFEST');
+    } else {
+      console.error(`Error: ${msg}`);
+    }
+    process.exit(1);
+  }
+
+  if (!manifest) {
+    const msg = `No deployment manifest found at ${join(projectRoot, '.skills-manager', 'deployment.json')}.  Run \`skillsmgr deploy\` first to create one.`;
+    if (options.json) {
+      jsonError(msg, 'NO_MANIFEST');
+    } else {
+      console.error(`Error: ${msg}`);
+    }
+    process.exit(1);
+  }
+
+  const resolved = manifestService.resolveExpectedSkills(manifest, groupsService, skillsService);
+  for (const warning of resolved.warnings) {
+    console.warn(`⚠ ${warning}`);
+  }
+
+  const deployedSkills = scanner.getDeployedSkills();
+  const expectedNames = new Set(resolved.skills.map((s) => s.name));
+  const currentNames = new Set(deployedSkills.map((s) => s.name));
+
+  const toAdd = resolved.skills.filter((s) => !currentNames.has(s.name));
+  const toKeep = resolved.skills.filter((s) => currentNames.has(s.name));
+  const toRemove = deployedSkills.filter(
+    (s) => !expectedNames.has(s.name) && s.source !== 'unknown',
+  );
+
+  for (const skill of toRemove) {
+    deployer.removeSkill(skill.name);
+  }
+  for (const skill of toAdd) {
+    deployer.deploySkill(skill, manifest.mode);
+  }
+
+  const refreshedAt = new Date().toISOString();
+  const refreshedManifest = {
+    ...manifest,
+    deployedAt: refreshedAt,
+  };
+  manifestService.writeManifest(projectRoot, refreshedManifest);
+
+  try {
+    new DeploymentsRegistryService().recordDeploy(projectRoot, {
+      mode: refreshedManifest.mode,
+      followGroups: refreshedManifest.followGroups,
+      pinnedSkills: refreshedManifest.pinnedSkills,
+      lastDeployedAt: refreshedAt,
+    });
+  } catch (e) {
+    console.warn(`⚠ Failed to update global deployments registry: ${(e as Error).message}`);
+  }
+
+  if (options.json) {
+    jsonOutput({
+      refreshed: {
+        added: toAdd.map((s) => s.name),
+        kept: toKeep.map((s) => s.name),
+        removed: toRemove.map((s) => s.name),
+        warnings: resolved.warnings,
+      },
+    });
+    return;
+  }
+
+  console.log(
+    `Refreshed: +${toAdd.length} ·${toKeep.length} (kept) -${toRemove.length}`,
+  );
+  for (const s of toAdd) console.log(`  ✓ ${s.name} (added)`);
+  for (const s of toRemove) console.log(`  ✗ ${s.name} (removed)`);
+}
+
 export const deployCommand = new Command('deploy')
   .description('Deploy skills to current project (or globally with -g)')
   .option('--copy', 'Copy files instead of creating symlinks')
@@ -241,6 +431,8 @@ export const deployCommand = new Command('deploy')
   .option('--same-agents', 'Use currently configured agents')
   .option('-y', 'Skip all prompts (implies --all --same-agents)')
   .option('--json', 'Output as JSON (implies --all)')
+  .option('--follow-group <name>', 'Follow a group: deploy its current members and re-sync on refresh (repeatable)', collect, [])
+  .option('--refresh', 'Re-align deployed skills to the project manifest (no prompts)')
   .action(async (options: DeployOptions) => {
     await executeDeploy(options);
   });
