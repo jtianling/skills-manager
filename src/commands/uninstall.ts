@@ -1,14 +1,14 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { readdirSync } from 'fs';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { BundleManager } from '../services/bundle-manager.js';
+import { GroupManager } from '../services/group-manager.js';
 import { GitHubService } from '../services/github.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
-import { fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
+import { cleanEmptyParents, fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
 import {
   loadGroupsData,
   promptConfirm,
@@ -23,23 +23,6 @@ interface UninstallOptions {
   force?: boolean;
   y?: boolean;
   skill?: string[];
-}
-
-function cleanEmptyParents(dir: string, stopAt: string): void {
-  let current = dir;
-  while (current !== stopAt && current.startsWith(stopAt)) {
-    if (!fileExists(current)) {
-      current = join(current, '..');
-      continue;
-    }
-    const entries = readdirSync(current);
-    if (entries.length === 0) {
-      removeDir(current);
-      current = join(current, '..');
-    } else {
-      break;
-    }
-  }
 }
 
 function cleanSourcesForDir(dirPrefix: string, service?: SourcesService): void {
@@ -341,6 +324,32 @@ export async function executeUninstall(
     );
     const result = await bundleManager.remove(bundleId);
     console.log(`Uninstalled ${result.removed} skills from bundle ${bundleId}`);
+    return;
+  }
+
+  if (target.kind === 'group') {
+    if (!target.groupName || !target.groupKind) {
+      throw new Error(`Missing group metadata for ${identifier}`);
+    }
+
+    if (target.groupKind === 'virtual') {
+      console.error(
+        `Error: '${target.groupName}' is a virtual group; use 'group delete ${target.groupName}' to remove it (skills are not affected)`,
+      );
+      process.exit(1);
+    }
+
+    const groupManager = new GroupManager(
+      new SourcesService(),
+      new GroupsService(),
+      new GitHubService(),
+    );
+    const result = await groupManager.uninstallPhysicalGroup(target.groupName, {
+      force: options.force,
+    });
+    if (result.removed > 0) {
+      console.log(`Uninstalled ${result.removed} skills from physical group ${target.groupName}`);
+    }
     return;
   }
 

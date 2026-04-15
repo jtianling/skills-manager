@@ -74,6 +74,24 @@ export function removeDir(dir: string): void {
   }
 }
 
+export function cleanEmptyParents(dir: string, stopAt: string): void {
+  let current = dir;
+  while (current !== stopAt && current.startsWith(stopAt)) {
+    if (!existsSync(current)) {
+      current = join(current, '..');
+      continue;
+    }
+
+    const entries = readdirSync(current);
+    if (entries.length > 0) {
+      break;
+    }
+
+    removeDir(current);
+    current = join(current, '..');
+  }
+}
+
 export interface DirInfo {
   name: string;
   path: string;

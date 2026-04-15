@@ -27,6 +27,7 @@ vi.mock('../utils/interactive-select.js', () => ({
 
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { executeUninstall } from './uninstall.js';
+import { GroupsService } from '../services/groups.js';
 import { SourcesService } from '../services/sources.js';
 import { loadGroupsData, promptConfirm, promptSelect } from '../utils/prompts.js';
 import { promptSkillsToUninstall } from '../utils/prompts.js';
@@ -599,7 +600,7 @@ describe('uninstall command', () => {
       mockExit.mockRestore();
     });
 
-    it('uninstalls local batch bundle by directory path', async () => {
+    it('uninstalls physical group by directory path', async () => {
       const batchDir = join(tmpdir(), `skillsmgr-uninstall-batch-${Date.now()}`, 'spec-tdd');
       mkdirSync(join(batchDir, 'skill-a'), { recursive: true });
       mkdirSync(join(batchDir, 'skill-b'), { recursive: true });
@@ -622,12 +623,7 @@ describe('uninstall command', () => {
         repoName: 'skill-b',
         installMethod: 'local-copy',
       });
-      sourcesService.addBundle(`local-batch:${batchDir}`, {
-        type: 'local-batch',
-        url: batchDir,
-        selectionMode: 'all',
-        members: ['custom/spec-tdd/skill-a', 'custom/spec-tdd/skill-b'],
-      });
+      new GroupsService().createLocalBatchGroup('spec-tdd', batchDir);
 
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -637,9 +633,9 @@ describe('uninstall command', () => {
       expect(existsSync(join(SKILLS_MANAGER_DIR, 'custom', 'spec-tdd', 'skill-b'))).toBe(false);
       expect(sourcesService.getSource('custom/spec-tdd/skill-a')).toBeUndefined();
       expect(sourcesService.getSource('custom/spec-tdd/skill-b')).toBeUndefined();
-      expect(sourcesService.getBundle(`local-batch:${batchDir}`)).toBeUndefined();
+      expect(new GroupsService().getGroup('spec-tdd')).toBeNull();
       expect(logSpy).toHaveBeenCalledWith(
-        `Uninstalled 2 skills from bundle local-batch:${batchDir}`
+        'Uninstalled 2 skills from physical group spec-tdd'
       );
 
       rmSync(join(batchDir, '..'), { recursive: true, force: true });

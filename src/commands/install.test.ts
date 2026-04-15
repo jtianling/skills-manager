@@ -14,8 +14,8 @@ vi.mock('../utils/interactive-select.js', () => ({
 }));
 
 import * as constants from '../constants.js';
+import { GroupsService } from '../services/groups.js';
 import { SourcesService } from '../services/sources.js';
-import { makeBundleId } from '../utils/url-normalize.js';
 import { executeInstall } from './install.js';
 import { promptConfirm, promptSkillsToInstall } from '../utils/prompts.js';
 
@@ -52,6 +52,10 @@ describe('install command', () => {
 
   function readSources() {
     return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+  }
+
+  function readGroups() {
+    return JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
   }
 
   it('rejects bare words with unknown source format', async () => {
@@ -106,8 +110,11 @@ describe('install command', () => {
     });
 
     // Added to virtual group
-    const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
-    expect(groups['my-tools']).toContain('custom/grouped-local-skill');
+    const groups = readGroups();
+    expect(groups.groups['my-tools']).toEqual({
+      kind: 'virtual',
+      members: ['custom/grouped-local-skill'],
+    });
   });
 
   it.each(['.zip', '.skill'])(
@@ -265,18 +272,14 @@ describe('install command', () => {
     writeFileSync(join(existingBatchMemberDir, 'SKILL.md'), '---\nname: child-a\n---\nbatch');
 
     const sourcesService = new SourcesService();
+    const groupsService = new GroupsService();
     sourcesService.addSource('custom/tdd-spec/child-a', {
       url: batchDir,
       type: 'custom',
       repoName: 'child-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', batchDir), {
-      type: 'local-batch',
-      url: batchDir,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/child-a'],
-    });
+    groupsService.createLocalBatchGroup('tdd-spec', batchDir);
 
     await executeInstall('./child-a', {});
 
@@ -354,11 +357,10 @@ describe('install command', () => {
       const sources = readSources();
       expect(sources.sources['custom/my-skills/skill-a']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
       expect(sources.sources['custom/my-skills/skill-b']).toMatchObject({ type: 'custom', installMethod: 'local-copy' });
-      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
-        type: 'local-batch',
+      const groups = readGroups();
+      expect(groups.groups['my-skills']).toMatchObject({
+        kind: 'local-batch',
         url: batchDir,
-        selectionMode: 'all',
-        members: ['custom/my-skills/skill-a', 'custom/my-skills/skill-b'],
       });
     });
 
@@ -367,25 +369,21 @@ describe('install command', () => {
       createSkillDir(batchDir, 'skill-a');
 
       const sourcesService = new SourcesService();
+      const groupsService = new GroupsService();
       sourcesService.addSource('custom/tdd-spec/skill-a', {
         url: batchDir,
         type: 'custom',
         repoName: 'skill-a',
         installMethod: 'local-copy',
       });
-      sourcesService.addBundle(makeBundleId('local-batch', batchDir), {
-        type: 'local-batch',
-        url: batchDir,
-        selectionMode: 'all',
-        members: ['custom/tdd-spec/skill-a'],
-      });
+      groupsService.createLocalBatchGroup('tdd-spec', batchDir);
 
       await executeInstall('./tdd-spec', { all: true });
 
-      const sources = readSources();
-      expect(sources.bundles[makeBundleId('local-batch', batchDir)]).toMatchObject({
+      const groups = readGroups();
+      expect(groups.groups['tdd-spec']).toMatchObject({
         url: batchDir,
-        members: ['custom/tdd-spec/skill-a'],
+        kind: 'local-batch',
       });
     });
 
@@ -394,13 +392,8 @@ describe('install command', () => {
       const newDir = join(testProjectDir, 'tdd-spec');
       createSkillDir(newDir, 'skill-a');
 
-      const sourcesService = new SourcesService();
-      sourcesService.addBundle(makeBundleId('local-batch', oldDir), {
-        type: 'local-batch',
-        url: oldDir,
-        selectionMode: 'all',
-        members: ['custom/tdd-spec/skill-a'],
-      });
+      const groupsService = new GroupsService();
+      groupsService.createLocalBatchGroup('tdd-spec', oldDir);
 
       const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
         throw new Error('process.exit');
@@ -408,7 +401,7 @@ describe('install command', () => {
 
       await expect(executeInstall('./tdd-spec', { all: true })).rejects.toThrow('process.exit');
       expect(console.error).toHaveBeenCalledWith(
-        `Error: A local bundle 'tdd-spec' is already installed from ${oldDir}. ` +
+        `Error: A local-batch group 'tdd-spec' is already installed from ${oldDir}. ` +
         `To move it to ${newDir}, run: skillsmgr update ${newDir}`,
       );
       mockExit.mockRestore();
@@ -420,19 +413,9 @@ describe('install command', () => {
       const newDir = join(testProjectDir, 'tdd-spec');
       createSkillDir(newDir, 'skill-a');
 
-      const sourcesService = new SourcesService();
-      sourcesService.addBundle(makeBundleId('local-batch', oldDirA), {
-        type: 'local-batch',
-        url: oldDirA,
-        selectionMode: 'all',
-        members: ['custom/tdd-spec/a'],
-      });
-      sourcesService.addBundle(makeBundleId('local-batch', oldDirB), {
-        type: 'local-batch',
-        url: oldDirB,
-        selectionMode: 'all',
-        members: ['custom/tdd-spec/b'],
-      });
+      const groupsService = new GroupsService();
+      groupsService.createLocalBatchGroup('legacy-a', oldDirA);
+      groupsService.createLocalBatchGroup('legacy-b', oldDirB);
 
       const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
         throw new Error('process.exit');
@@ -440,10 +423,10 @@ describe('install command', () => {
 
       await expect(executeInstall('./tdd-spec', { all: true })).rejects.toThrow('process.exit');
       expect(console.error).toHaveBeenCalledWith(
-        "Error: Multiple local bundles named 'tdd-spec' are already installed:\n" +
-        `  - ${makeBundleId('local-batch', oldDirA)}: ${oldDirA}\n` +
-        `  - ${makeBundleId('local-batch', oldDirB)}: ${oldDirB}\n` +
-        'Clean up the duplicate bundle entries and try again.',
+        "Error: Multiple local-batch groups named 'tdd-spec' are already installed:\n" +
+        `  - legacy-a: ${oldDirA}\n` +
+        `  - legacy-b: ${oldDirB}\n` +
+        'Clean up the duplicate group entries and try again.',
       );
       mockExit.mockRestore();
     });
@@ -482,20 +465,28 @@ describe('install command', () => {
 
       await executeInstall('./openspec', { all: true });
 
-      const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
-      expect(groups['openspec']).toContain('custom/openspec/explore');
-      expect(groups['openspec']).toContain('custom/openspec/ff-change');
+      const groups = readGroups();
+      expect(groups.groups['openspec']).toMatchObject({
+        kind: 'local-batch',
+        url: batchDir,
+      });
     });
 
-    it('--group overrides auto group name', async () => {
+    it('--group creates an extra virtual group alongside the physical group', async () => {
       const batchDir = join(testProjectDir, 'openspec');
       createSkillDir(batchDir, 'explore');
 
       await executeInstall('./openspec', { all: true, group: 'tools' });
 
-      const groups = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
-      expect(groups['tools']).toContain('custom/openspec/explore');
-      expect(groups['openspec']).toBeUndefined();
+      const groups = readGroups();
+      expect(groups.groups['openspec']).toMatchObject({
+        kind: 'local-batch',
+        url: batchDir,
+      });
+      expect(groups.groups['tools']).toEqual({
+        kind: 'virtual',
+        members: ['custom/openspec/explore'],
+      });
     });
 
     it('--skill filters specific skills in batch install', async () => {
@@ -510,10 +501,10 @@ describe('install command', () => {
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-c', 'SKILL.md'))).toBe(true);
       expect(existsSync(join(testManagerDir, 'custom', 'my-skills', 'skill-b', 'SKILL.md'))).toBe(false);
 
-      const sources = readSources();
-      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
-        selectionMode: 'subset',
-        members: ['custom/my-skills/skill-a', 'custom/my-skills/skill-c'],
+      const groups = readGroups();
+      expect(groups.groups['my-skills']).toMatchObject({
+        kind: 'local-batch',
+        url: batchDir,
       });
     });
 
@@ -529,10 +520,10 @@ describe('install command', () => {
 
       await executeInstall('./my-skills', {});
 
-      const sources = readSources();
-      expect(sources.bundles[`local-batch:${batchDir}`]).toMatchObject({
-        selectionMode: 'subset',
-        members: ['custom/my-skills/skill-b'],
+      const groups = readGroups();
+      expect(groups.groups['my-skills']).toMatchObject({
+        kind: 'local-batch',
+        url: batchDir,
       });
     });
 

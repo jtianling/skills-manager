@@ -1,14 +1,16 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { GroupManager } from '../services/group-manager.js';
 import { GroupsService, validateGroupName } from '../services/groups.js';
 import { SkillsService } from '../services/skills.js';
-import type { SkillInfo } from '../types.js';
+import { collect, type InstallOptions, type SkillInfo } from '../types.js';
 import {
   getSourceSuffix,
   promptGroupAddConflictResolution,
   promptSelect,
 } from '../utils/prompts.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
+import { resolveLocalSourcePath } from './install-local.js';
 import { ensureSetup } from './setup.js';
 
 type GroupAddCandidate =
@@ -112,7 +114,8 @@ export async function resolveGroupAddIdentifier(
   const candidates: GroupAddCandidate[] = [];
   const fullKeyMatch = allSkills.find((skill) => skillKeyOf(skill) === identifier);
   const nameMatches = allSkills.filter((skill) => skill.name === identifier);
-  const groupSkills = groupsService.getGroup(identifier);
+  const groupEntry = groupsService.getGroup(identifier);
+  const groupSkills = groupEntry ? groupsService.getGroupMembers(identifier) : null;
   const isOwnerRepo = detectArgFormat(identifier) === 'owner-repo';
   const repoSkills = isOwnerRepo
     ? findRepoInCentralRepository(identifier, new SkillsService(SKILLS_MANAGER_DIR))
@@ -180,7 +183,7 @@ async function addSkillWithConflictHandling(
   skillKey: string,
   service: GroupsService,
 ): Promise<AddSkillResult> {
-  const targetGroupKeys = service.getGroup(group) ?? [];
+  const targetGroupKeys = service.getGroupMembers(group);
 
   if (targetGroupKeys.includes(skillKey)) {
     return { status: 'already-present', skillKey };
@@ -303,7 +306,7 @@ function removeGroupSkills(
     return;
   }
 
-  const targetKeys = service.getGroup(targetGroup) ?? [];
+  const targetKeys = service.getGroupMembers(targetGroup);
   const results: RemoveSkillResult[] = skillKeys.map((key) => {
     if (targetKeys.includes(key)) {
       service.removeSkill(targetGroup, key);
@@ -326,7 +329,7 @@ function removeRepoSkills(
   skills: SkillInfo[],
   service: GroupsService,
 ): void {
-  const targetKeys = service.getGroup(targetGroup) ?? [];
+  const targetKeys = service.getGroupMembers(targetGroup);
   const results: RemoveSkillResult[] = skills.map((skill) => {
     const key = skillKeyOf(skill);
     if (targetKeys.includes(key)) {
@@ -349,16 +352,17 @@ async function executeGroupList(name?: string): Promise<void> {
   const service = new GroupsService();
 
   if (name) {
-    const skills = service.getGroup(name);
-    if (!skills) {
+    const group = service.getGroup(name);
+    if (!group) {
       console.log(`Group '${name}' not found.`);
       process.exit(1);
     }
+    const skills = service.getGroupMembers(name);
     if (skills.length === 0) {
       console.log(`Group '${name}' is empty.`);
       return;
     }
-    console.log(`${name}:`);
+    console.log(`${name} [${group.kind}]:`);
     for (const key of skills) {
       const lastSlash = key.lastIndexOf('/');
       const skillName = lastSlash >= 0 ? key.slice(lastSlash + 1) : key;
@@ -376,8 +380,9 @@ async function executeGroupList(name?: string): Promise<void> {
   }
 
   for (const group of groups) {
-    const skills = service.getGroup(group) ?? [];
-    console.log(`${group} (${skills.length})`);
+    const skills = service.getGroupMembers(group);
+    const kind = service.getGroupKind(group) ?? 'virtual';
+    console.log(`${group} [${kind}] (${skills.length})`);
   }
 }
 
@@ -410,6 +415,91 @@ async function executeGroupDelete(name: string): Promise<void> {
     process.exit(1);
   }
   console.log(`Deleted group '${name}'.`);
+}
+
+async function executeGroupInstall(
+  source: string,
+  options: InstallOptions,
+): Promise<void> {
+  await ensureSetup();
+  const groupManager = new GroupManager();
+
+  try {
+    await groupManager.installLocalBatch(resolveLocalSourcePath(source), options);
+  } catch (e) {
+    console.log((e as Error).message);
+    process.exit(1);
+  }
+}
+
+async function executeGroupUninstall(
+  name: string,
+  options: { force?: boolean } = {},
+): Promise<void> {
+  await ensureSetup();
+  const groupsService = new GroupsService();
+  const kind = groupsService.getGroupKind(name);
+
+  if (!kind) {
+    console.log(`Group '${name}' not found.`);
+    process.exit(1);
+  }
+
+  if (kind === 'virtual') {
+    console.log(
+      `'${name}' is a virtual group; use 'group delete ${name}' to remove it (skills are not affected)`,
+    );
+    process.exit(1);
+  }
+
+  const groupManager = new GroupManager();
+  const result = await groupManager.uninstallPhysicalGroup(name, {
+    force: options.force,
+  });
+  if (result.removed > 0) {
+    console.log(`Uninstalled ${result.removed} skills from physical group ${name}.`);
+  }
+}
+
+async function executeGroupUpdate(
+  name: string,
+  options: { keepLocal?: boolean; verbose?: boolean } = {},
+): Promise<void> {
+  await ensureSetup();
+  const groupsService = new GroupsService();
+  const kind = groupsService.getGroupKind(name);
+
+  if (!kind) {
+    console.log(`Group '${name}' not found.`);
+    process.exit(1);
+  }
+
+  const groupManager = new GroupManager();
+  console.log(`Updating ${name}...\n`);
+
+  if (kind === 'local-batch') {
+    try {
+      const result = await groupManager.updatePhysicalGroup(name, {
+        keepLocal: options.keepLocal,
+        verbose: options.verbose,
+      });
+      console.log(
+        `\nDone! ${result.updated} updated, ${result.added} added, ` +
+        `${result.kept} removed (kept), ${result.removed} removed, ` +
+        `${result.upToDate} up to date, ${result.failed} failed`,
+      );
+    } catch (e) {
+      console.log((e as Error).message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  const result = await groupManager.updateVirtualGroup(name);
+  console.log(
+    `\nDone! ${result.updated} updated, ${result.upToDate} up to date, ` +
+    `${result.failed} failed, ${result.skipped} skipped`,
+  );
 }
 
 export async function executeGroupAdd(group: string, identifier: string): Promise<void> {
@@ -502,9 +592,19 @@ export async function executeGroupRename(
 ): Promise<void> {
   await ensureSetup();
   const service = new GroupsService();
+  const group = service.getGroup(oldName);
+
+  if (!group) {
+    console.log(`Group '${oldName}' not found.`);
+    process.exit(1);
+  }
 
   try {
-    service.renameGroup(oldName, newName);
+    if (group.kind === 'local-batch') {
+      new GroupManager().renamePhysicalGroup(oldName, newName);
+    } else {
+      service.renameGroup(oldName, newName);
+    }
   } catch (e) {
     console.log((e as Error).message);
     process.exit(1);
@@ -514,7 +614,7 @@ export async function executeGroupRename(
 }
 
 export const groupCommand = new Command('group')
-  .description('Manage virtual skill groups');
+  .description('Manage skill groups');
 
 groupCommand
   .command('list')
@@ -522,6 +622,18 @@ groupCommand
   .description('List all groups or show group details')
   .action((name?: string) => {
     executeGroupList(name);
+  });
+
+groupCommand
+  .command('install')
+  .argument('<source>', 'Local directory containing multiple skills')
+  .description('Install a physical group from a local directory')
+  .option('--all', 'Install all skills without prompting')
+  .option('-y', 'Skip all prompts (implies --all)')
+  .option('-f, --force', 'Overwrite existing skills without confirmation')
+  .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
+  .action(async (source: string, options: InstallOptions) => {
+    await executeGroupInstall(source, options);
   });
 
 groupCommand
@@ -535,9 +647,28 @@ groupCommand
 groupCommand
   .command('delete')
   .argument('<name>', 'Group name')
-  .description('Delete a group (skills are not affected)')
+  .description('Delete a virtual group (skills are not affected)')
   .action((name: string) => {
     executeGroupDelete(name);
+  });
+
+groupCommand
+  .command('uninstall')
+  .argument('<name>', 'Group name')
+  .description('Uninstall a physical group')
+  .option('-f, --force', 'Skip confirmation prompt')
+  .action(async (name: string, options: { force?: boolean }) => {
+    await executeGroupUninstall(name, options);
+  });
+
+groupCommand
+  .command('update')
+  .argument('<name>', 'Group name')
+  .description('Update a physical or virtual group')
+  .option('--keep-local', 'Keep orphaned skills when updating a physical group')
+  .option('-v, --verbose', 'Show every physical group member status during sync')
+  .action(async (name: string, options: { keepLocal?: boolean; verbose?: boolean }) => {
+    await executeGroupUpdate(name, options);
   });
 
 groupCommand

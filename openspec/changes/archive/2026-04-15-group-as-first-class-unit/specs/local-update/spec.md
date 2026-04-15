@@ -1,30 +1,56 @@
-# Local Update
+## ADDED Requirements
 
-从原始路径更新 installMethod 为 `'local-copy'` 的已安装 skill.
+### Requirement: 物理 group update 默认源为真同步
 
-## Requirements
+`update` 命令对物理 group (顶层 `update <input>` 命中 group target 或 `group update <name>`) SHALL 默认以源目录为权威, 自动 diff 并同步:
 
-### Requirement: 从原始路径更新 local-copy skill
-update 命令 SHALL 支持更新 installMethod 为 `'local-copy'` 的 source.  系统从 sources.json 中记录的 `url` (原始绝对路径) 读取最新内容, 对比已安装目录中的 SKILL.md, 有变化则重新拷贝.
+- `existing` (源 ∩ 目标): SKILL.md 内容比较, 不同则覆盖, 输出 `↑`; 相同则输出 `✓`
+- `added` (源 - 目标): 安装新 skill, 写入 sources.json, 输出 `+`
+- `orphaned` (目标 - 源): 默认删除物理目录 + sources entry + 清理逻辑 group 引用, 输出 `-`
 
-#### Scenario: 原始路径有更新
-- **WHEN** local-copy source 的原始路径中 SKILL.md 内容与已安装版本不同
-- **THEN** 系统删除已安装目录并从原始路径重新拷贝
-- **THEN** 输出 "↑ {skillName}: updated"
+新增 `--keep-local` 选项: 保留 orphaned 的物理目录和 sources entry, 输出 `- (kept locally)`.
 
-#### Scenario: 原始路径无变化
-- **WHEN** local-copy source 的原始路径中 SKILL.md 内容与已安装版本相同
-- **THEN** 输出 "✓ {skillName}: up to date"
+旧 `--sync` 选项 SHALL 保留为 no-op 兼容标记 (默认行为已等同 sync).
 
-#### Scenario: 原始路径不存在
-- **WHEN** local-copy source 的原始路径已不存在
-- **THEN** 输出 "⚠ {skillName}: original path not found: {path}"
-- **THEN** 计入 failed 计数
+#### Scenario: 默认 sync 删除孤儿
+- **GIVEN** 物理 group `tdd-spec`, 源目录新增 `ts-renamed/`, 已有 `tdd-old/` 在源中已删除, 物理目录仍有
+- **WHEN** 用户执行 `skillsmgr update tdd-spec`
+- **THEN** `ts-renamed` 被 install 并加 sources entry, 输出 `+ ts-renamed`
+- **THEN** `tdd-old` 物理目录删除, sources entry 清理, 逻辑 group 引用清理, 输出 `- tdd-old`
 
-#### Scenario: 原始路径中无 SKILL.md
-- **WHEN** local-copy source 的原始路径存在但不含 SKILL.md
-- **THEN** 输出 "⚠ {skillName}: SKILL.md not found at original path"
-- **THEN** 计入 failed 计数
+#### Scenario: --keep-local 保留孤儿
+- **GIVEN** 同上场景
+- **WHEN** 用户执行 `skillsmgr update tdd-spec --keep-local`
+- **THEN** `tdd-old` 物理目录和 sources entry 都保留, 输出 `- tdd-old (kept locally)`
+
+#### Scenario: --sync 兼容标记 no-op
+- **WHEN** 用户执行 `skillsmgr update tdd-spec --sync`
+- **THEN** 行为与不带 `--sync` 完全一致 (默认即 sync)
+- **THEN** 系统 SHALL 不报错, 视为兼容性 no-op
+
+### Requirement: 逻辑 group update 遍历 member
+
+`update` 对逻辑 group SHALL 遍历每个 member, 调用对应源类型的 update 路径:
+
+- member source 为 git → 走 git source update
+- member source 为 local-copy → 走当前 "从原始路径更新 local-copy skill" 流程
+- member source 为 registry → 走 registry update
+- member source 已不存在 → 输出 warning `⚠ <key>: dangling reference, skipped`, 不计入 failed
+
+#### Scenario: 逻辑 group 含多种源类型
+- **GIVEN** 逻辑 group `python` 含 `custom/foo` (local-copy, 源路径有更新), `official/anthropic/skills/commit` (git, 远程有新版本)
+- **WHEN** 用户执行 `skillsmgr update python`
+- **THEN** `custom/foo` 走 local-copy update 流程, 报 `↑ foo`
+- **THEN** `official/anthropic/skills/commit` 走 git update, 报 `↑ commit`
+- **THEN** 输出汇总 `2 updated`
+
+#### Scenario: 逻辑 group 含悬空引用
+- **GIVEN** 逻辑 group `python` 含 `custom/bar`, 但 sources.json 已无 `custom/bar`
+- **WHEN** 用户执行 `skillsmgr update python`
+- **THEN** 输出 `⚠ custom/bar: dangling reference, skipped`
+- **THEN** 不计入 failed 计数
+
+## MODIFIED Requirements
 
 ### Requirement: 通过本地路径参数指定更新
 
@@ -126,53 +152,3 @@ basename 匹配规则:
 - **WHEN** 用户执行 `skillsmgr update tdd-spec` (无 `./` 前缀, 无绝对路径)
 - **THEN** 系统按 bareword 解析: 优先匹配 group 名 → 命中物理 group `tdd-spec` → 直接走物理 group update
 - **AND** 不进入 basename fallback / rebind 流程
-
-### Requirement: 物理 group update 默认源为真同步
-
-`update` 命令对物理 group (顶层 `update <input>` 命中 group target 或 `group update <name>`) SHALL 默认以源目录为权威, 自动 diff 并同步:
-
-- `existing` (源 ∩ 目标): SKILL.md 内容比较, 不同则覆盖, 输出 `↑`; 相同则输出 `✓`
-- `added` (源 - 目标): 安装新 skill, 写入 sources.json, 输出 `+`
-- `orphaned` (目标 - 源): 默认删除物理目录 + sources entry + 清理逻辑 group 引用, 输出 `-`
-
-新增 `--keep-local` 选项: 保留 orphaned 的物理目录和 sources entry, 输出 `- (kept locally)`.
-
-旧 `--sync` 选项 SHALL 保留为 no-op 兼容标记 (默认行为已等同 sync).
-
-#### Scenario: 默认 sync 删除孤儿
-- **GIVEN** 物理 group `tdd-spec`, 源目录新增 `ts-renamed/`, 已有 `tdd-old/` 在源中已删除, 物理目录仍有
-- **WHEN** 用户执行 `skillsmgr update tdd-spec`
-- **THEN** `ts-renamed` 被 install 并加 sources entry, 输出 `+ ts-renamed`
-- **THEN** `tdd-old` 物理目录删除, sources entry 清理, 逻辑 group 引用清理, 输出 `- tdd-old`
-
-#### Scenario: --keep-local 保留孤儿
-- **GIVEN** 同上场景
-- **WHEN** 用户执行 `skillsmgr update tdd-spec --keep-local`
-- **THEN** `tdd-old` 物理目录和 sources entry 都保留, 输出 `- tdd-old (kept locally)`
-
-#### Scenario: --sync 兼容标记 no-op
-- **WHEN** 用户执行 `skillsmgr update tdd-spec --sync`
-- **THEN** 行为与不带 `--sync` 完全一致 (默认即 sync)
-- **THEN** 系统 SHALL 不报错, 视为兼容性 no-op
-
-### Requirement: 逻辑 group update 遍历 member
-
-`update` 对逻辑 group SHALL 遍历每个 member, 调用对应源类型的 update 路径:
-
-- member source 为 git → 走 git source update
-- member source 为 local-copy → 走当前 "从原始路径更新 local-copy skill" 流程
-- member source 为 registry → 走 registry update
-- member source 已不存在 → 输出 warning `⚠ <key>: dangling reference, skipped`, 不计入 failed
-
-#### Scenario: 逻辑 group 含多种源类型
-- **GIVEN** 逻辑 group `python` 含 `custom/foo` (local-copy, 源路径有更新), `official/anthropic/skills/commit` (git, 远程有新版本)
-- **WHEN** 用户执行 `skillsmgr update python`
-- **THEN** `custom/foo` 走 local-copy update 流程, 报 `↑ foo`
-- **THEN** `official/anthropic/skills/commit` 走 git update, 报 `↑ commit`
-- **THEN** 输出汇总 `2 updated`
-
-#### Scenario: 逻辑 group 含悬空引用
-- **GIVEN** 逻辑 group `python` 含 `custom/bar`, 但 sources.json 已无 `custom/bar`
-- **WHEN** 用户执行 `skillsmgr update python`
-- **THEN** 输出 `⚠ custom/bar: dangling reference, skipped`
-- **THEN** 不计入 failed 计数

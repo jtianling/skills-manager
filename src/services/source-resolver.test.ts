@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { Bundle, SkillInfo } from '../types.js';
+import { Bundle, GroupEntry, SkillInfo } from '../types.js';
 import { SourceResolver } from './source-resolver.js';
 import { makeBundleId } from '../utils/url-normalize.js';
 
@@ -45,11 +45,26 @@ describe('SourceResolver', () => {
     }>;
     skills?: SkillInfo[];
     bundles?: Record<string, Bundle>;
+    groups?: Record<string, GroupEntry>;
     parseGitHubUrl?: (url: string) => { owner: string; repo: string } | null;
   }): SourceResolver {
     const sources = options?.sources ?? {};
     const skills = options?.skills ?? [];
     const bundles = options?.bundles ?? {};
+    const groups = {
+      ...Object.values(bundles)
+        .filter((bundle): bundle is Bundle & { type: 'local-batch' } => bundle.type === 'local-batch')
+        .reduce<Record<string, GroupEntry>>((acc, bundle) => ({
+          ...acc,
+          [bundle.url.split('/').pop() ?? bundle.url]: {
+            kind: 'local-batch',
+            url: bundle.url,
+            installedAt: bundle.installedAt,
+            updatedAt: bundle.updatedAt,
+          },
+        }), {}),
+      ...(options?.groups ?? {}),
+    };
     const parseGitHubUrl =
       options?.parseGitHubUrl ??
       ((url: string) => {
@@ -65,13 +80,13 @@ describe('SourceResolver', () => {
         getAllSources: () => sources,
         findBundleByUrl: (normalizedUrl: string, type: 'local-batch' | 'git' | 'zip') =>
           bundles[makeBundleId(type, normalizedUrl)],
-        findLocalBatchBundlesByBasename: (lookupBasename: string) =>
-          Object.entries(bundles)
-            .filter(([, bundle]) =>
-              bundle.type === 'local-batch' &&
-              bundle.url.split('/').pop() === lookupBasename
+        findPhysicalGroupsByBasename: (lookupBasename: string) =>
+          Object.entries(groups)
+            .filter(([, group]) =>
+              group.kind === 'local-batch' &&
+              group.url.split('/').pop() === lookupBasename
             )
-            .map(([id, bundle]) => ({ id, bundle })),
+            .map(([name, group]) => ({ name, group })),
         findLocalCopySourcesByBasename: (lookupBasename: string) =>
           Object.entries(sources)
             .filter(([key, info]) =>
@@ -86,7 +101,21 @@ describe('SourceResolver', () => {
       } as never,
       {
         parseGitHubUrl,
-      } as never
+      } as never,
+      {
+        getGroup: (name: string) => groups[name] ?? null,
+        getGroupMembers: (name: string) => {
+          const group = groups[name];
+          if (!group) {
+            return [];
+          }
+          return group.kind === 'virtual'
+            ? group.members
+            : Object.values(bundles).find((bundle) => bundle.url === group.url)?.members
+              ?? [`custom/${name}/child-a`];
+        },
+        listGroups: () => Object.keys(groups),
+      } as never,
     );
   }
 
@@ -257,7 +286,7 @@ describe('SourceResolver', () => {
     });
   });
 
-  it('resolves local single-skill path and bundle-backed batch path', async () => {
+  it('resolves local single-skill path and physical group batch path', async () => {
     const singleSkillDir = join(testRoot, 'local-single');
     const batchDir = join(testRoot, 'spec-tdd');
     createSkillDir(singleSkillDir, 'local-single');
@@ -283,6 +312,14 @@ describe('SourceResolver', () => {
           updatedAt: '2024-01-01T00:00:00.000Z',
         },
       },
+      groups: {
+        'spec-tdd': {
+          kind: 'local-batch',
+          url: batchDir,
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
     });
 
     await expect(resolver.resolve(singleSkillDir)).resolves.toMatchObject({
@@ -290,8 +327,11 @@ describe('SourceResolver', () => {
       sourceKeys: ['custom/local-single'],
     });
     await expect(resolver.resolve(batchDir)).resolves.toMatchObject({
-      kind: 'bundle',
-      bundleId: makeBundleId('local-batch', batchDir),
+      kind: 'group',
+      groupName: 'spec-tdd',
+      groupKind: 'local-batch',
+      groupUrl: batchDir,
+      members: ['custom/spec-tdd/child-a', 'custom/spec-tdd/child-b'],
       sourceKeys: ['custom/spec-tdd/child-a', 'custom/spec-tdd/child-b'],
     });
     await expect(resolver.resolve(join(testRoot, 'missing-skill'))).resolves.toMatchObject({
@@ -332,6 +372,38 @@ describe('SourceResolver', () => {
       kind: 'bundle',
       bundleId,
       sourceKeys: ['official/anthropic/skills'],
+    });
+  });
+
+  it('prefers group resolution for bareword and custom/<name> inputs', async () => {
+    const resolver = createResolver({
+      groups: {
+        commit: {
+          kind: 'virtual',
+          members: ['custom/my-group/commit'],
+        },
+      },
+      skills: [
+        {
+          name: 'commit',
+          description: '',
+          path: join(testRoot, 'official', 'anthropic', 'skills', 'commit'),
+          source: 'official/anthropic/skills',
+        },
+      ],
+    });
+
+    await expect(resolver.resolve('commit')).resolves.toMatchObject({
+      kind: 'group',
+      groupName: 'commit',
+      groupKind: 'virtual',
+      members: ['custom/my-group/commit'],
+    });
+    await expect(resolver.resolve('custom/commit')).resolves.toMatchObject({
+      kind: 'group',
+      groupName: 'commit',
+      groupKind: 'virtual',
+      members: ['custom/my-group/commit'],
     });
   });
 
@@ -575,6 +647,20 @@ describe('SourceResolver', () => {
           updatedAt: '2024-01-01T00:00:00.000Z',
         },
       },
+      groups: {
+        'legacy-a': {
+          kind: 'local-batch',
+          url: oldDirA,
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        'legacy-b': {
+          kind: 'local-batch',
+          url: oldDirB,
+          installedAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      },
     });
 
     await expect(resolver.resolve(newDir)).resolves.toMatchObject({
@@ -583,7 +669,7 @@ describe('SourceResolver', () => {
     });
   });
 
-  it('does not apply basename fallback to bareword inputs', async () => {
+  it('resolves bareword to a physical group before basename fallback', async () => {
     const resolver = createResolver({
       sources: {
         'custom/tdd-spec/child-a': {
@@ -606,8 +692,9 @@ describe('SourceResolver', () => {
     });
 
     await expect(resolver.resolve('tdd-spec')).resolves.toMatchObject({
-      kind: 'not-found',
-      reason: expect.stringContaining('Tried:'),
+      kind: 'group',
+      groupName: 'tdd-spec',
+      groupKind: 'local-batch',
     });
   });
 });

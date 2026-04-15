@@ -78,7 +78,29 @@ export interface ListOptions {
   json?: boolean;
 }
 
+export type GroupKind = 'virtual' | 'local-batch';
+
+export interface VirtualGroupEntry {
+  kind: 'virtual';
+  members: string[];
+}
+
+export interface LocalBatchGroupEntry {
+  kind: 'local-batch';
+  url: string;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export type GroupEntry = VirtualGroupEntry | LocalBatchGroupEntry;
+
+export interface GroupsDataV2 {
+  version: '2.0';
+  groups: Record<string, GroupEntry>;
+}
+
 export type BundleType = 'local-batch' | 'git' | 'zip';
+export type RemoteBundleType = Exclude<BundleType, 'local-batch'>;
 
 export type SelectionMode = 'all' | 'subset';
 
@@ -93,7 +115,25 @@ export interface BundleInfo {
 
 export type Bundle = BundleInfo;
 
-export interface SourcesData {
+export interface RemoteBundleInfo extends Omit<BundleInfo, 'type'> {
+  type: RemoteBundleType;
+}
+
+export interface SourcesDataV2 {
+  version: '2.0';
+  sources: Record<string, unknown>;
+  bundles: Record<string, Bundle>;
+}
+
+export interface SourcesDataV3 {
+  version: '3.0';
+  sources: Record<string, unknown>;
+  bundles: Record<string, RemoteBundleInfo>;
+}
+
+export type SourcesData = SourcesDataV2 | SourcesDataV3;
+
+export interface LegacySourcesData {
   version: '1.0' | '2.0';
   sources: Record<string, unknown>;
   bundles: Record<string, Bundle>;

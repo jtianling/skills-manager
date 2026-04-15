@@ -167,8 +167,8 @@ describe('remove command', () => {
     expect(existsSync(deployedA)).toBe(false);
     expect(existsSync(deployedB)).toBe(false);
     expect(existsSync(deployedC)).toBe(true);
-    expect(groupsService.getGroup('dev')).toEqual([]);
-    expect(groupsService.getGroup('other')).toEqual(['custom/skill-c']);
+    expect(groupsService.getGroupMembers('dev')).toEqual([]);
+    expect(groupsService.getGroupMembers('other')).toEqual(['custom/skill-c']);
   });
 
   it('supports --group with -g and cleans group references', async () => {
@@ -190,7 +190,7 @@ describe('remove command', () => {
     });
 
     expect(existsSync(globalA)).toBe(false);
-    expect(groupsService.getGroup('dev')).toEqual(['custom/skill-b']);
+    expect(groupsService.getGroupMembers('dev')).toEqual(['custom/skill-b']);
   });
 
   it('exits when group does not exist', async () => {

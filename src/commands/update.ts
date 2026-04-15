@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { basename, join } from 'path';
+import { basename } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { BundleManager, BundleSyncResult } from '../services/bundle-manager.js';
 import {
@@ -7,19 +7,20 @@ import {
   DeploymentsRegistryService,
 } from '../services/deployments-registry.js';
 import { GitHubService } from '../services/github.js';
+import { GroupManager } from '../services/group-manager.js';
+import { GroupsService } from '../services/groups.js';
 import { RegistryService } from '../services/registry.js';
-import { SourcesService, SourceInfo } from '../services/sources.js';
+import { SourcesService } from '../services/sources.js';
+import { SourceUpdater, UpdateResult } from '../services/source-updater.js';
 import { SkillsService } from '../services/skills.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
-import { copyDir, fileExists, findScriptFiles, removeDir, readFileContent, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
 import { promptConfirm } from '../utils/prompts.js';
 import { detectSourceType } from '../utils/source-detection.js';
-import { Bundle } from '../types.js';
 import { ensureSetup } from './setup.js';
 
+const groupsService = new GroupsService();
 const sourcesService = new SourcesService();
 const githubService = new GitHubService();
-const registryService = new RegistryService();
 const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
 const sourceResolver = new SourceResolver(
   sourcesService,
@@ -27,267 +28,31 @@ const sourceResolver = new SourceResolver(
   githubService
 );
 const bundleManager = new BundleManager(sourcesService, githubService);
-
-interface UpdateResult {
-  updated: number;
-  upToDate: number;
-  failed: number;
-  skipped: number;
-}
+const sourceUpdater = new SourceUpdater(
+  sourcesService,
+  githubService,
+  new RegistryService(),
+  groupsService,
+);
+const groupManager = new GroupManager(
+  sourcesService,
+  groupsService,
+  githubService,
+  new RegistryService(),
+);
 
 interface UpdateOptions {
   sync?: boolean;
+  keepLocal?: boolean;
   verbose?: boolean;
   force?: boolean;
-}
-
-function getInstalledSkillDirs(targetBase: string): Array<{ name: string; path: string }> {
-  const rootSkillMd = join(targetBase, 'SKILL.md');
-  if (fileExists(rootSkillMd)) {
-    return [{
-      name: targetBase.split('/').pop() || targetBase,
-      path: targetBase,
-    }];
-  }
-
-  return getDirectoriesInDir(targetBase);
-}
-
-function updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
-  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
-  const skillName = key.split('/').pop() || key;
-  const originalPath = info.url;
-
-  if (!fileExists(originalPath)) {
-    console.log(`  ⚠ ${skillName}: original path not found: ${originalPath}`);
-    result.failed++;
-    return result;
-  }
-
-  const originalSkillMd = join(originalPath, 'SKILL.md');
-  if (!fileExists(originalSkillMd)) {
-    console.log(`  ⚠ ${skillName}: SKILL.md not found at original path`);
-    result.failed++;
-    return result;
-  }
-
-  const targetDir = join(SKILLS_MANAGER_DIR, key);
-  const localSkillMd = join(targetDir, 'SKILL.md');
-
-  if (fileExists(localSkillMd)) {
-    const localContent = readFileContent(localSkillMd);
-    const originalContent = readFileContent(originalSkillMd);
-
-    if (localContent === originalContent) {
-      console.log(`  ✓ ${skillName}: up to date`);
-      result.upToDate++;
-      return result;
-    }
-  }
-
-  removeDir(targetDir);
-  copyDir(originalPath, targetDir);
-  warnScriptFiles(findScriptFiles(targetDir));
-  console.log(`  ↑ ${skillName}: updated`);
-  result.updated++;
-
-  const sourcesService = new SourcesService();
-  sourcesService.updateTimestamp(key);
-
-  return result;
-}
-
-async function updateRegistrySource(
-  key: string,
-  info: SourceInfo,
-  targetVersion?: string
-): Promise<UpdateResult> {
-  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
-
-  const packageName = key.replace(/^registry\//, '');
-
-  try {
-    const packument = await registryService.getPackument(packageName);
-    const latestVersion = packument['dist-tags']?.latest;
-    const version = targetVersion ?? latestVersion;
-
-    if (!version) {
-      console.log(`  ⚠ ${packageName}: no latest version found`);
-      result.failed++;
-      return result;
-    }
-
-    if (info.version === version) {
-      console.log(`  ✓ ${packageName}: up to date (${version})`);
-      result.upToDate++;
-      return result;
-    }
-
-    const versionData = packument.versions[version];
-    if (!versionData?.dist?.tarball) {
-      console.log(`  ⚠ ${packageName}: no tarball URL for ${version}`);
-      result.failed++;
-      return result;
-    }
-
-    const installDir = join(SKILLS_MANAGER_DIR, key);
-    removeDir(installDir);
-
-    await registryService.downloadTarball(versionData.dist.tarball, installDir);
-    warnScriptFiles(findScriptFiles(installDir));
-
-    // Update source info with new version
-    sourcesService.addSource(key, {
-      url: info.url,
-      type: 'registry',
-      repoName: info.repoName,
-      installMethod: info.installMethod,
-      version,
-      registryUrl: info.registryUrl,
-    });
-
-    console.log(`  ↑ ${packageName}: ${info.version} → ${version}`);
-    result.updated++;
-  } catch (error) {
-    console.log(`  ✗ ${packageName}: ${(error as Error).message}`);
-    result.failed++;
-  }
-
-  return result;
-}
-
-async function updateSource(
-  key: string,
-  info: SourceInfo,
-  selectedSkillNames?: Set<string>,
-  targetVersion?: string
-): Promise<UpdateResult> {
-  const result: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
-
-  if (info.type === 'registry') {
-    return updateRegistrySource(key, info, targetVersion);
-  }
-
-  if (info.installMethod === 'zip') {
-    console.log(`  Skipping ${key.split('/').pop() || key}: installed from zip, manual reinstall required`);
-    result.skipped++;
-    return result;
-  }
-
-  if (info.installMethod === 'local-copy') {
-    return updateLocalCopy(key, info);
-  }
-
-  const parsed = githubService.parseGitHubUrl(info.url);
-  if (!parsed) {
-    console.log(`  ⚠ Cannot parse URL: ${info.url}`);
-    return result;
-  }
-
-  const { owner, repo } = parsed;
-
-  // Derive target directory from the source key (e.g., "official/anthropic" or "community/obra/superpowers")
-  const targetBase = join(SKILLS_MANAGER_DIR, key);
-
-  // Get the default branch
-  const defaultBranch = await githubService.getDefaultBranch(owner, repo);
-
-  const localSkills = getInstalledSkillDirs(targetBase);
-
-  if (localSkills.length > 0) {
-    const { skillsPath: skillsBasePath } = await githubService.listSkillsWithFallbackPaths(
-      owner,
-      repo,
-    );
-
-    for (const localSkill of localSkills) {
-      const skillName = localSkill.name;
-      if (skillName === 'commands') continue;
-      if (selectedSkillNames && !selectedSkillNames.has(skillName)) continue;
-
-      const targetDir = localSkill.path;
-      const localSkillMd = join(targetDir, 'SKILL.md');
-
-      if (!fileExists(localSkillMd)) {
-        continue;
-      }
-
-      const remotePath = skillsBasePath === '.' ? skillName : `${skillsBasePath}/${skillName}`;
-
-      try {
-        // Fetch remote SKILL.md via standard path
-        const response = await fetch(
-          `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${remotePath}/SKILL.md`
-        );
-
-        if (!response.ok) {
-          // Standard path failed, check if this is a root-skill repo
-          const rootContent = await githubService.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
-          if (rootContent) {
-            const localContent = readFileContent(localSkillMd);
-            if (rootContent === localContent) {
-              console.log(`  ✓ ${skillName}: up to date`);
-              result.upToDate++;
-            } else {
-              removeDir(targetDir);
-              await githubService.downloadRepoRoot(owner, repo, targetDir);
-              warnScriptFiles(findScriptFiles(targetDir));
-              console.log(`  ↑ ${skillName}: updated`);
-              result.updated++;
-            }
-          } else {
-            console.log(`  ⚠ ${skillName}: not found in remote`);
-            result.failed++;
-          }
-          continue;
-        }
-
-        const remoteContent = await response.text();
-        const localContent = readFileContent(localSkillMd);
-
-        // Compare content
-        if (remoteContent === localContent) {
-          console.log(`  ✓ ${skillName}: up to date`);
-          result.upToDate++;
-        } else {
-          // Content changed, update
-          removeDir(targetDir);
-          await githubService.downloadSkill(owner, repo, remotePath, targetDir);
-          warnScriptFiles(findScriptFiles(targetDir));
-          console.log(`  ↑ ${skillName}: updated`);
-          result.updated++;
-        }
-      } catch {
-        console.log(`  ✗ ${skillName}: failed to update`);
-        result.failed++;
-      }
-    }
-  }
-
-  if (localSkills.length === 0) {
-    console.log(`  No skills installed locally`);
-  }
-
-  // Update timestamp
-  sourcesService.updateTimestamp(key);
-
-  return result;
-}
-
-async function updateSingleSkill(
-  key: string,
-  info: SourceInfo,
-  target: ResolvedTarget
-): Promise<UpdateResult> {
-  const selectedNames = new Set((target.skills ?? []).map((skill) => skill.name));
-  return updateSource(key, info, selectedNames, target.requestedVersion);
 }
 
 function isRebindCandidate(
   target: ResolvedTarget,
 ): target is ResolvedTarget & {
   kind: 'rebind-candidate';
-  candidateType: 'source' | 'bundle';
+  candidateType: 'source' | 'group';
   candidateKey: string;
   candidateUrl: string;
   newAbsolutePath: string;
@@ -304,12 +69,12 @@ function isRebindCandidate(
 }
 
 function getRebindPromptMessage(target: ResolvedTarget & {
-  candidateType: 'source' | 'bundle';
+  candidateType: 'source' | 'group';
   candidateUrl: string;
   newAbsolutePath: string;
 }): string {
   const name = basename(target.newAbsolutePath);
-  const noun = target.candidateType === 'bundle' ? 'bundle' : 'skill';
+  const noun = target.candidateType === 'group' ? 'group' : 'skill';
   return (
     `Rebind local ${noun} '${name}'?\n` +
     `Old path: ${target.candidateUrl}\n` +
@@ -334,8 +99,8 @@ async function maybeRebindTarget(
     }
   }
 
-  if (target.candidateType === 'bundle') {
-    sourcesService.rebindLocalBundle(target.candidateKey, target.newAbsolutePath);
+  if (target.candidateType === 'group') {
+    groupManager.rebindPhysicalGroup(target.candidateKey, target.newAbsolutePath);
   } else {
     sourcesService.rebindLocalSource(target.candidateKey, target.newAbsolutePath);
   }
@@ -382,15 +147,17 @@ export async function executeUpdate(source?: string): Promise<void> {
 }
 
 const GENERIC_REFRESH_REMINDER =
-  "Note: projects following this bundle's group may need `skillsmgr deploy --refresh` to pick up changes.";
+  'Note: projects following this physical group may need `skillsmgr deploy --refresh` to pick up changes.';
 
-function computeAffectedProjects(bundle: Bundle | undefined): AffectedProjects | null {
-  if (!bundle || bundle.type !== 'local-batch') {
+function computeAffectedProjects(
+  groupName: string | undefined,
+  members: string[] | undefined,
+): AffectedProjects | null {
+  if (!groupName || !members) {
     return null;
   }
   try {
-    const groupName = basename(bundle.url);
-    return new DeploymentsRegistryService().findAffectedByGroup(groupName, bundle.members);
+    return new DeploymentsRegistryService().findAffectedByGroup(groupName, members);
   } catch (e) {
     console.warn(`⚠ ${(e as Error).message}`);
     return null;
@@ -419,22 +186,12 @@ function printAffectedProjects(affected: AffectedProjects): void {
   }
 }
 
-function printBundleUpdateSummary(result: BundleSyncResult, bundle?: Bundle): void {
+function printBundleUpdateSummary(result: BundleSyncResult): void {
   console.log(
     `\nDone! ${result.updated} updated, ${result.added} added, ` +
       `${result.removedKept} removed (kept), ${result.removedHard} removed, ` +
       `${result.upToDate} up to date, ${result.failed} failed`
   );
-
-  const hasChanges = result.added + result.removedHard + result.removedKept > 0;
-  if (!hasChanges) return;
-
-  const affected = computeAffectedProjects(bundle);
-  if (affected && affected.follow.length + affected.pinned.length + affected.missing.length > 0) {
-    printAffectedProjects(affected);
-  } else {
-    console.log(GENERIC_REFRESH_REMINDER);
-  }
 }
 
 export async function executeUpdateWithOptions(
@@ -483,8 +240,49 @@ export async function executeUpdateWithOptions(
       if (result.failed > 0) {
         process.exitCode = 1;
       }
-      const bundle = sourcesService.getBundle(bundleId) ?? undefined;
-      printBundleUpdateSummary(result, bundle);
+      printBundleUpdateSummary(result);
+      return;
+    }
+
+    if (target.kind === 'group') {
+      if (!target.groupName || !target.groupKind) {
+        throw new Error(`Missing group metadata for ${source}`);
+      }
+
+      console.log(`Updating ${target.groupName}...\n`);
+      if (target.groupKind === 'local-batch') {
+        const result = await groupManager.updatePhysicalGroup(target.groupName, {
+          keepLocal: options.keepLocal,
+          verbose: options.verbose,
+        });
+        if (result.failed > 0) {
+          process.exitCode = 1;
+        }
+        console.log(
+          `\nDone! ${result.updated} updated, ${result.added} added, ` +
+          `${result.kept} removed (kept), ${result.removed} removed, ` +
+          `${result.upToDate} up to date, ${result.failed} failed`,
+        );
+
+        const hasChanges = result.added + result.removed + result.kept > 0;
+        if (hasChanges) {
+          const affected = computeAffectedProjects(result.groupName, result.members);
+          if (affected && affected.follow.length + affected.pinned.length + affected.missing.length > 0) {
+            printAffectedProjects(affected);
+          } else {
+            console.log(GENERIC_REFRESH_REMINDER);
+          }
+        }
+      } else {
+        const result = await groupManager.updateVirtualGroup(target.groupName);
+        if (result.failed > 0) {
+          process.exitCode = 1;
+        }
+        console.log(
+          `\nDone! ${result.updated} updated, ${result.upToDate} up to date, ` +
+          `${result.failed} failed, ${result.skipped} skipped`,
+        );
+      }
       return;
     }
 
@@ -502,8 +300,13 @@ export async function executeUpdateWithOptions(
 
       console.log(`Updating ${key}...\n`);
       const result = target.kind === 'skill'
-        ? await updateSingleSkill(key, info, target)
-        : await updateSource(key, info, undefined, target.requestedVersion);
+        ? await sourceUpdater.updateSource(key, info, {
+          selectedSkillNames: new Set((target.skills ?? []).map((skill) => skill.name)),
+          targetVersion: target.requestedVersion,
+        })
+        : await sourceUpdater.updateSource(key, info, {
+          targetVersion: target.requestedVersion,
+        });
       totals.updated += result.updated;
       totals.upToDate += result.upToDate;
       totals.failed += result.failed;
@@ -527,7 +330,7 @@ export async function executeUpdateWithOptions(
 
   for (const [key, info] of Object.entries(allSources)) {
     console.log(`${key}:`);
-    const result = await updateSource(key, info);
+    const result = await sourceUpdater.updateSource(key, info);
     totalUpdated += result.updated;
     totalUpToDate += result.upToDate;
     totalFailed += result.failed;
@@ -542,8 +345,9 @@ export const updateCommand = new Command('update')
   .description('Update installed skills to latest version')
   .argument('[source]', 'Specific source to update (e.g., "anthropic")')
   .option('-y, --force', 'Skip rebind confirmation when a moved local path is detected')
-  .option('--sync', 'Remove bundle members that no longer exist in the source')
-  .option('-v, --verbose', 'Show every bundle member status during sync')
+  .option('--sync', 'Compatibility flag, physical groups sync by default')
+  .option('--keep-local', 'Keep orphaned skills when updating a physical group')
+  .option('-v, --verbose', 'Show every physical group member status during sync')
   .action(async (source: string | undefined, options: UpdateOptions) => {
     await executeUpdateWithOptions(source, options);
   });

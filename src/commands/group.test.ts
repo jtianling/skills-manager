@@ -193,7 +193,7 @@ describe('group command integration', () => {
 
       await executeGroupAdd('develop', 'sourcegroup');
 
-      expect(service.getGroup('develop')).toEqual([
+      expect(service.getGroupMembers('develop')).toEqual([
         'custom/my-linter',
         'official/anthropic/skills/commit',
       ]);
@@ -207,7 +207,7 @@ describe('group command integration', () => {
     it('adds all installed skills from owner/repo in batch', async () => {
       await executeGroupAdd('develop', 'obra/superpowers');
 
-      expect(service.getGroup('develop')).toEqual([
+      expect(service.getGroupMembers('develop')).toEqual([
         'community/obra/superpowers/alpha',
         'community/obra/superpowers/beta',
       ]);
@@ -225,7 +225,7 @@ describe('group command integration', () => {
 
       await executeGroupAdd('develop', 'sourcegroup');
 
-      expect(service.getGroup('develop')).toEqual(['official/anthropic/skills/commit']);
+      expect(service.getGroupMembers('develop')).toEqual(['official/anthropic/skills/commit']);
       expect(console.log).toHaveBeenCalledWith(
         "Added 0 skills from group 'sourcegroup' to 'develop':",
       );
@@ -245,7 +245,7 @@ describe('group command integration', () => {
         'custom/alt/commit',
         'official/anthropic/skills/commit',
       );
-      expect(service.getGroup('develop')).toEqual(['official/anthropic/skills/commit']);
+      expect(service.getGroupMembers('develop')).toEqual(['official/anthropic/skills/commit']);
       expect(console.log).toHaveBeenCalledWith(
         "Replaced 'custom/alt/commit' with 'official/anthropic/skills/commit' in group 'develop'.",
       );
@@ -257,7 +257,7 @@ describe('group command integration', () => {
 
       await executeGroupAdd('develop', 'official/anthropic/skills/commit');
 
-      expect(service.getGroup('develop')).toEqual(['custom/alt/commit']);
+      expect(service.getGroupMembers('develop')).toEqual(['custom/alt/commit']);
       expect(console.log).toHaveBeenCalledWith(
         "Skipped 'official/anthropic/skills/commit' due to name conflict with 'custom/alt/commit' in group 'develop'.",
       );
@@ -283,19 +283,19 @@ describe('group command integration', () => {
   describe('group add with skill name resolution', () => {
     it('resolves unique skill name to full key', () => {
       service.addSkill('python', 'official/anthropic/skills/commit');
-      expect(service.getGroup('python')).toEqual(['official/anthropic/skills/commit']);
+      expect(service.getGroupMembers('python')).toEqual(['official/anthropic/skills/commit']);
     });
 
     it('adds custom skill by name', () => {
       service.addSkill('python', 'custom/my-linter');
-      expect(service.getGroup('python')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('python')).toEqual(['custom/my-linter']);
     });
 
     it('skill can be in multiple groups', () => {
       service.addSkill('python', 'custom/my-linter');
       service.addSkill('rust', 'custom/my-linter');
-      expect(service.getGroup('python')).toEqual(['custom/my-linter']);
-      expect(service.getGroup('rust')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('python')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('rust')).toEqual(['custom/my-linter']);
     });
   });
 
@@ -313,7 +313,7 @@ describe('group command integration', () => {
     it('removes skill from group without deleting files', () => {
       service.addSkill('python', 'custom/my-linter');
       service.removeSkill('python', 'custom/my-linter');
-      expect(service.getGroup('python')).toEqual([]);
+      expect(service.getGroupMembers('python')).toEqual([]);
       expect(existsSync(join(testDir, 'custom', 'my-linter', 'SKILL.md'))).toBe(true);
     });
 
@@ -326,7 +326,7 @@ describe('group command integration', () => {
 
       await executeGroupRemove('develop', 'sourcegroup');
 
-      expect(service.getGroup('develop')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('develop')).toEqual(['custom/my-linter']);
       expect(console.log).toHaveBeenCalledWith(
         "Removed 2 skills from group 'sourcegroup' in 'develop':",
       );
@@ -341,7 +341,7 @@ describe('group command integration', () => {
 
       await executeGroupRemove('develop', 'obra/superpowers');
 
-      expect(service.getGroup('develop')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('develop')).toEqual(['custom/my-linter']);
       expect(console.log).toHaveBeenCalledWith(
         "Removed 2 skills from repo 'obra/superpowers' in 'develop':",
       );
@@ -358,7 +358,7 @@ describe('group command integration', () => {
       expect(console.log).toHaveBeenCalledWith(
         "Group 'empty-group' is empty, nothing to remove.",
       );
-      expect(service.getGroup('develop')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('develop')).toEqual(['custom/my-linter']);
     });
 
     it('exits when removing a group from itself', async () => {
@@ -378,7 +378,7 @@ describe('group command integration', () => {
       await executeGroupRename('python', 'py-tools');
 
       expect(service.getGroup('python')).toBeNull();
-      expect(service.getGroup('py-tools')).toEqual(['custom/my-linter']);
+      expect(service.getGroupMembers('py-tools')).toEqual(['custom/my-linter']);
       expect(console.log).toHaveBeenCalledWith("Renamed group 'python' to 'py-tools'.");
     });
 

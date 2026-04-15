@@ -266,10 +266,11 @@ describe('prompts', () => {
   it('loads virtual groups data from groups service', () => {
     const groupsService = {
       listGroups: () => ['develop', 'ops'],
-      getGroup: (name: string) => ({
+      getGroupKind: () => 'virtual',
+      getGroupMembers: (name: string) => ({
         develop: ['custom/jt-codex'],
         ops: ['custom/jt-release'],
-      }[name] ?? null),
+      }[name] ?? []),
     };
 
     expect(loadGroupsData(groupsService as never)).toEqual({
@@ -776,4 +777,3 @@ describe('resolveTargetAgents', () => {
     expect(result).toEqual(['amp']);
   });
 });
-

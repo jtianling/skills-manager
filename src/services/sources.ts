@@ -5,7 +5,7 @@ import type {
   Bundle,
   BundleInfo,
   BundleType,
-  SourcesData,
+  GroupEntry,
 } from '../types.js';
 import { ensureDir, fileExists, readFileContent, writeFile } from '../utils/fs.js';
 import {
@@ -13,9 +13,26 @@ import {
   normalizeGitUrl,
   normalizeLocalPath,
 } from '../utils/url-normalize.js';
+import { GroupsService } from './groups.js';
+import { logMigrationLines } from './migration-logger.js';
 
 function getSourcesFile(): string {
   return join(SKILLS_MANAGER_DIR, 'sources.json');
+}
+
+function atomicWrite(path: string, content: string): void {
+  const tempFile = `${path}.tmp`;
+  ensureDir(dirname(path));
+
+  try {
+    writeFile(tempFile, content);
+    renameSync(tempFile, path);
+  } catch (error) {
+    if (fileExists(tempFile)) {
+      rmSync(tempFile, { force: true });
+    }
+    throw error;
+  }
 }
 
 export interface SourceInfo {
@@ -35,61 +52,95 @@ interface SourcesDataV1 {
   bundles?: Record<string, Bundle>;
 }
 
-type StoredSourcesData = Omit<SourcesData, 'sources'> & {
+interface StoredSourcesData {
+  version: '2.0' | '3.0';
   sources: Record<string, SourceInfo>;
-};
+  bundles: Record<string, Bundle>;
+}
+
+function isStoredSourcesData(data: unknown): data is StoredSourcesData {
+  if (data === null || typeof data !== 'object') {
+    return false;
+  }
+
+  const candidate = data as Partial<StoredSourcesData>;
+  return (
+    (candidate.version === '2.0' || candidate.version === '3.0') &&
+    candidate.sources !== undefined &&
+    candidate.bundles !== undefined
+  );
+}
 
 export class SourcesService {
+  constructor(
+    private readonly groupsService: GroupsService = new GroupsService(),
+  ) {}
+
   private load(): StoredSourcesData {
     const sourcesFile = getSourcesFile();
 
     if (!fileExists(sourcesFile)) {
-      return { version: '2.0', sources: {}, bundles: {} };
+      return { version: '3.0', sources: {}, bundles: {} };
     }
 
-    const parsed = JSON.parse(readFileContent(sourcesFile)) as
-      | Partial<StoredSourcesData>
-      | SourcesDataV1;
-    const normalized = this.normalizeLoadedData(parsed);
+    const raw = readFileContent(sourcesFile);
+    const parsed = JSON.parse(raw) as Partial<StoredSourcesData> | SourcesDataV1;
 
-    if (parsed.version === '2.0' && parsed.bundles !== undefined) {
-      return normalized;
+    if (parsed.version === '3.0' && isStoredSourcesData(parsed)) {
+      return this.normalizeLoadedData(parsed, '3.0');
     }
 
-    const migrated = this.migrateV1ToV2(parsed as SourcesDataV1);
+    const v2Data = parsed.version === '2.0' && isStoredSourcesData(parsed)
+      ? this.normalizeLoadedData(parsed, '2.0')
+      : this.migrateV1ToV2(parsed as SourcesDataV1);
+    const migrated = this.migrateV2ToV3(v2Data);
+
     try {
+      this.writeBackup(raw, 'v2.backup');
       this.save(migrated);
     } catch {
       return migrated;
+    }
+
+    if (v2Data.version !== '3.0') {
+      const migratedCount = Object.values(v2Data.bundles)
+        .filter((bundle) => bundle.type === 'local-batch')
+        .length;
+      logMigrationLines([
+        `  ✓ sources.json V2 → V3: ${migratedCount} local-batch bundles → physical groups`,
+      ]);
     }
 
     return migrated;
   }
 
   private save(data: StoredSourcesData): void {
-    const sourcesFile = getSourcesFile();
-    const tempFile = `${sourcesFile}.tmp`;
+    atomicWrite(getSourcesFile(), JSON.stringify(data, null, 2));
+  }
 
-    ensureDir(dirname(sourcesFile));
-
-    try {
-      writeFile(tempFile, JSON.stringify(data, null, 2));
-      renameSync(tempFile, sourcesFile);
-    } catch (error) {
-      if (fileExists(tempFile)) {
-        rmSync(tempFile, { force: true });
-      }
-      throw error;
-    }
+  private writeBackup(content: string, suffix: string): void {
+    atomicWrite(`${getSourcesFile()}.${suffix}`, content);
   }
 
   private normalizeLoadedData(
     data: Partial<StoredSourcesData> | SourcesDataV1,
+    version: '2.0' | '3.0',
   ): StoredSourcesData {
+    const bundles = data.bundles ?? {};
+    if (version === '3.0') {
+      for (const [id, bundle] of Object.entries(bundles)) {
+        if (bundle.type === 'local-batch') {
+          throw new Error(
+            `Invalid V3 sources.json: local-batch bundle '${id}' must be stored as a physical group.`,
+          );
+        }
+      }
+    }
+
     return {
-      version: data.version === '1.0' ? '1.0' : '2.0',
+      version,
       sources: data.sources ?? {},
-      bundles: data.bundles ?? {},
+      bundles,
     };
   }
 
@@ -159,6 +210,37 @@ export class SourcesService {
     };
   }
 
+  private migrateV2ToV3(data: StoredSourcesData): StoredSourcesData {
+    if (data.version === '3.0') {
+      return data;
+    }
+
+    const bundles = Object.entries(data.bundles).reduce<Record<string, Bundle>>(
+      (acc, [id, bundle]) => {
+        if (bundle.type === 'local-batch') {
+          const groupName = pathBasename(normalizeLocalPath(bundle.url));
+          this.groupsService.migrateLocalBatchToPhysicalGroup(groupName, {
+            ...bundle,
+            url: normalizeLocalPath(bundle.url),
+          });
+          return acc;
+        }
+
+        return {
+          ...acc,
+          [id]: bundle,
+        };
+      },
+      {},
+    );
+
+    return {
+      version: '3.0',
+      sources: data.sources,
+      bundles,
+    };
+  }
+
   private getMigrationBundleCandidate(
     info: SourceInfo,
   ): { type: BundleType; url: string } | null {
@@ -177,6 +259,37 @@ export class SourcesService {
         type: 'zip',
         url: isRemote ? info.url : normalizeLocalPath(info.url),
       };
+    }
+
+    return null;
+  }
+
+  private createLocalBatchBundleFromGroup(
+    name: string,
+    group: Extract<GroupEntry, { kind: 'local-batch' }>,
+  ): Bundle {
+    return {
+      type: 'local-batch',
+      url: normalizeLocalPath(group.url),
+      selectionMode: 'all',
+      members: this.groupsService.getGroupMembers(name),
+      installedAt: group.installedAt,
+      updatedAt: group.updatedAt,
+    };
+  }
+
+  private findPhysicalGroupByUrl(
+    normalizedUrl: string,
+  ): { name: string; group: Extract<GroupEntry, { kind: 'local-batch' }> } | null {
+    for (const name of this.groupsService.listGroups()) {
+      const group = this.groupsService.getGroup(name);
+      if (!group || group.kind !== 'local-batch') {
+        continue;
+      }
+
+      if (normalizeLocalPath(group.url) === normalizedUrl) {
+        return { name, group };
+      }
     }
 
     return null;
@@ -233,6 +346,10 @@ export class SourcesService {
     id: string,
     info: Omit<BundleInfo, 'installedAt' | 'updatedAt'>,
   ): void {
+    if (info.type === 'local-batch') {
+      throw new Error('local-batch bundles must be stored as physical groups in groups.json');
+    }
+
     const data = this.load();
     const now = new Date().toISOString();
 
@@ -280,43 +397,38 @@ export class SourcesService {
   }
 
   rebindLocalBundle(oldBundleId: string, newUrl: string): { newBundleId: string } {
-    const data = this.load();
-    const bundle = data.bundles[oldBundleId];
-    if (!bundle || bundle.type !== 'local-batch') {
+    const oldUrl = oldBundleId.replace(/^local-batch:/, '');
+    const normalizedOldUrl = normalizeLocalPath(oldUrl);
+    const normalizedNewUrl = normalizeLocalPath(newUrl);
+    const found = this.findPhysicalGroupByUrl(normalizedOldUrl);
+
+    if (!found) {
       throw new Error(`Local bundle not found: ${oldBundleId}`);
     }
 
-    const normalizedUrl = normalizeLocalPath(newUrl);
-    const newBundleId = makeBundleId('local-batch', normalizedUrl);
+    this.groupsService.setPhysicalGroupSourceUrl(found.name, normalizedNewUrl);
+
+    const data = this.load();
     const now = new Date().toISOString();
-    const reboundBundle: Bundle = {
-      ...bundle,
-      url: normalizedUrl,
-      updatedAt: now,
-    };
-    const danglingMembers = bundle.members.filter((member) => data.sources[member] === undefined);
 
-    if (danglingMembers.length > 0) {
-      throw new Error(
-        `Cannot rebind bundle ${oldBundleId}: dangling members in sources.json: ` +
-          `${danglingMembers.join(', ')}. Clean up sources.json and retry.`,
-      );
-    }
+    for (const [key, source] of Object.entries(data.sources)) {
+      if (source.installMethod !== 'local-copy') {
+        continue;
+      }
+      if (!key.startsWith(`custom/${found.name}/`)) {
+        continue;
+      }
 
-    for (const member of bundle.members) {
-      const source = data.sources[member]!;
-      data.sources[member] = {
+      data.sources[key] = {
         ...source,
-        url: normalizedUrl,
+        url: normalizedNewUrl,
         updatedAt: now,
       };
     }
 
-    delete data.bundles[oldBundleId];
-    data.bundles[newBundleId] = reboundBundle;
     this.save(data);
 
-    return { newBundleId };
+    return { newBundleId: makeBundleId('local-batch', normalizedNewUrl) };
   }
 
   rebindLocalSource(sourceKey: string, newUrl: string): void {
@@ -334,13 +446,10 @@ export class SourcesService {
     this.save(data);
   }
 
-  findLocalBatchBundlesByBasename(basename: string): Array<{ id: string; bundle: Bundle }> {
-    return Object.entries(this.getAllBundles())
-      .filter(([, bundle]) =>
-        bundle.type === 'local-batch' &&
-        pathBasename(normalizeLocalPath(bundle.url)) === basename
-      )
-      .map(([id, bundle]) => ({ id, bundle }));
+  findPhysicalGroupsByBasename(
+    basename: string,
+  ): Array<{ name: string; group: Extract<GroupEntry, { kind: 'local-batch' }> }> {
+    return this.groupsService.findPhysicalGroupsByBasename(basename);
   }
 
   findLocalCopySourcesByBasename(
@@ -356,6 +465,90 @@ export class SourcesService {
   }
 
   findBundleByUrl(normalizedUrl: string, type: BundleType): Bundle | undefined {
+    if (type === 'local-batch') {
+      const found = this.findPhysicalGroupByUrl(normalizeLocalPath(normalizedUrl));
+      if (!found) {
+        return undefined;
+      }
+      return this.createLocalBatchBundleFromGroup(found.name, found.group);
+    }
+
     return this.getBundle(makeBundleId(type, normalizedUrl));
+  }
+
+  renameCustomGroupSources(oldName: string, newName: string): void {
+    const oldPrefix = `custom/${oldName}/`;
+    const newPrefix = `custom/${newName}/`;
+    const data = this.load();
+    const now = new Date().toISOString();
+    let changed = false;
+
+    const sources = Object.entries(data.sources).reduce<Record<string, SourceInfo>>(
+      (acc, [key, info]) => {
+        if (!key.startsWith(oldPrefix)) {
+          return {
+            ...acc,
+            [key]: info,
+          };
+        }
+
+        changed = true;
+        return {
+          ...acc,
+          [`${newPrefix}${key.slice(oldPrefix.length)}`]: {
+            ...info,
+            updatedAt: now,
+          },
+        };
+      },
+      {},
+    );
+
+    if (!changed) {
+      return;
+    }
+
+    this.save({
+      ...data,
+      sources,
+    });
+  }
+
+  rebindPhysicalGroupSources(name: string, newUrl: string): void {
+    const data = this.load();
+    const now = new Date().toISOString();
+    const normalizedNewUrl = normalizeLocalPath(newUrl);
+    let changed = false;
+
+    const sources = Object.entries(data.sources).reduce<Record<string, SourceInfo>>(
+      (acc, [key, info]) => {
+        if (!key.startsWith(`custom/${name}/`)) {
+          return {
+            ...acc,
+            [key]: info,
+          };
+        }
+
+        changed = true;
+        return {
+          ...acc,
+          [key]: {
+            ...info,
+            url: normalizedNewUrl,
+            updatedAt: now,
+          },
+        };
+      },
+      {},
+    );
+
+    if (!changed) {
+      return;
+    }
+
+    this.save({
+      ...data,
+      sources,
+    });
   }
 }

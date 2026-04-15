@@ -78,6 +78,7 @@ vi.mock('../utils/prompts.js', () => ({
 }));
 
 import * as constants from '../constants.js';
+import { GroupsService } from '../services/groups.js';
 import { SourcesService } from '../services/sources.js';
 import { makeBundleId } from '../utils/url-normalize.js';
 import { promptConfirm } from '../utils/prompts.js';
@@ -85,6 +86,10 @@ import { executeUpdate, executeUpdateWithOptions } from './update.js';
 
 describe('update command', () => {
   let testManagerDir: string;
+
+  function createPhysicalGroup(name: string, sourceDir: string): void {
+    new GroupsService().createLocalBatchGroup(name, sourceDir);
+  }
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -210,7 +215,7 @@ describe('update command', () => {
     rmSync(join(originalDir, '..'), { recursive: true, force: true });
   });
 
-  it('rebinds a moved batch bundle after confirmation and continues update', async () => {
+  it('rebinds a moved physical group after confirmation and continues update', async () => {
     const oldBatchDir = join(tmpdir(), `skillsmgr-old-batch-${Date.now()}`, 'tdd-spec');
     const newBatchDir = join(tmpdir(), `skillsmgr-new-batch-${Date.now()}`, 'tdd-spec');
     mkdirSync(join(newBatchDir, 'skill-a'), { recursive: true });
@@ -223,19 +228,13 @@ describe('update command', () => {
     writeFileSync(join(installedDir, 'skill-a', 'SKILL.md'), '---\nname: skill-a\n---\n');
 
     const sourcesService = new SourcesService();
-    const oldBundleId = makeBundleId('local-batch', oldBatchDir);
     sourcesService.addSource('custom/tdd-spec/skill-a', {
       url: oldBatchDir,
       type: 'custom',
       repoName: 'skill-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(oldBundleId, {
-      type: 'local-batch',
-      url: oldBatchDir,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/skill-a'],
-    });
+    createPhysicalGroup('tdd-spec', oldBatchDir);
 
     await executeUpdateWithOptions(newBatchDir);
 
@@ -243,13 +242,12 @@ describe('update command', () => {
       expect.stringContaining(`Old path: ${oldBatchDir}`),
       false,
     );
-    expect(console.log).toHaveBeenCalledWith('  + skill-b: new in source (installed)');
+    expect(console.log).toHaveBeenCalledWith('  + skill-b: installed');
     const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
-    const newBundleId = makeBundleId('local-batch', newBatchDir);
-    expect(sourcesData.bundles[oldBundleId]).toBeUndefined();
-    expect(sourcesData.bundles[newBundleId]).toMatchObject({
+    const groupsData = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
+    expect(groupsData.groups['tdd-spec']).toMatchObject({
+      kind: 'local-batch',
       url: newBatchDir,
-      members: ['custom/tdd-spec/skill-a', 'custom/tdd-spec/skill-b'],
     });
     expect(sourcesData.sources['custom/tdd-spec/skill-a'].url).toBe(newBatchDir);
     expect(readFileSync(join(installedDir, 'skill-b', 'SKILL.md'), 'utf-8')).toContain('skill-b');
@@ -265,26 +263,21 @@ describe('update command', () => {
     vi.mocked(promptConfirm).mockResolvedValueOnce(false);
 
     const sourcesService = new SourcesService();
-    const oldBundleId = makeBundleId('local-batch', oldBatchDir);
     sourcesService.addSource('custom/tdd-spec/skill-a', {
       url: oldBatchDir,
       type: 'custom',
       repoName: 'skill-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(oldBundleId, {
-      type: 'local-batch',
-      url: oldBatchDir,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/skill-a'],
-    });
+    createPhysicalGroup('tdd-spec', oldBatchDir);
 
     await executeUpdateWithOptions(newBatchDir);
 
     expect(console.log).toHaveBeenCalledWith('Cancelled.');
     const sourcesData = JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
-    expect(sourcesData.bundles[oldBundleId]).toBeDefined();
-    expect(sourcesData.bundles[makeBundleId('local-batch', newBatchDir)]).toBeUndefined();
+    const groupsData = JSON.parse(readFileSync(join(testManagerDir, 'groups.json'), 'utf-8'));
+    expect(groupsData.groups['tdd-spec']).toMatchObject({ url: oldBatchDir });
+    expect(sourcesData.sources['custom/tdd-spec/skill-a'].url).toBe(oldBatchDir);
 
     rmSync(join(newBatchDir, '..'), { recursive: true, force: true });
   });
@@ -370,12 +363,7 @@ describe('update command', () => {
       repoName: 'skill-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', oldDir), {
-      type: 'local-batch',
-      url: oldDir,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/skill-a'],
-    });
+    createPhysicalGroup('tdd-spec', oldDir);
 
     await executeUpdate(newDir);
 
@@ -384,7 +372,7 @@ describe('update command', () => {
     );
     expect(console.log).toHaveBeenCalledWith(
       `No installed skill found from path: ${newDir}. ` +
-      `A bundle with the same name is installed from ${oldDir} ` +
+      `A group with the same name is installed from ${oldDir} ` +
       '(still exists). Remove or rename the old path first to rebind.',
     );
 
@@ -405,17 +393,12 @@ describe('update command', () => {
       repoName: 'skill-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', oldDir), {
-      type: 'local-batch',
-      url: oldDir,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/skill-a'],
-    });
+    createPhysicalGroup('tdd-spec', oldDir);
 
     await executeUpdate(newDir);
 
     expect(console.log).toHaveBeenCalledWith(
-      `Path type mismatch: existing bundle 'tdd-spec' is batch, ` +
+      `Path type mismatch: existing group 'tdd-spec' is batch, ` +
       `but ${newDir} looks like a single skill.`,
     );
 
@@ -442,26 +425,16 @@ describe('update command', () => {
       repoName: 'b',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', oldDirA), {
-      type: 'local-batch',
-      url: oldDirA,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/a'],
-    });
-    sourcesService.addBundle(makeBundleId('local-batch', oldDirB), {
-      type: 'local-batch',
-      url: oldDirB,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/b'],
-    });
+    createPhysicalGroup('legacy-a', oldDirA);
+    createPhysicalGroup('legacy-b', oldDirB);
 
     await executeUpdate(newDir);
 
     expect(console.log).toHaveBeenCalledWith(
       `No installed skill found from path: ${newDir}. ` +
       "Multiple installed local sources share basename 'tdd-spec':\n" +
-      `  - ${makeBundleId('local-batch', oldDirA)}: ${oldDirA}\n` +
-      `  - ${makeBundleId('local-batch', oldDirB)}: ${oldDirB}`,
+      `  - legacy-a: ${oldDirA}\n` +
+      `  - legacy-b: ${oldDirB}`,
     );
 
     rmSync(join(newDir, '..'), { recursive: true, force: true });
@@ -601,7 +574,7 @@ describe('update command', () => {
     expect(sourcesData.sources['registry/code-review'].version).toBe('1.2.0');
   });
 
-  it('syncs local batch bundle when updating by batch path', async () => {
+  it('syncs local physical group when updating by batch path', async () => {
     const batchDir = join(tmpdir(), `skillsmgr-batch-${Date.now()}`, 'spec-tdd');
     mkdirSync(join(batchDir, 'skill-a'), { recursive: true });
     mkdirSync(join(batchDir, 'skill-b'), { recursive: true });
@@ -619,17 +592,12 @@ describe('update command', () => {
       repoName: 'skill-a',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(`local-batch:${batchDir}`, {
-      type: 'local-batch',
-      url: batchDir,
-      selectionMode: 'all',
-      members: ['custom/spec-tdd/skill-a'],
-    });
+    createPhysicalGroup('spec-tdd', batchDir);
 
     await executeUpdateWithOptions(batchDir);
 
-    expect(console.log).toHaveBeenCalledWith(`Updating local-batch:${batchDir}...\n`);
-    expect(console.log).toHaveBeenCalledWith('  + skill-b: new in source (installed)');
+    expect(console.log).toHaveBeenCalledWith('Updating spec-tdd...\n');
+    expect(console.log).toHaveBeenCalledWith('  + skill-b: installed');
     expect(console.log).toHaveBeenCalledWith('  ✓ 1 skills up to date');
     expect(console.log).toHaveBeenCalledWith(
       '\nDone! 0 updated, 1 added, 0 removed (kept), 0 removed, 1 up to date, 0 failed'
@@ -694,7 +662,7 @@ describe('update command', () => {
     rmSync(join(batchDir, '..'), { recursive: true, force: true });
   });
 
-  it('prints refresh reminder when bundle has new skills', async () => {
+  it('prints refresh reminder when physical group has new skills', async () => {
     const sourceDir = join(tmpdir(), `skillsmgr-update-reminder-${Date.now()}`, 'reminder-batch');
     mkdirSync(join(sourceDir, 'existing'), { recursive: true });
     mkdirSync(join(sourceDir, 'new-one'), { recursive: true });
@@ -714,23 +682,18 @@ describe('update command', () => {
       repoName: 'existing',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
-      type: 'local-batch',
-      url: sourceDir,
-      selectionMode: 'all',
-      members: ['custom/reminder-batch/existing'],
-    });
+    createPhysicalGroup('reminder-batch', sourceDir);
 
     await executeUpdate(sourceDir);
 
     expect(console.log).toHaveBeenCalledWith(
-      "Note: projects following this bundle's group may need `skillsmgr deploy --refresh` to pick up changes.",
+      'Note: projects following this physical group may need `skillsmgr deploy --refresh` to pick up changes.',
     );
 
     rmSync(join(sourceDir, '..'), { recursive: true, force: true });
   });
 
-  it('lists affected projects from global registry when bundle changes', async () => {
+  it('lists affected projects from global registry when physical group changes', async () => {
     const sourceDir = join(tmpdir(), `skillsmgr-update-affected-${Date.now()}`, 'reg-batch');
     mkdirSync(join(sourceDir, 'existing'), { recursive: true });
     mkdirSync(join(sourceDir, 'new-one'), { recursive: true });
@@ -750,12 +713,7 @@ describe('update command', () => {
       repoName: 'existing',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
-      type: 'local-batch',
-      url: sourceDir,
-      selectionMode: 'all',
-      members: ['custom/reg-batch/existing'],
-    });
+    createPhysicalGroup('reg-batch', sourceDir);
 
     const projectA = join(tmpdir(), `skillsmgr-affected-a-${Date.now()}`);
     const projectB = join(tmpdir(), `skillsmgr-affected-b-${Date.now()}`);
@@ -802,7 +760,7 @@ describe('update command', () => {
     rmSync(projectB, { recursive: true, force: true });
   });
 
-  it('does not print refresh reminder when bundle is fully up to date', async () => {
+  it('does not print refresh reminder when physical group is fully up to date', async () => {
     const sourceDir = join(tmpdir(), `skillsmgr-update-noreminder-${Date.now()}`, 'noreminder-batch');
     mkdirSync(join(sourceDir, 'existing'), { recursive: true });
     writeFileSync(join(sourceDir, 'existing', 'SKILL.md'), '---\nname: existing\n---\n');
@@ -820,12 +778,7 @@ describe('update command', () => {
       repoName: 'existing',
       installMethod: 'local-copy',
     });
-    sourcesService.addBundle(makeBundleId('local-batch', sourceDir), {
-      type: 'local-batch',
-      url: sourceDir,
-      selectionMode: 'all',
-      members: ['custom/noreminder-batch/existing'],
-    });
+    createPhysicalGroup('noreminder-batch', sourceDir);
 
     await executeUpdate(sourceDir);
 

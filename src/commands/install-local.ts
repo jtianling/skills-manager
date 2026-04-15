@@ -2,6 +2,8 @@ import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
 import { tmpdir } from 'os';
+import { GroupManager } from '../services/group-manager.js';
+import { formatReinstallConflictMessage } from '../services/group-conflict-messages.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, warnScriptFiles } from '../utils/fs.js';
@@ -20,31 +22,7 @@ import {
 import type { InstallResult } from './install-utils.js';
 
 const sourcesService = new SourcesService();
-
-function formatReinstallConflictMessage(
-  kind: 'Skill' | 'A local bundle',
-  name: string,
-  existingPath: string,
-  newPath: string,
-): string {
-  return (
-    `${kind} '${name}' is already installed from ${existingPath}. ` +
-    `To move it to ${newPath}, run: skillsmgr update ${newPath}`
-  );
-}
-
-function formatBatchConflictList(
-  dirName: string,
-  candidates: Array<{ id: string; url: string }>,
-): string {
-  const lines = candidates
-    .map((candidate) => `  - ${candidate.id}: ${candidate.url}`)
-    .join('\n');
-  return (
-    `Multiple local bundles named '${dirName}' are already installed:\n${lines}\n` +
-    'Clean up the duplicate bundle entries and try again.'
-  );
-}
+const groupManager = new GroupManager();
 
 function isBareLocalSource(input: string): boolean {
   return !input.includes('/') && !input.startsWith('~');
@@ -118,93 +96,7 @@ export async function installFromLocalDir(source: string, options: InstallOption
 }
 
 async function installFromLocalDirBatch(skillDir: string, options: InstallOptions): Promise<InstallResult> {
-  const dirName = basename(skillDir);
-  const bundleCandidates = sourcesService
-    .findLocalBatchBundlesByBasename(dirName)
-    .map(({ id, bundle }) => ({
-      id,
-      url: normalizeLocalPath(bundle.url),
-    }));
-  if (bundleCandidates.length > 1) {
-    throw new Error(formatBatchConflictList(dirName, bundleCandidates));
-  }
-  if (bundleCandidates.length === 1 && bundleCandidates[0].url !== skillDir) {
-    throw new Error(
-      formatReinstallConflictMessage(
-        'A local bundle',
-        dirName,
-        bundleCandidates[0].url,
-        skillDir,
-      ),
-    );
-  }
-
-  const scannedSkills = scanSkillDirectories(skillDir, 1);
-
-  if (scannedSkills.length === 0) {
-    throw new Error(`No skills found in ${skillDir}`);
-  }
-
-  const installedNames = new Set<string>();
-  for (const skill of scannedSkills) {
-    if (fileExists(getCustomSkillDir(skill.name, dirName))) {
-      installedNames.add(skill.name);
-    }
-  }
-
-  const { skills: selectedSkills, isAll } = await selectSkills(
-    scannedSkills,
-    options,
-    installedNames,
-  );
-  if (selectedSkills.length === 0) {
-    return createInstallResult([], []);
-  }
-
-  const installedPaths: string[] = [];
-  const sourceKeys: string[] = [];
-  const allScriptFiles: string[] = [];
-
-  for (const skill of selectedSkills) {
-    const targetDir = getCustomSkillDir(skill.name, dirName);
-    const sourceKey = getCustomSkillKey(skill.name, dirName);
-
-    const ready = await prepareTargetDir(targetDir, getLocalOverwriteMessage(skill.name), options.force);
-    if (!ready) {
-      break;
-    }
-
-    installSingleSkillToLocalTarget(skill.path, targetDir);
-    installedPaths.push(targetDir);
-    allScriptFiles.push(...findScriptFiles(targetDir));
-
-    sourcesService.addSource(sourceKey, {
-      url: skillDir,
-      type: 'custom',
-      repoName: skill.name,
-      installMethod: 'local-copy',
-    });
-    sourceKeys.push(sourceKey);
-  }
-
-  warnScriptFiles(allScriptFiles);
-
-  if (installedPaths.length > 0) {
-    console.log(`✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} from ${dirName}`);
-  }
-
-  return createInstallResult(installedPaths, sourceKeys, {
-    batchGroupName: dirName,
-    bundleInfo: {
-      id: makeBundleId('local-batch', skillDir),
-      info: {
-        type: 'local-batch',
-        url: skillDir,
-        selectionMode: isAll ? 'all' : 'subset',
-        members: sourceKeys,
-      },
-    },
-  });
+  return groupManager.installLocalBatch(skillDir, options);
 }
 
 export async function installFromZip(source: string, options: InstallOptions, originalSource = source): Promise<InstallResult> {

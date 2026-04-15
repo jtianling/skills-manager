@@ -9,6 +9,7 @@ import {
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { SourcesService } from './sources.js';
+import { GroupsService } from './groups.js';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { makeBundleId, normalizeGitUrl, normalizeLocalPath } from '../utils/url-normalize.js';
 
@@ -17,14 +18,22 @@ vi.mock('../constants.js', async () => {
   return { SKILLS_MANAGER_DIR: testDir };
 });
 
+function createPhysicalSkill(groupName: string, skillName: string): void {
+  const dir = join(SKILLS_MANAGER_DIR, 'custom', groupName, skillName);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${skillName}\n---\n`);
+}
+
 describe('SourcesService', () => {
   let service: SourcesService;
+  let groupsService: GroupsService;
   let sourcesFile: string;
   let tempFile: string;
 
   beforeEach(() => {
     mkdirSync(SKILLS_MANAGER_DIR, { recursive: true });
-    service = new SourcesService();
+    groupsService = new GroupsService();
+    service = new SourcesService(groupsService);
     sourcesFile = join(SKILLS_MANAGER_DIR, 'sources.json');
     tempFile = `${sourcesFile}.tmp`;
   });
@@ -36,12 +45,12 @@ describe('SourcesService', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns empty v2 structures when sources.json does not exist', () => {
+  it('returns empty v3 structures when sources.json does not exist', () => {
     expect(service.getAllSources()).toEqual({});
     expect(service.getAllBundles()).toEqual({});
   });
 
-  it('adds a new source and writes schema version 2.0', () => {
+  it('adds a new source and writes schema version 3.0', () => {
     service.addSource('official/anthropic/skills', {
       url: 'https://github.com/anthropics/skills',
       type: 'official',
@@ -53,7 +62,7 @@ describe('SourcesService', () => {
     expect(source!.url).toBe('https://github.com/anthropics/skills');
 
     const stored = JSON.parse(readFileSync(sourcesFile, 'utf-8'));
-    expect(stored.version).toBe('2.0');
+    expect(stored.version).toBe('3.0');
     expect(stored.bundles).toEqual({});
   });
 
@@ -77,14 +86,14 @@ describe('SourcesService', () => {
     expect(updated.url).toBe('https://github.com/org/repo-updated');
   });
 
-  it('supports bundle CRUD and preserves bundle installedAt', () => {
-    const id = makeBundleId('local-batch', '/tmp/spec-tdd');
+  it('supports git bundle CRUD and preserves bundle installedAt', () => {
+    const id = makeBundleId('git', 'https://github.com/openai/skills');
 
     service.addBundle(id, {
-      type: 'local-batch',
-      url: '/tmp/spec-tdd',
+      type: 'git',
+      url: 'https://github.com/openai/skills',
       selectionMode: 'all',
-      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
+      members: ['community/openai/skills'],
     });
 
     const created = service.getBundle(id);
@@ -94,31 +103,36 @@ describe('SourcesService', () => {
     const installedAt = created!.installedAt;
 
     service.addBundle(id, {
-      type: 'local-batch',
-      url: '/tmp/spec-tdd',
+      type: 'git',
+      url: 'https://github.com/openai/skills',
       selectionMode: 'subset',
-      members: ['custom/spec-tdd/a'],
+      members: ['community/openai/skills'],
     });
 
     const updated = service.getBundle(id)!;
     expect(updated.installedAt).toBe(installedAt);
     expect(updated.selectionMode).toBe('subset');
-    expect(updated.members).toEqual(['custom/spec-tdd/a']);
 
-    service.updateBundleMembers(id, ['custom/spec-tdd/a', 'custom/spec-tdd/c']);
+    service.updateBundleMembers(id, ['community/openai/skills', 'community/openai/extra']);
     expect(service.getBundle(id)!.members).toEqual([
-      'custom/spec-tdd/a',
-      'custom/spec-tdd/c',
+      'community/openai/skills',
+      'community/openai/extra',
     ]);
 
-    const before = service.getBundle(id)!.updatedAt;
     service.updateBundleTimestamp(id);
-    expect(new Date(service.getBundle(id)!.updatedAt).getTime()).toBeGreaterThanOrEqual(
-      new Date(before).getTime(),
-    );
-
     service.removeBundle(id);
     expect(service.getBundle(id)).toBeUndefined();
+  });
+
+  it('rejects local-batch bundle writes', () => {
+    expect(() =>
+      service.addBundle(makeBundleId('local-batch', '/tmp/spec-tdd'), {
+        type: 'local-batch',
+        url: '/tmp/spec-tdd',
+        selectionMode: 'all',
+        members: ['custom/spec-tdd/a'],
+      }),
+    ).toThrow('local-batch bundles must be stored as physical groups in groups.json');
   });
 
   it('finds git bundle by normalized url', () => {
@@ -142,11 +156,11 @@ describe('SourcesService', () => {
     expect(found!.url).toBe(normalized);
   });
 
-  it('migrates version 1.0 data to 2.0 with local and git bundles', () => {
+  it('migrates V2 local-batch bundles into physical groups and writes backup', () => {
     writeFileSync(
       sourcesFile,
       JSON.stringify({
-        version: '1.0',
+        version: '2.0',
         sources: {
           'custom/spec-tdd/a': {
             url: './fixtures/spec-tdd',
@@ -165,98 +179,76 @@ describe('SourcesService', () => {
             updatedAt: '2026-04-01T00:00:01.000Z',
           },
           'community/acme/repo-a': {
-            url: 'git@github.com:acme/repo.git',
+            url: 'https://github.com/acme/repo',
             type: 'community',
-            repoName: 'repo',
+            repoName: 'repo-a',
             installMethod: 'git',
             installedAt: '2026-04-02T00:00:00.000Z',
             updatedAt: '2026-04-02T00:00:00.000Z',
           },
-          'community/acme/repo-b': {
-            url: 'https://github.com/acme/repo',
-            type: 'community',
-            repoName: 'repo',
-            installMethod: 'git',
-            installedAt: '2026-04-02T00:00:01.000Z',
-            updatedAt: '2026-04-02T00:00:01.000Z',
+        },
+        bundles: {
+          [makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd'))]: {
+            type: 'local-batch',
+            url: './fixtures/spec-tdd',
+            selectionMode: 'all',
+            members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
+            installedAt: '2026-04-01T00:00:00.000Z',
+            updatedAt: '2026-04-01T00:00:01.000Z',
           },
-          'custom/single': {
-            url: './fixtures/single',
-            type: 'custom',
-            repoName: 'single',
-            installMethod: 'local-copy',
-            installedAt: '2026-04-03T00:00:00.000Z',
-            updatedAt: '2026-04-03T00:00:00.000Z',
+          [makeBundleId('git', 'https://github.com/acme/repo')]: {
+            type: 'git',
+            url: 'https://github.com/acme/repo',
+            selectionMode: 'all',
+            members: ['community/acme/repo-a'],
+            installedAt: '2026-04-02T00:00:00.000Z',
+            updatedAt: '2026-04-02T00:00:00.000Z',
           },
         },
       }, null, 2),
     );
 
     const bundles = service.getAllBundles();
-    const localId = makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd'));
-    const gitId = makeBundleId('git', 'https://github.com/acme/repo');
+    const groups = new GroupsService();
 
-    expect(bundles[localId]).toMatchObject({
-      type: 'local-batch',
-      url: normalizeLocalPath('./fixtures/spec-tdd'),
-      selectionMode: 'all',
-      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
-    });
-    expect(bundles[gitId]).toMatchObject({
+    expect(bundles[makeBundleId('git', 'https://github.com/acme/repo')]).toMatchObject({
       type: 'git',
-      url: 'https://github.com/acme/repo',
-      selectionMode: 'all',
-      members: ['community/acme/repo-a', 'community/acme/repo-b'],
+      members: ['community/acme/repo-a'],
     });
-    expect(Object.values(bundles).some((bundle) => bundle.members.includes('custom/single'))).toBe(false);
+    expect(bundles[makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd'))]).toBeUndefined();
+    expect(groups.getGroup('spec-tdd')).toEqual({
+      kind: 'local-batch',
+      url: normalizeLocalPath('./fixtures/spec-tdd'),
+      installedAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:01.000Z',
+    });
 
     const stored = JSON.parse(readFileSync(sourcesFile, 'utf-8'));
-    expect(stored.version).toBe('2.0');
-    expect(stored.bundles[localId]).toBeDefined();
-    expect(stored.bundles[gitId]).toBeDefined();
+    expect(stored.version).toBe('3.0');
+    expect(readFileSync(join(SKILLS_MANAGER_DIR, 'sources.json.v2.backup'), 'utf-8')).toContain(
+      '"local-batch"',
+    );
   });
 
-  it('treats missing version as v1 and returns migrated data even if write-back fails', () => {
+  it('does not rewrite or back up an existing V3 file', () => {
     writeFileSync(
       sourcesFile,
       JSON.stringify({
-        sources: {
-          'custom/spec-tdd/a': {
-            url: './fixtures/spec-tdd',
-            type: 'custom',
-            repoName: 'a',
-            installMethod: 'local-copy',
-            installedAt: '2026-04-01T00:00:00.000Z',
-            updatedAt: '2026-04-01T00:00:00.000Z',
-          },
-          'custom/spec-tdd/b': {
-            url: './fixtures/spec-tdd',
-            type: 'custom',
-            repoName: 'b',
-            installMethod: 'local-copy',
-            installedAt: '2026-04-01T00:00:01.000Z',
-            updatedAt: '2026-04-01T00:00:01.000Z',
-          },
-        },
+        version: '3.0',
+        sources: {},
+        bundles: {},
       }, null, 2),
     );
-    mkdirSync(tempFile, { recursive: true });
 
-    const bundles = service.getAllBundles();
-    const localId = makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd'));
-
-    expect(bundles[localId]).toBeDefined();
-
-    const stored = JSON.parse(readFileSync(sourcesFile, 'utf-8'));
-    expect(stored.version).toBeUndefined();
-    expect(stored.bundles).toBeUndefined();
+    expect(service.getAllSources()).toEqual({});
+    expect(existsSync(join(SKILLS_MANAGER_DIR, 'sources.json.v2.backup'))).toBe(false);
   });
 
   it('uses temp file writes without corrupting the original file on failure', () => {
     writeFileSync(
       sourcesFile,
       JSON.stringify({
-        version: '2.0',
+        version: '3.0',
         sources: {
           existing: {
             url: 'https://example.com/repo',
@@ -291,20 +283,19 @@ describe('SourcesService', () => {
     });
   });
 
-  it('rebinds a local batch bundle atomically and keeps unrelated entries intact', () => {
-    const oldUrl = normalizeLocalPath('./fixtures/spec-tdd');
-    const newUrl = normalizeLocalPath('./fixtures/spec-tdd-renamed');
-    const bundleId = makeBundleId('local-batch', oldUrl);
-    const saveSpy = vi.spyOn(service as never, 'save' as never);
+  it('rebinds a physical group url and updates related source entries', () => {
+    createPhysicalSkill('spec-tdd', 'a');
+    createPhysicalSkill('spec-tdd', 'b');
+    groupsService.createLocalBatchGroup('spec-tdd', normalizeLocalPath('./fixtures/spec-tdd'));
 
     service.addSource('custom/spec-tdd/a', {
-      url: oldUrl,
+      url: normalizeLocalPath('./fixtures/spec-tdd'),
       type: 'custom',
       repoName: 'a',
       installMethod: 'local-copy',
     });
     service.addSource('custom/spec-tdd/b', {
-      url: oldUrl,
+      url: normalizeLocalPath('./fixtures/spec-tdd'),
       type: 'custom',
       repoName: 'b',
       installMethod: 'local-copy',
@@ -315,186 +306,59 @@ describe('SourcesService', () => {
       repoName: 'other',
       installMethod: 'local-copy',
     });
-    service.addBundle(bundleId, {
-      type: 'local-batch',
-      url: oldUrl,
-      selectionMode: 'all',
-      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
+
+    const result = service.rebindLocalBundle(
+      makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd')),
+      normalizeLocalPath('./fixtures/spec-tdd-renamed'),
+    );
+
+    expect(result.newBundleId).toBe(
+      makeBundleId('local-batch', normalizeLocalPath('./fixtures/spec-tdd-renamed')),
+    );
+    expect(groupsService.getGroup('spec-tdd')).toMatchObject({
+      kind: 'local-batch',
+      url: normalizeLocalPath('./fixtures/spec-tdd-renamed'),
     });
-
-    saveSpy.mockClear();
-
-    const result = service.rebindLocalBundle(bundleId, newUrl);
-    const reboundBundle = service.getBundle(result.newBundleId);
-
-    expect(result.newBundleId).toBe(makeBundleId('local-batch', newUrl));
-    expect(service.getBundle(bundleId)).toBeUndefined();
-    expect(reboundBundle).toMatchObject({
-      type: 'local-batch',
-      url: newUrl,
-      members: ['custom/spec-tdd/a', 'custom/spec-tdd/b'],
-    });
-    expect(service.getSource('custom/spec-tdd/a')!.url).toBe(newUrl);
-    expect(service.getSource('custom/spec-tdd/b')!.url).toBe(newUrl);
+    expect(service.getSource('custom/spec-tdd/a')!.url).toBe(
+      normalizeLocalPath('./fixtures/spec-tdd-renamed'),
+    );
+    expect(service.getSource('custom/spec-tdd/b')!.url).toBe(
+      normalizeLocalPath('./fixtures/spec-tdd-renamed'),
+    );
     expect(service.getSource('custom/other')!.url).toBe(
       normalizeLocalPath('./fixtures/other'),
     );
-    expect(saveSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('fails rebindLocalBundle when bundle members are missing and does not modify sources.json', () => {
-    const oldUrl = normalizeLocalPath('./fixtures/spec-tdd');
-    const newUrl = normalizeLocalPath('./fixtures/spec-tdd-renamed');
-    const bundleId = makeBundleId('local-batch', oldUrl);
-
-    service.addSource('custom/spec-tdd/a', {
-      url: oldUrl,
-      type: 'custom',
-      repoName: 'a',
-      installMethod: 'local-copy',
-    });
-    service.addBundle(bundleId, {
-      type: 'local-batch',
-      url: oldUrl,
-      selectionMode: 'all',
-      members: ['custom/spec-tdd/a', 'custom/spec-tdd/missing'],
-    });
-
-    const before = readFileSync(sourcesFile, 'utf-8');
-
-    expect(() => service.rebindLocalBundle(bundleId, newUrl)).toThrow(
-      `Cannot rebind bundle ${bundleId}: dangling members in sources.json: ` +
-        'custom/spec-tdd/missing. Clean up sources.json and retry.',
-    );
-    expect(readFileSync(sourcesFile, 'utf-8')).toBe(before);
+  it('fails rebindLocalBundle when the physical group does not exist', () => {
+    expect(() =>
+      service.rebindLocalBundle(
+        makeBundleId('local-batch', normalizeLocalPath('./fixtures/missing')),
+        normalizeLocalPath('./fixtures/new'),
+      ),
+    ).toThrow('Local bundle not found');
   });
 
-  it('rebinds a local single source', () => {
-    const oldUrl = normalizeLocalPath('./fixtures/my-lint');
-    const newUrl = normalizeLocalPath('./fixtures/my-lint-renamed');
-
-    service.addSource('custom/my-lint', {
-      url: oldUrl,
+  it('finds physical group candidates by basename', () => {
+    createPhysicalSkill('spec-tdd', 'alpha');
+    createPhysicalSkill('spec-tdd', 'beta');
+    groupsService.createLocalBatchGroup('spec-tdd', normalizeLocalPath('./fixtures/spec-tdd'));
+    service.addSource('custom/spec-tdd/alpha', {
+      url: normalizeLocalPath('./fixtures/spec-tdd'),
       type: 'custom',
-      repoName: 'my-lint',
+      repoName: 'alpha',
       installMethod: 'local-copy',
     });
 
-    service.rebindLocalSource('custom/my-lint', newUrl);
+    const candidates = service.findPhysicalGroupsByBasename('spec-tdd');
 
-    expect(service.getSource('custom/my-lint')).toMatchObject({
-      url: newUrl,
-      repoName: 'my-lint',
-      installMethod: 'local-copy',
-    });
-  });
-
-  it('finds local bundle and source candidates by basename', () => {
-    const bundleUrlA = normalizeLocalPath('./fixtures/tdd-spec');
-    const bundleUrlB = normalizeLocalPath('./other/tdd-spec');
-    const sourceUrl = normalizeLocalPath('./fixtures/my-lint');
-
-    service.addBundle(makeBundleId('local-batch', bundleUrlA), {
-      type: 'local-batch',
-      url: bundleUrlA,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/a'],
-    });
-    service.addBundle(makeBundleId('local-batch', bundleUrlB), {
-      type: 'local-batch',
-      url: bundleUrlB,
-      selectionMode: 'all',
-      members: ['custom/tdd-spec/b'],
-    });
-    service.addBundle(makeBundleId('git', 'https://github.com/acme/repo'), {
-      type: 'git',
-      url: 'https://github.com/acme/repo',
-      selectionMode: 'all',
-      members: ['community/acme/repo'],
-    });
-    service.addSource('custom/my-lint', {
-      url: sourceUrl,
-      type: 'custom',
-      repoName: 'my-lint',
-      installMethod: 'local-copy',
-    });
-    service.addSource('custom/other', {
-      url: normalizeLocalPath('./fixtures/other'),
-      type: 'custom',
-      repoName: 'other',
-      installMethod: 'local-copy',
-    });
-
-    expect(service.findLocalBatchBundlesByBasename('missing')).toEqual([]);
-    expect(service.findLocalBatchBundlesByBasename('tdd-spec')).toHaveLength(2);
-    expect(service.findLocalCopySourcesByBasename('missing')).toEqual([]);
-    expect(service.findLocalCopySourcesByBasename('my-lint')).toEqual([
-      {
-        key: 'custom/my-lint',
-        info: expect.objectContaining({
-          url: sourceUrl,
-          repoName: 'my-lint',
-        }),
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      name: 'spec-tdd',
+      group: {
+        url: normalizeLocalPath('./fixtures/spec-tdd'),
+        kind: 'local-batch',
       },
-    ]);
-  });
-
-  it('does not return batch-member local-copy sources when searching by basename', () => {
-    service.addSource('custom/my-tools/foo', {
-      url: normalizeLocalPath('./fixtures/my-tools'),
-      type: 'custom',
-      repoName: 'foo',
-      installMethod: 'local-copy',
     });
-
-    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([]);
-  });
-
-  it('returns top-level custom local-copy sources when searching by basename', () => {
-    const sourceUrl = normalizeLocalPath('./fixtures/foo');
-
-    service.addSource('custom/foo', {
-      url: sourceUrl,
-      type: 'custom',
-      repoName: 'foo',
-      installMethod: 'local-copy',
-    });
-
-    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([
-      {
-        key: 'custom/foo',
-        info: expect.objectContaining({
-          url: sourceUrl,
-          repoName: 'foo',
-        }),
-      },
-    ]);
-  });
-
-  it('returns only the top-level custom local-copy source when top-level and batch-member keys coexist', () => {
-    const topLevelUrl = normalizeLocalPath('./fixtures/foo');
-
-    service.addSource('custom/foo', {
-      url: topLevelUrl,
-      type: 'custom',
-      repoName: 'foo',
-      installMethod: 'local-copy',
-    });
-    service.addSource('custom/bar/foo', {
-      url: normalizeLocalPath('./fixtures/bar'),
-      type: 'custom',
-      repoName: 'foo',
-      installMethod: 'local-copy',
-    });
-
-    expect(service.findLocalCopySourcesByBasename('foo')).toEqual([
-      {
-        key: 'custom/foo',
-        info: expect.objectContaining({
-          url: topLevelUrl,
-          repoName: 'foo',
-        }),
-      },
-    ]);
   });
 });

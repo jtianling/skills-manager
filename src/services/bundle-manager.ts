@@ -1,12 +1,11 @@
-import { join, basename } from 'path';
-import { readdirSync } from 'fs';
+import { join } from 'path';
 import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
-import { installSingleSkillToLocalTarget } from '../commands/install-utils.js';
 import { GitHubService } from './github.js';
 import { GroupsService } from './groups.js';
 import { SourcesService } from './sources.js';
-import { Bundle } from '../types.js';
+import { Bundle, RemoteBundleInfo } from '../types.js';
 import {
+  cleanEmptyParents,
   fileExists,
   findScriptFiles,
   getDirectoriesInDir,
@@ -65,24 +64,6 @@ function getSkillNameFromSourceKey(sourceKey: string): string {
   return parts[parts.length - 1] ?? sourceKey;
 }
 
-function cleanEmptyParents(dir: string, stopAt: string): void {
-  let current = dir;
-  while (current !== stopAt && current.startsWith(stopAt)) {
-    if (!fileExists(current)) {
-      current = join(current, '..');
-      continue;
-    }
-
-    const entries = readdirSync(current);
-    if (entries.length > 0) {
-      break;
-    }
-
-    removeDir(current);
-    current = join(current, '..');
-  }
-}
-
 export class BundleManager {
   constructor(
     private readonly sourcesService: SourcesService = new SourcesService(),
@@ -97,22 +78,28 @@ export class BundleManager {
       throw new Error(`Bundle not found: ${bundleId}`);
     }
 
+    if (bundle.type === 'local-batch') {
+      throw new Error(
+        'local-batch bundles are managed as physical groups. Use group update or update <group> instead.',
+      );
+    }
+
     if (bundle.type === 'zip') {
       console.log('  zip bundle update not supported, reinstall required');
       this.sourcesService.updateBundleTimestamp(bundleId);
       return createEmptySyncResult();
     }
 
-    const currentSkills = await this.scanCurrentSourceSkills(bundle);
-    const installedNames = this.getInstalledSkillNames(bundle);
+    const remoteBundle = bundle as RemoteBundleInfo;
+    const currentSkills = await this.scanCurrentSourceSkills(remoteBundle);
+    const installedNames = this.getInstalledSkillNames(remoteBundle);
     const diff = this.computeDiff(currentSkills, installedNames);
     const result = createEmptySyncResult();
-    const nextMembers = this.computeNextMembers(bundle, installedNames);
-    const primarySourceKey = this.getPrimarySourceKey(bundle);
+    const primarySourceKey = this.getPrimarySourceKey(remoteBundle);
 
     for (const skillName of diff.existing) {
       try {
-        const changed = await this.applyExisting(bundle, skillName);
+        const changed = await this.applyExisting(remoteBundle, skillName);
         if (changed) {
           result.updated++;
           console.log(`  ↑ ${skillName}: updated`);
@@ -136,11 +123,8 @@ export class BundleManager {
           continue;
         }
 
-        const memberKey = await this.applyAdded(bundle, skillName, primarySourceKey);
+        await this.applyAdded(remoteBundle, skillName, primarySourceKey);
         result.added++;
-        if (memberKey && !nextMembers.includes(memberKey)) {
-          nextMembers.push(memberKey);
-        }
         console.log(`  + ${skillName}: new in source (installed)`);
       } catch {
         result.failed++;
@@ -151,14 +135,8 @@ export class BundleManager {
     for (const skillName of diff.removed) {
       try {
         if (options.sync) {
-          const removedMember = this.applyRemoved(bundle, skillName, primarySourceKey);
+          this.applyRemoved(remoteBundle, skillName, primarySourceKey);
           result.removedHard++;
-          if (removedMember) {
-            const index = nextMembers.indexOf(removedMember);
-            if (index !== -1) {
-              nextMembers.splice(index, 1);
-            }
-          }
           console.log(`  - ${skillName}: removed`);
           continue;
         }
@@ -175,17 +153,7 @@ export class BundleManager {
       console.log(`  ✓ ${result.upToDate} skills up to date`);
     }
 
-    if (bundle.type === 'local-batch') {
-      const normalizedMembers = [...new Set(nextMembers)].sort();
-      const currentMembers = [...bundle.members].sort();
-      if (JSON.stringify(normalizedMembers) !== JSON.stringify(currentMembers)) {
-        this.sourcesService.updateBundleMembers(bundleId, normalizedMembers);
-      } else {
-        this.sourcesService.updateBundleTimestamp(bundleId);
-      }
-    } else {
-      this.sourcesService.updateBundleTimestamp(bundleId);
-    }
+    this.sourcesService.updateBundleTimestamp(bundleId);
 
     return result;
   }
@@ -196,15 +164,22 @@ export class BundleManager {
       throw new Error(`Bundle not found: ${bundleId}`);
     }
 
+    if (bundle.type === 'local-batch') {
+      throw new Error(
+        'local-batch bundles are managed as physical groups. Use group uninstall or uninstall <group> instead.',
+      );
+    }
+
+    const remoteBundle = bundle as RemoteBundleInfo;
     let removed = 0;
 
-    if (bundle.type === 'git') {
-      const targetBase = this.getGitTargetBase(bundle);
-      const sourceKey = this.getPrimarySourceKey(bundle);
+    if (remoteBundle.type === 'git') {
+      const targetBase = this.getGitTargetBase(remoteBundle);
+      const sourceKey = this.getPrimarySourceKey(remoteBundle);
       if (!sourceKey) {
         throw new Error(`Bundle not found: missing source key for ${bundleId}`);
       }
-      const skillNames = this.getInstalledSkillNames(bundle);
+      const skillNames = this.getInstalledSkillNames(remoteBundle);
 
       for (const skillName of skillNames) {
         const targetDir = join(targetBase, skillName);
@@ -219,7 +194,7 @@ export class BundleManager {
       const stopAt = join(SKILLS_MANAGER_DIR, sourceKey.split('/')[0]);
       cleanEmptyParents(targetBase, stopAt);
     } else {
-      for (const member of bundle.members) {
+      for (const member of remoteBundle.members) {
         const targetDir = join(SKILLS_MANAGER_DIR, ...member.split('/'));
         if (this.fs.fileExists(targetDir)) {
           this.fs.removeDir(targetDir);
@@ -238,19 +213,7 @@ export class BundleManager {
     return { removed };
   }
 
-  async scanCurrentSourceSkills(bundle: Bundle): Promise<string[]> {
-    if (bundle.type === 'local-batch') {
-      if (!this.fs.fileExists(bundle.url)) {
-        throw new Error(`Bundle source path not found: ${bundle.url}`);
-      }
-
-      return this.fs
-        .getDirectoriesInDir(bundle.url)
-        .filter((entry) => this.fs.fileExists(join(entry.path, 'SKILL.md')))
-        .map((entry) => entry.name)
-        .sort();
-    }
-
+  async scanCurrentSourceSkills(bundle: RemoteBundleInfo): Promise<string[]> {
     if (bundle.type === 'git') {
       const parsed = this.githubService.parseGitHubUrl(bundle.url);
       if (!parsed) {
@@ -282,41 +245,7 @@ export class BundleManager {
     return { added, existing, removed };
   }
 
-  private computeNextMembers(bundle: Bundle, installedNames: string[]): string[] {
-    if (bundle.type !== 'local-batch') {
-      return [...bundle.members];
-    }
-
-    const dirName = basename(bundle.url);
-    return installedNames.map((name) => `custom/${dirName}/${name}`);
-  }
-
-  private async applyExisting(bundle: Bundle, skillName: string): Promise<boolean> {
-    if (bundle.type === 'local-batch') {
-      const sourcePath = join(bundle.url, skillName);
-      const targetDir = this.getLocalBatchTargetDir(bundle, skillName);
-      const sourceSkillMd = join(sourcePath, 'SKILL.md');
-      const targetSkillMd = join(targetDir, 'SKILL.md');
-
-      if (!this.fs.fileExists(sourceSkillMd) || !this.fs.fileExists(targetSkillMd)) {
-        this.fs.removeDir(targetDir);
-        installSingleSkillToLocalTarget(sourcePath, targetDir);
-        const sourceKey = this.getLocalBatchMemberKey(bundle, skillName);
-        this.sourcesService.updateTimestamp(sourceKey);
-        return true;
-      }
-
-      if (this.fs.readFileContent(sourceSkillMd) === this.fs.readFileContent(targetSkillMd)) {
-        return false;
-      }
-
-      this.fs.removeDir(targetDir);
-      installSingleSkillToLocalTarget(sourcePath, targetDir);
-      const sourceKey = this.getLocalBatchMemberKey(bundle, skillName);
-      this.sourcesService.updateTimestamp(sourceKey);
-      return true;
-    }
-
+  private async applyExisting(bundle: RemoteBundleInfo, skillName: string): Promise<boolean> {
     const parsed = this.githubService.parseGitHubUrl(bundle.url);
     if (!parsed) {
       throw new Error(`Invalid GitHub bundle URL: ${bundle.url}`);
@@ -366,32 +295,10 @@ export class BundleManager {
   }
 
   private async applyAdded(
-    bundle: Bundle,
+    bundle: RemoteBundleInfo,
     skillName: string,
     primarySourceKey?: string,
-  ): Promise<string | null> {
-    if (bundle.type === 'local-batch') {
-      const sourcePath = join(bundle.url, skillName);
-      const targetDir = this.getLocalBatchTargetDir(bundle, skillName);
-      const sourceKey = this.getLocalBatchMemberKey(bundle, skillName);
-
-      this.fs.removeDir(targetDir);
-      installSingleSkillToLocalTarget(sourcePath, targetDir);
-      this.sourcesService.addSource(sourceKey, {
-        url: bundle.url,
-        type: 'custom',
-        repoName: skillName,
-        installMethod: 'local-copy',
-      });
-
-      const autoGroupName = this.getLocalBatchAutoGroupName(bundle);
-      if (this.groupsService.getGroup(autoGroupName) !== null) {
-        this.groupsService.addSkill(autoGroupName, sourceKey);
-      }
-
-      return sourceKey;
-    }
-
+  ): Promise<void> {
     if (bundle.type === 'git') {
       const parsed = this.githubService.parseGitHubUrl(bundle.url);
       if (!parsed) {
@@ -407,31 +314,14 @@ export class BundleManager {
       if (primarySourceKey) {
         this.sourcesService.updateTimestamp(primarySourceKey);
       }
-      return null;
     }
-
-    return null;
   }
 
   private applyRemoved(
-    bundle: Bundle,
+    bundle: RemoteBundleInfo,
     skillName: string,
     primarySourceKey?: string,
-  ): string | null {
-    if (bundle.type === 'local-batch') {
-      const sourceKey = this.getLocalBatchMemberKey(bundle, skillName);
-      const targetDir = this.getLocalBatchTargetDir(bundle, skillName);
-
-      this.fs.removeDir(targetDir);
-      this.sourcesService.removeSource(sourceKey);
-      this.groupsService.removeSkillFromAll(sourceKey);
-
-      const sourceParts = sourceKey.split('/');
-      const categoryDir = join(SKILLS_MANAGER_DIR, sourceParts[0]);
-      cleanEmptyParents(join(targetDir, '..'), categoryDir);
-      return sourceKey;
-    }
-
+  ): void {
     if (bundle.type === 'git') {
       const targetDir = join(this.getGitTargetBase(bundle), skillName);
       this.fs.removeDir(targetDir);
@@ -440,19 +330,10 @@ export class BundleManager {
       }
       const stopAt = join(SKILLS_MANAGER_DIR, primarySourceKey?.split('/')[0] ?? 'community');
       cleanEmptyParents(this.getGitTargetBase(bundle), stopAt);
-      return null;
     }
-
-    return null;
   }
 
-  private getInstalledSkillNames(bundle: Bundle): string[] {
-    if (bundle.type === 'local-batch') {
-      return bundle.members
-        .map((member) => getSkillNameFromSourceKey(member))
-        .sort();
-    }
-
+  private getInstalledSkillNames(bundle: RemoteBundleInfo): string[] {
     const targetBase = this.getGitTargetBase(bundle);
     if (!this.fs.fileExists(targetBase)) {
       return [];
@@ -469,24 +350,7 @@ export class BundleManager {
     return bundle.members[0];
   }
 
-  private getLocalBatchTargetDir(bundle: Bundle, skillName: string): string {
-    return join(SKILLS_MANAGER_DIR, 'custom', basename(bundle.url), skillName);
-  }
-
-  private getLocalBatchAutoGroupName(bundle: Bundle): string {
-    return basename(bundle.url);
-  }
-
-  private getLocalBatchMemberKey(bundle: Bundle, skillName: string): string {
-    const matched = bundle.members.find((member) => member.endsWith(`/${skillName}`));
-    if (matched) {
-      return matched;
-    }
-
-    return `custom/${basename(bundle.url)}/${skillName}`;
-  }
-
-  private getGitTargetBase(bundle: Bundle): string {
+  private getGitTargetBase(bundle: RemoteBundleInfo): string {
     const primarySourceKey = this.getPrimarySourceKey(bundle);
     if (primarySourceKey) {
       const parts = primarySourceKey.split('/');
@@ -514,7 +378,7 @@ export class BundleManager {
     return join(SKILLS_MANAGER_DIR, 'community', parsed.owner, parsed.repo);
   }
 
-  private updateGitSourceTimestamp(bundle: Bundle): void {
+  private updateGitSourceTimestamp(bundle: RemoteBundleInfo): void {
     const sourceKey = this.getPrimarySourceKey(bundle);
     if (sourceKey) {
       this.sourcesService.updateTimestamp(sourceKey);

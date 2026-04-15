@@ -206,7 +206,8 @@ async function removeByGroup(
   options: RemoveOptions,
 ): Promise<void> {
   const groupsService = new GroupsService();
-  const groupSkillKeys = groupsService.getGroup(groupName);
+  const groupEntry = groupsService.getGroup(groupName);
+  const groupSkillKeys = groupEntry ? groupsService.getGroupMembers(groupName) : null;
 
   if (!groupSkillKeys) {
     if (options.json) {

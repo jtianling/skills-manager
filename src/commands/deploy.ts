@@ -168,7 +168,9 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   const followKeys = new Set<string>();
   const followSkills: SkillInfo[] = [];
   for (const groupName of followGroupNames) {
-    const members = groupsService.getGroup(groupName) ?? [];
+    const members = groupsService.getGroup(groupName)
+      ? groupsService.getGroupMembers(groupName)
+      : [];
     for (const key of members) {
       followKeys.add(key);
     }

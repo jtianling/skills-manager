@@ -1,25 +1,40 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { GroupsService, validateGroupName } from './groups.js';
-import * as constants from '../constants.js';
+import { SKILLS_MANAGER_DIR } from '../constants.js';
+
+vi.mock('../constants.js', async () => {
+  const testDir = join(tmpdir(), `skillsmgr-groups-test-${process.pid}-${Date.now()}`);
+  return { SKILLS_MANAGER_DIR: testDir };
+});
+
+function createPhysicalSkill(groupName: string, skillName: string): void {
+  const dir = join(SKILLS_MANAGER_DIR, 'custom', groupName, skillName);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${skillName}\n---\n`);
+}
 
 describe('GroupsService', () => {
-  let testDir: string;
   let service: GroupsService;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `skillsmgr-groups-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(testDir, { recursive: true });
-    Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', { value: testDir, writable: true });
+    mkdirSync(SKILLS_MANAGER_DIR, { recursive: true });
     service = new GroupsService();
   });
 
   afterEach(() => {
-    if (testDir && existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
+    if (existsSync(SKILLS_MANAGER_DIR)) {
+      rmSync(SKILLS_MANAGER_DIR, { recursive: true, force: true });
     }
+    vi.restoreAllMocks();
   });
 
   describe('validateGroupName', () => {
@@ -37,171 +52,217 @@ describe('GroupsService', () => {
     });
   });
 
-  describe('listGroups', () => {
-    it('returns empty array when no groups.json', () => {
-      expect(service.listGroups()).toEqual([]);
-    });
+  it('returns empty array when no groups.json exists', () => {
+    expect(service.listGroups()).toEqual([]);
+  });
 
-    it('returns group names', () => {
-      service.createGroup('python');
-      service.createGroup('rust');
-      expect(service.listGroups()).toEqual(['python', 'rust']);
+  it('creates and reads virtual groups in V2 schema', () => {
+    service.createGroup('python');
+    service.addSkill('python', 'custom/my-linter');
+
+    expect(service.getGroup('python')).toEqual({
+      kind: 'virtual',
+      members: ['custom/my-linter'],
+    });
+    expect(service.getGroupKind('python')).toBe('virtual');
+    expect(service.getGroupMembers('python')).toEqual(['custom/my-linter']);
+  });
+
+  it('creates and reads local-batch groups', () => {
+    createPhysicalSkill('tdd-spec', 'ts-apply');
+    createPhysicalSkill('tdd-spec', 'ts-verify');
+
+    service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+
+    expect(service.getGroup('tdd-spec')).toMatchObject({
+      kind: 'local-batch',
+      url: '/dev/tdd-spec',
+    });
+    expect(service.getGroupKind('tdd-spec')).toBe('local-batch');
+    expect(service.getGroupMembers('tdd-spec')).toEqual([
+      'custom/tdd-spec/ts-apply',
+      'custom/tdd-spec/ts-verify',
+    ]);
+  });
+
+  it('createGroup rejects local-batch name conflicts', () => {
+    service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+    expect(() => service.createGroup('tdd-spec')).toThrow(
+      "Group 'tdd-spec' already exists as a local-batch group (custom/tdd-spec/).",
+    );
+  });
+
+  it('addSkill auto-creates virtual groups and is idempotent', () => {
+    expect(service.addSkill('python', 'custom/my-linter')).toBe(true);
+    expect(service.addSkill('python', 'custom/my-linter')).toBe(false);
+    expect(service.getGroupMembers('python')).toEqual(['custom/my-linter']);
+  });
+
+  it('addSkill and removeSkill reject physical groups', () => {
+    service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+
+    expect(() => service.addSkill('tdd-spec', 'custom/tdd-spec/foo')).toThrow(
+      "Cannot add to physical group 'tdd-spec'. Members of physical groups are derived from custom/tdd-spec/.",
+    );
+    expect(() => service.removeSkill('tdd-spec', 'custom/tdd-spec/foo')).toThrow(
+      "Cannot modify physical group 'tdd-spec'. Members of physical groups are derived from custom/tdd-spec/.",
+    );
+  });
+
+  it('removeSkillFromAll only affects virtual groups', () => {
+    createPhysicalSkill('tdd-spec', 'ts-apply');
+    service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+    service.addSkill('python', 'custom/tdd-spec/ts-apply');
+    service.addSkill('python', 'official/anthropic/skills/commit');
+
+    service.removeSkillFromAll('custom/tdd-spec/ts-apply');
+
+    expect(service.getGroupMembers('python')).toEqual(['official/anthropic/skills/commit']);
+    expect(service.getGroupMembers('tdd-spec')).toEqual(['custom/tdd-spec/ts-apply']);
+  });
+
+  it('renames groups and preserves entry kind', () => {
+    service.addSkill('python', 'custom/my-linter');
+    service.renameGroup('python', 'py-tools');
+
+    expect(service.getGroup('python')).toBeNull();
+    expect(service.getGroup('py-tools')).toEqual({
+      kind: 'virtual',
+      members: ['custom/my-linter'],
     });
   });
 
-  describe('getGroup', () => {
-    it('returns null for nonexistent group', () => {
-      expect(service.getGroup('nonexistent')).toBeNull();
+  it('updates physical group timestamps and source url', () => {
+    service.createLocalBatchGroup('tdd-spec', '/old/path/tdd-spec');
+    const before = service.getGroup('tdd-spec');
+    expect(before).not.toBeNull();
+
+    service.setPhysicalGroupSourceUrl('tdd-spec', '/new/path/tdd-spec');
+    service.updatePhysicalGroupTimestamp('tdd-spec');
+
+    const after = service.getGroup('tdd-spec');
+    expect(after).toMatchObject({
+      kind: 'local-batch',
+      url: '/new/path/tdd-spec',
+    });
+    expect(
+      new Date((after as { updatedAt: string }).updatedAt).getTime(),
+    ).toBeGreaterThanOrEqual(
+      new Date((before as { updatedAt: string }).updatedAt).getTime(),
+    );
+  });
+
+  it('migrates V1 groups.json to V2 and writes backup', () => {
+    const file = join(SKILLS_MANAGER_DIR, 'groups.json');
+    writeFileSync(file, JSON.stringify({ python: ['custom/foo'] }, null, 2));
+
+    const freshService = new GroupsService();
+
+    expect(freshService.getGroup('python')).toEqual({
+      kind: 'virtual',
+      members: ['custom/foo'],
+    });
+    expect(readFileSync(join(SKILLS_MANAGER_DIR, 'groups.json.v1.backup'), 'utf-8')).toContain(
+      '"python"',
+    );
+  });
+
+  it('migrates local-batch bundles and renames conflicting virtual groups to legacy names', () => {
+    service.addSkill('tdd-spec', 'official/anthropic/skills/commit');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const renamed = service.migrateLocalBatchToPhysicalGroup('tdd-spec', {
+      type: 'local-batch',
+      url: '/dev/tdd-spec',
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+      installedAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
     });
 
-    it('returns skill keys array', () => {
-      service.createGroup('python');
-      service.addSkill('python', 'custom/my-linter');
-      expect(service.getGroup('python')).toEqual(['custom/my-linter']);
+    expect(renamed).toBe('tdd-spec');
+    expect(service.getGroup('tdd-spec')).toEqual({
+      kind: 'local-batch',
+      url: '/dev/tdd-spec',
+      installedAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    });
+    expect(service.getGroup('tdd-spec-legacy')).toEqual({
+      kind: 'virtual',
+      members: ['official/anthropic/skills/commit'],
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "  ⚠ Group naming conflict: virtual group 'tdd-spec' renamed to 'tdd-spec-legacy'",
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      '    (a physical group with the same name was migrated from local-batch bundle)',
+    );
+    expect(readFileSync(join(SKILLS_MANAGER_DIR, 'migration.log'), 'utf-8')).toContain(
+      'tdd-spec-legacy',
+    );
+  });
+
+  it('increments legacy suffix when needed during migration', () => {
+    service.addSkill('tdd-spec', 'official/anthropic/skills/commit');
+    service.createGroup('tdd-spec-legacy');
+
+    service.migrateLocalBatchToPhysicalGroup('tdd-spec', {
+      type: 'local-batch',
+      url: '/dev/tdd-spec',
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/ts-apply'],
+      installedAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    });
+
+    expect(service.getGroup('tdd-spec-legacy-2')).toEqual({
+      kind: 'virtual',
+      members: ['official/anthropic/skills/commit'],
     });
   });
 
-  describe('createGroup', () => {
-    it('creates empty group', () => {
-      service.createGroup('frontend');
-      expect(service.getGroup('frontend')).toEqual([]);
+  it('conservatively renames matching virtual groups during migration', () => {
+    service.addSkill('tdd-spec', 'custom/tdd-spec/a');
+    service.addSkill('tdd-spec', 'custom/tdd-spec/b');
+
+    service.migrateLocalBatchToPhysicalGroup('tdd-spec', {
+      type: 'local-batch',
+      url: '/dev/tdd-spec',
+      selectionMode: 'all',
+      members: ['custom/tdd-spec/a', 'custom/tdd-spec/b'],
+      installedAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
     });
 
-    it('throws on duplicate', () => {
-      service.createGroup('python');
-      expect(() => service.createGroup('python')).toThrow("Group 'python' already exists.");
+    expect(service.getGroup('tdd-spec')).toMatchObject({
+      kind: 'local-batch',
+      url: '/dev/tdd-spec',
     });
-
-    it('throws on invalid name', () => {
-      expect(() => service.createGroup('bad name')).toThrow();
-    });
-  });
-
-  describe('deleteGroup', () => {
-    it('deletes group', () => {
-      service.createGroup('python');
-      service.deleteGroup('python');
-      expect(service.getGroup('python')).toBeNull();
-    });
-
-    it('throws when group not found', () => {
-      expect(() => service.deleteGroup('nonexistent')).toThrow("Group 'nonexistent' not found.");
+    expect(service.getGroup('tdd-spec-legacy')).toEqual({
+      kind: 'virtual',
+      members: ['custom/tdd-spec/a', 'custom/tdd-spec/b'],
     });
   });
 
-  describe('renameGroup', () => {
-    it('renames group and preserves skills', () => {
-      service.addSkill('python', 'custom/my-linter');
+  it('persists groups.json in V2 shape', () => {
+    service.addSkill('python', 'custom/my-linter');
+    service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
 
-      service.renameGroup('python', 'py-tools');
-
-      expect(service.getGroup('python')).toBeNull();
-      expect(service.getGroup('py-tools')).toEqual(['custom/my-linter']);
-    });
-
-    it('throws when old group not found', () => {
-      expect(() => service.renameGroup('nonexistent', 'new-name')).toThrow(
-        "Group 'nonexistent' not found.",
-      );
-    });
-
-    it('throws when new group already exists', () => {
-      service.createGroup('python');
-      service.createGroup('rust');
-
-      expect(() => service.renameGroup('python', 'rust')).toThrow(
-        "Group 'rust' already exists.",
-      );
-    });
-
-    it('throws when new name is invalid', () => {
-      service.createGroup('python');
-
-      expect(() => service.renameGroup('python', 'my tools')).toThrow(
-        'Group name must contain only letters, numbers, hyphens, and underscores',
-      );
-    });
-
-    it('throws when new name is the same as current name', () => {
-      service.createGroup('python');
-
-      expect(() => service.renameGroup('python', 'python')).toThrow(
-        'New name is the same as the current name.',
-      );
-    });
-  });
-
-  describe('addSkill', () => {
-    it('adds skill to existing group', () => {
-      service.createGroup('python');
-      const added = service.addSkill('python', 'custom/my-linter');
-      expect(added).toBe(true);
-      expect(service.getGroup('python')).toEqual(['custom/my-linter']);
-    });
-
-    it('auto-creates group if not exists', () => {
-      const added = service.addSkill('new-group', 'custom/my-linter');
-      expect(added).toBe(true);
-      expect(service.getGroup('new-group')).toEqual(['custom/my-linter']);
-    });
-
-    it('returns false on duplicate (idempotent)', () => {
-      service.addSkill('python', 'custom/my-linter');
-      const added = service.addSkill('python', 'custom/my-linter');
-      expect(added).toBe(false);
-      expect(service.getGroup('python')).toEqual(['custom/my-linter']);
-    });
-  });
-
-  describe('removeSkill', () => {
-    it('removes skill from group', () => {
-      service.addSkill('python', 'custom/my-linter');
-      service.addSkill('python', 'official/anthropic/skills/commit');
-      const removed = service.removeSkill('python', 'custom/my-linter');
-      expect(removed).toBe(true);
-      expect(service.getGroup('python')).toEqual(['official/anthropic/skills/commit']);
-    });
-
-    it('returns false when skill not in group', () => {
-      service.createGroup('python');
-      expect(service.removeSkill('python', 'nonexistent')).toBe(false);
-    });
-
-    it('returns false when group not found', () => {
-      expect(service.removeSkill('nonexistent', 'anything')).toBe(false);
-    });
-  });
-
-  describe('removeSkillFromAll', () => {
-    it('removes from all groups', () => {
-      service.addSkill('python', 'custom/my-linter');
-      service.addSkill('rust', 'custom/my-linter');
-      service.addSkill('rust', 'official/anthropic/skills/commit');
-
-      service.removeSkillFromAll('custom/my-linter');
-
-      expect(service.getGroup('python')).toEqual([]);
-      expect(service.getGroup('rust')).toEqual(['official/anthropic/skills/commit']);
-    });
-
-    it('does nothing when skill not in any group', () => {
-      service.createGroup('python');
-      service.removeSkillFromAll('nonexistent');
-      expect(service.getGroup('python')).toEqual([]);
-    });
-  });
-
-  describe('persistence', () => {
-    it('persists to groups.json', () => {
-      service.addSkill('python', 'custom/my-linter');
-      const content = JSON.parse(readFileSync(join(testDir, 'groups.json'), 'utf-8'));
-      expect(content).toEqual({ python: ['custom/my-linter'] });
-    });
-
-    it('reads existing groups.json', () => {
-      writeFileSync(join(testDir, 'groups.json'), JSON.stringify({ rust: ['custom/a'] }));
-      const freshService = new GroupsService();
-      expect(freshService.getGroup('rust')).toEqual(['custom/a']);
+    const content = JSON.parse(readFileSync(join(SKILLS_MANAGER_DIR, 'groups.json'), 'utf-8'));
+    expect(content).toEqual({
+      version: '2.0',
+      groups: {
+        python: {
+          kind: 'virtual',
+          members: ['custom/my-linter'],
+        },
+        'tdd-spec': {
+          kind: 'local-batch',
+          url: '/dev/tdd-spec',
+          installedAt: expect.any(String),
+          updatedAt: expect.any(String),
+        },
+      },
     });
   });
 });

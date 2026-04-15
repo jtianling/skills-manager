@@ -89,6 +89,18 @@ export async function executeInstall(source: string, options: InstallOptions): P
       }
       process.exit(1);
     }
+
+    const groupsService = new GroupsService();
+    if (groupsService.getGroupKind(options.group) === 'local-batch') {
+      const message = `Cannot add to physical group '${options.group}'. Members of physical groups are derived from custom/${options.group}/.  Use a virtual group name instead.`;
+      if (options.json) {
+        console.log = origLog;
+        jsonError(message, 'INVALID_GROUP');
+      } else {
+        console.error(`Error: ${message}`);
+      }
+      process.exit(1);
+    }
   }
 
   try {
@@ -98,7 +110,7 @@ export async function executeInstall(source: string, options: InstallOptions): P
       sourcesService.addBundle(result.bundleInfo.id, result.bundleInfo.info);
     }
 
-    const groupName = options.group ?? result.batchGroupName;
+    const groupName = options.group;
     if (groupName && result.sourceKeys && result.sourceKeys.length > 0) {
       const groupsService = new GroupsService();
       for (const key of result.sourceKeys) {

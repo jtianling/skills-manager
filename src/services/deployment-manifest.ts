@@ -88,11 +88,12 @@ export class DeploymentManifestService {
     const warnings: string[] = [];
 
     for (const groupName of manifest.followGroups) {
-      const members = groupsService.getGroup(groupName);
-      if (members === null) {
+      const group = groupsService.getGroup(groupName);
+      if (group === null) {
         warnings.push(`follow group '${groupName}' does not exist, skipping`);
         continue;
       }
+      const members = groupsService.getGroupMembers(groupName);
       for (const key of members) {
         if (!byKey.has(key)) {
           warnings.push(`follow group '${groupName}' references missing skill '${key}', skipping`);

@@ -9,7 +9,7 @@ Unified skills manager for AI coding tools. Install skills into `~/.skills-manag
 - **Central repository, deploy anywhere** — Skills are installed once into `~/.skills-manager/`. After that, `add` lets you interactively pick from all locally installed skills and deploy them to any project or globally — no need to remember the original repo URL or path every time.
 - **Registry integration** — Search, install, and publish skills via the [skillsmgr.dev](https://skillsmgr.dev) registry. `skillsmgr install code-review` fetches from the registry. `skillsmgr publish` shares your skills with the community.
 - **Automatic dependency resolution** — Skills can declare dependencies on other skills. When you install a skill, its dependencies are automatically resolved and installed recursively.
-- **Custom groups for batch management** — Organize skills into named groups (e.g., `--group my-tools`). Deploy an entire group with `skillsmgr add group-name`. Populate groups from multiple sources: add individual skills with `group add my-group skill-name`, all skills from a repo with `group add my-group owner/repo`, or nest groups with `group add my-group another-group`.
+- **First-class physical and virtual groups** — Organize skills into named virtual groups, or install a local directory as a physical group. Deploy an entire group with `skillsmgr add group-name`. Populate virtual groups from multiple sources with `group add`, and manage physical groups with `group install`, `group update`, `group uninstall`, and `group rename`.
 - **Zip archive support** — Install skills directly from `.zip` files or Anthropic's `.skill` packages, which makes it simple to package and share skill bundles outside of GitHub.
 
 ## Requirements
@@ -85,7 +85,7 @@ project/
 | `skillsmgr deploy` | - | Interactive deployment to the current project |
 | `skillsmgr add [name]` | - | Add a skill to the project (name, `owner/repo`, or group name) |
 | `skillsmgr remove [name]` | - | Remove a deployed skill from the project (name, `owner/repo`, or group name) |
-| `skillsmgr group <subcommand>` | - | Manage virtual skill groups |
+| `skillsmgr group <subcommand>` | - | Manage physical and virtual skill groups |
 | `skillsmgr search [query]` | - | Search for skills on the skillsmgr.dev registry |
 | `skillsmgr publish [dir]` | - | Publish a skill to the skillsmgr.dev registry |
 | `skillsmgr login` | - | Log in to the skillsmgr.dev registry |
@@ -149,7 +149,8 @@ project/
 | Flag | Description |
 |------|-------------|
 | `--sync` | For bundle updates, hard-remove members that no longer exist in the source |
-| `-v, --verbose` | Show per-skill status for bundle updates instead of collapsing up-to-date items |
+| `--keep-local` | Keep orphaned members when updating a physical group |
+| `-v, --verbose` | Show per-skill status for physical group updates instead of collapsing up-to-date items |
 
 ### Update / Uninstall 输入格式
 
@@ -165,18 +166,21 @@ project/
 限制:
 
 - zip source 仍然需要手动重新安装, `update` / `uninstall` 不直接处理
-- 本地 batch 目录现在会解析为 bundle, `update ./batch-dir` 会同步整个目录, `uninstall ./batch-dir` 会批量删除整个 bundle
-- bundle update 默认会保留"源里已删除, 本地仍存在"的成员, 并提示使用 `--sync` 做硬删除
-- `-v` / `--verbose` 会展开显示每个 bundle 成员的状态, 默认只显示变化项并折叠 up-to-date 计数
+- 本地 batch 目录现在会解析为 physical group, `update ./batch-dir` 会同步整个 group, `uninstall ./batch-dir` 会批量删除整个 group
+- physical group update 默认会删除源里已经不存在的本地成员。  使用 `--keep-local` 可以保留这些 orphaned members
+- `-v` / `--verbose` 会展开显示每个 physical group 成员的状态, 默认只显示变化项并折叠 up-to-date 计数
 - `update code-review@1.2.0` 的语义是切换到指定版本, 不是检查最新版本
 
 **group**
 
 | Subcommand | Description |
 |------------|-------------|
-| `group list [name]` | List all groups or show group details |
-| `group create <name>` | Create a new empty group |
-| `group delete <name>` | Delete a group (skills are not affected) |
+| `group list [name]` | List all groups or show group details, including kind |
+| `group install <path>` | Install a local directory as a physical group |
+| `group create <name>` | Create a new empty virtual group |
+| `group delete <name>` | Delete a virtual group (skills are not affected) |
+| `group uninstall <name>` | Uninstall a physical group |
+| `group update <name>` | Update a physical or virtual group |
 | `group add <group> <identifier>` | Add a skill, `owner/repo` source, or another group to a group |
 | `group remove <group> <identifier>` | Remove a skill, `owner/repo` source, or another group from a group |
 | `group rename <old> <new>` | Rename a group |
@@ -320,9 +324,11 @@ npx skillsmgr remove code-review -g -a claude-code
 - `community/`: third-party repositories
 - `custom/`: local skills and skills explicitly installed as custom
 - `registry/`: skills installed from skillsmgr.dev registry
-- `groups.json`: virtual group definitions managed by `group` commands
-- `sources.json`: source metadata used by `update`
+- `groups.json`: physical and virtual group definitions managed by `group` commands
+- `sources.json`: skill-level source metadata, plus git/zip bundle metadata used by `update`
 - `auth.json`: registry authentication token
+
+See [docs/group-first-class-unit.md](docs/group-first-class-unit.md) for the physical vs virtual group model, migration behavior, and the ownership boundary of `~/.skills-manager/custom/<name>/`.
 
 ## Publishing Skills
 

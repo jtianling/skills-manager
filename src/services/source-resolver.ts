@@ -3,7 +3,7 @@ import { findOfficialProvider, SKILLS_MANAGER_DIR } from '../constants.js';
 import { GitHubService } from './github.js';
 import { SourceInfo, SourcesService } from './sources.js';
 import { SkillsService } from './skills.js';
-import { Bundle, SkillInfo } from '../types.js';
+import { GroupEntry, Bundle, GroupKind, SkillInfo } from '../types.js';
 import {
   detectSourceType,
   extractOwnerRepo,
@@ -17,11 +17,13 @@ import {
   normalizeGitUrl,
   normalizeLocalPath,
 } from '../utils/url-normalize.js';
+import { GroupsService } from './groups.js';
 
 export type ResolvedTargetKind =
   | 'source'
   | 'skill'
   | 'bundle'
+  | 'group'
   | 'rebind-candidate'
   | 'not-found';
 
@@ -32,10 +34,14 @@ export interface ResolvedTarget {
   sourceKeys: string[];
   skills?: SkillInfo[];
   bundleId?: string;
+  groupName?: string;
+  groupKind?: GroupKind;
+  groupUrl?: string;
+  members?: string[];
   reason?: string;
   originalInput: string;
   requestedVersion?: string;
-  candidateType?: 'source' | 'bundle';
+  candidateType?: 'source' | 'group';
   candidateKey?: string;
   candidateUrl?: string;
   newAbsolutePath?: string;
@@ -62,7 +68,8 @@ export class SourceResolver {
     private readonly skillsService: SkillsService = new SkillsService(
       SKILLS_MANAGER_DIR
     ),
-    private readonly githubService: GitHubService = new GitHubService()
+    private readonly githubService: GitHubService = new GitHubService(),
+    private readonly groupsService: GroupsService = new GroupsService(),
   ) {}
 
   async resolve(input: string): Promise<ResolvedTarget> {
@@ -111,6 +118,36 @@ export class SourceResolver {
     return this.skillsService.getAllSkills();
   }
 
+  private getGroup(name: string): GroupEntry | null {
+    return this.groupsService.getGroup(name);
+  }
+
+  private createGroupTarget(
+    input: string,
+    groupName: string,
+    group: GroupEntry,
+  ): ResolvedTarget {
+    const members = this.groupsService.getGroupMembers(groupName);
+    return createTarget(input, 'group', members, {
+      groupName,
+      groupKind: group.kind,
+      groupUrl: group.kind === 'local-batch' ? group.url : undefined,
+      members,
+    });
+  }
+
+  private maybeWarnGroupSkillDisambiguation(groupName: string): void {
+    const matchingSkill = this.getAllSkills().find((skill) => skill.name === groupName);
+    if (!matchingSkill) {
+      return;
+    }
+
+    console.error(
+      `Disambiguation: '${groupName}' matches a group and a skill. ` +
+      `Using the group. Use '${matchingSkill.source}/${matchingSkill.name}' to target the skill.`,
+    );
+  }
+
   private findSourceByNormalizedUrl(url: string): string[] {
     const normalizedInput = normalizeGitUrl(url);
     if (!normalizedInput) {
@@ -122,11 +159,35 @@ export class SourceResolver {
       .map(([key]) => key);
   }
 
+  private findPhysicalGroupByUrl(
+    absolutePath: string,
+  ): { name: string; group: Extract<GroupEntry, { kind: 'local-batch' }> } | null {
+    for (const name of this.groupsService.listGroups()) {
+      const group = this.groupsService.getGroup(name);
+      if (!group || group.kind !== 'local-batch') {
+        continue;
+      }
+
+      if (normalizeLocalPath(group.url) === absolutePath) {
+        return { name, group };
+      }
+    }
+
+    return null;
+  }
+
   private resolveOwnerRepo(
     owner: string,
     repo: string,
     originalInput: string = `${owner}/${repo}`
   ): ResolvedTarget {
+    if (owner === 'custom') {
+      const group = this.getGroup(repo);
+      if (group) {
+        return this.createGroupTarget(originalInput, repo, group);
+      }
+    }
+
     const bundle = this.sourcesService.findBundleByUrl(
       `https://github.com/${owner}/${repo}`,
       'git',
@@ -241,13 +302,9 @@ export class SourceResolver {
       fileExists(join(dir.path, 'SKILL.md'))
     );
     if (hasNestedSkills) {
-      const bundle = this.sourcesService.findBundleByUrl(absolutePath, 'local-batch');
-      if (bundle) {
-        return this.createBundleTarget(
-          input,
-          bundle,
-          makeBundleId('local-batch', absolutePath),
-        );
+      const physicalGroup = this.findPhysicalGroupByUrl(absolutePath);
+      if (physicalGroup) {
+        return this.createGroupTarget(input, physicalGroup.name, physicalGroup.group);
       }
       return this.resolveLocalRebindCandidate(input, absolutePath, 'batch');
     }
@@ -278,6 +335,11 @@ export class SourceResolver {
 
   private async resolveBareword(input: string): Promise<ResolvedTarget> {
     const attempts: string[] = [];
+    const group = this.getGroup(input);
+    if (group) {
+      this.maybeWarnGroupSkillDisambiguation(input);
+      return this.createGroupTarget(input, input, group);
+    }
 
     const parsedRegistry = parseRegistryInput(input);
     if (parsedRegistry) {
@@ -345,12 +407,12 @@ export class SourceResolver {
     detectedStructureType: LocalStructureType | null,
   ): ResolvedTarget {
     const lookupBasename = basename(absolutePath);
-    const bundleCandidates = this.sourcesService
-      .findLocalBatchBundlesByBasename(lookupBasename)
-      .map(({ id, bundle }) => ({
-        candidateType: 'bundle' as const,
-        candidateKey: id,
-        candidateUrl: normalizeLocalPath(bundle.url),
+    const groupCandidates = this.sourcesService
+      .findPhysicalGroupsByBasename(lookupBasename)
+      .map(({ name, group }) => ({
+        candidateType: 'group' as const,
+        candidateKey: name,
+        candidateUrl: normalizeLocalPath(group.url),
         candidateStructureType: 'batch' as const,
       }));
     const sourceCandidates = this.sourcesService
@@ -361,7 +423,7 @@ export class SourceResolver {
         candidateUrl: normalizeLocalPath(info.url),
         candidateStructureType: 'single' as const,
       }));
-    const candidates = [...bundleCandidates, ...sourceCandidates];
+    const candidates = [...groupCandidates, ...sourceCandidates];
 
     if (candidates.length === 0) {
       return createTarget(input, 'not-found', [], {
@@ -382,7 +444,7 @@ export class SourceResolver {
 
     const [candidate] = candidates;
     if (fileExists(candidate.candidateUrl)) {
-      const noun = candidate.candidateType === 'bundle' ? 'bundle' : 'skill';
+      const noun = candidate.candidateType === 'group' ? 'group' : 'skill';
       return createTarget(input, 'not-found', [], {
         reason:
           `No installed skill found from path: ${absolutePath}. ` +
@@ -408,7 +470,7 @@ export class SourceResolver {
 
   private createPathTypeMismatchReason(
     candidate: {
-      candidateType: 'source' | 'bundle';
+      candidateType: 'source' | 'group';
       candidateKey: string;
       candidateUrl: string;
       candidateStructureType: LocalStructureType;
@@ -425,7 +487,7 @@ export class SourceResolver {
       : detectedStructureType === 'single'
         ? 'a single skill'
         : 'neither a single skill nor a batch';
-    const noun = candidate.candidateType === 'bundle' ? 'bundle' : 'skill';
+    const noun = candidate.candidateType === 'group' ? 'group' : 'skill';
 
     return (
       `Path type mismatch: existing ${noun} '${existingName}' is ${existingType}, ` +
