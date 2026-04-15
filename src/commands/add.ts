@@ -244,6 +244,15 @@ async function handleOwnerRepo(
   const repoSkills = findRepoInCentralRepository(ownerRepo, skillsService);
 
   if (repoSkills) {
+    if (options.skill && options.skill.length > 0) {
+      const missing = options.skill.filter(
+        (name) => !repoSkills.some((s) => s.name === name),
+      );
+      if (missing.length > 0) {
+        await handleRemoteInstallAndDeploy(ownerRepo, options, scanner, deployer);
+        return;
+      }
+    }
     await handleRepoSkillSelection(repoSkills, options, skillsService, scanner, deployer);
     return;
   }
@@ -282,11 +291,13 @@ async function handleRepoSkillSelection(
   deployer: Deployer,
 ): Promise<void> {
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
-  const allDeployed = repoSkills.every((s) => deployedNames.includes(s.name));
 
-  if (allDeployed && !options.global) {
-    if (!options.json) console.log('All skills from this source are already deployed.');
-    return;
+  if (!(options.skill && options.skill.length > 0)) {
+    const allDeployed = repoSkills.every((s) => deployedNames.includes(s.name));
+    if (allDeployed && !options.global) {
+      if (!options.json) console.log('All skills from this source are already deployed.');
+      return;
+    }
   }
 
   const selectedAgents = await resolveTargetAgents(
@@ -453,7 +464,8 @@ async function handleGroupBatchDeploy(
   deployer: Deployer,
 ): Promise<void> {
   const groupsService = new GroupsService();
-  const skillKeys = groupsService.getGroup(groupName);
+  const group = groupsService.getGroup(groupName);
+  const skillKeys = group ? groupsService.getGroupMembers(groupName) : null;
 
   if (!skillKeys || skillKeys.length === 0) {
     if (options.json) {

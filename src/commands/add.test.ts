@@ -264,6 +264,60 @@ describe('add command', () => {
         expect.stringContaining('✓ remote-skill')
       );
     });
+
+    it('falls back to remote install when --skill specifies a skill not in local repo', async () => {
+      createSkill('community/user/repo', 'skill-a', 'Skill A');
+      const sourcePath = join(testManagerDir, 'community', 'user', 'repo', 'skill-a');
+      deploySkillAsLink('skill-a', sourcePath);
+
+      vi.mocked(installSource).mockImplementation(async () => {
+        createSkill('community/user/repo', 'skill-b', 'Skill B');
+        return {
+          basePath: join(testManagerDir, 'community', 'user', 'repo'),
+          sourceKey: 'community/user/repo',
+        };
+      });
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd('user/repo', { skill: ['skill-b'] });
+
+      expect(installSource).toHaveBeenCalledWith('user/repo', {
+        all: false,
+        skill: ['skill-b'],
+      });
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('✓ skill-b')
+      );
+    });
+
+    it('uses local path when --skill specifies a skill already in local repo', async () => {
+      createSkill('community/user/repo', 'skill-a', 'Skill A');
+      createSkill('community/user/repo', 'skill-b', 'Skill B');
+
+      vi.mocked(interactiveCheckbox)
+        .mockResolvedValueOnce(['agents-skills-standard']);
+
+      await executeAdd('user/repo', { skill: ['skill-a'] });
+
+      expect(installSource).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('✓ skill-a')
+      );
+    });
+
+    it('shows no new skills when --skill specifies already deployed skill', async () => {
+      createSkill('community/user/repo', 'skill-a', 'Skill A');
+      createSkill('community/user/repo', 'skill-b', 'Skill B');
+      const sourcePath = join(testManagerDir, 'community', 'user', 'repo', 'skill-a');
+      deploySkillAsLink('skill-a', sourcePath);
+
+      await executeAdd('user/repo', { skill: ['skill-a'] });
+
+      expect(installSource).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith('No new skills selected.');
+    });
   });
 
   describe('URL flow', () => {

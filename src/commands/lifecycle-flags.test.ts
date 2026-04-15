@@ -23,6 +23,7 @@ vi.mock('./setup.js', () => ({
 import { executeAdd } from './add.js';
 import { executeRemove } from './remove.js';
 import { selectSkills } from './install-utils.js';
+import { installSource } from './install.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import * as constants from '../constants.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
@@ -194,6 +195,13 @@ describe('lifecycle with -s/--skill and -a/--agent flags', () => {
 
     it('add -s nonexistent skill exits with error', async () => {
       createSkill('community/org/repo', 'real-skill', 'Real');
+
+      vi.mocked(installSource).mockImplementation(async () => {
+        return {
+          basePath: join(testManagerDir, 'community', 'org', 'repo'),
+          sourceKey: 'community/org/repo',
+        };
+      });
 
       await executeAdd('org/repo', {
         skill: ['nonexistent'],
