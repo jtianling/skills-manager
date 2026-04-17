@@ -79,7 +79,7 @@ describe('update E2E', () => {
     await tmux.waitForText(/Removed|Uninstalled/, 10_000);
   });
 
-  it('update bareword matches installed local-copy source by source key suffix', async () => {
+  it('bare update skips installed local skills and prints a hint', async () => {
     env = createTestEnv();
     await setup();
 
@@ -101,9 +101,9 @@ describe('update E2E', () => {
     );
 
     tmux = new TmuxSession(env);
-    await tmux.start('skillsmgr update my-local-skill');
-    const output = await tmux.waitForText('Done!', 10_000);
-    expect(output).toContain('1 updated');
+    await tmux.start('skillsmgr update');
+    const output = await tmux.waitForText(/local skill\(s\) skipped/, 10_000);
+    expect(output).toContain('Use `skillsmgr update ./path` to update a local skill');
     tmux.destroy();
 
     tmux = new TmuxSession(env);
@@ -130,7 +130,7 @@ describe('update E2E', () => {
 
     tmux = new TmuxSession(env);
     await tmux.start(`skillsmgr update "${notInstalledDir}"`);
-    const output = await tmux.waitForText('No installed skill found', 10_000);
+    const output = await tmux.waitForText("is not installed. Run: skillsmgr install", 10_000);
     expect(output).toContain('not-installed-skill');
     tmux.destroy();
 

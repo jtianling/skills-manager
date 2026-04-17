@@ -5,29 +5,33 @@
 ## Requirements
 
 ### Requirement: Overwrite confirmation for existing skill
-install 命令 SHALL 使用 `findInstalledCustomSkill(skillName)` 检测 skill 是否已安装, 替代直接检查目标目录路径是否存在.  当 skill 已安装时, 系统 SHALL 按照已记录 source URL 与当前 install 路径是否一致区分处理:
-
-- **相同 URL** (归一化后 `normalizeLocalPath(info.url) === normalizeLocalPath(skillDir)`): 视为重新安装同一位置, 提示 overwrite 确认, 保持现有行为
-- **不同 URL**: 视为命名冲突(同 basename 不同目录), 系统 SHALL 报错终止安装, 错误文案 SHALL 明确指出已安装的原路径, 并引导用户使用 `skillsmgr update ./<name>` 进行 rebind
+install 命令 SHALL 使用 `findInstalledCustomSkill(skillName)` 检测 skill 是否已安装, 替代直接检查目标目录路径是否存在.  当 `findInstalledCustomSkill` 返回非 null 时, 系统 SHALL 使用返回的 `path` 作为 targetDir 并提示 overwrite 确认, 不再按"已记录 source URL 与当前 install 路径是否一致"分支处理 (不再有 URL 记录可供比较).
 
 `findInstalledCustomSkill` SHALL 支持两层查找: 先查 `custom/{name}/SKILL.md`, 再扫描 `custom/*/{name}/SKILL.md`.
 
-#### Scenario: Existing skill with same URL prompts overwrite
-- **WHEN** 用户执行 `skillsmgr install ./abc`, `findInstalledCustomSkill("abc")` 返回非 null, 且已记录 source 的 `url` 归一化后等于 `./abc` 的绝对路径
+install 本地 skill 完成后 SHALL NOT 向 `~/.skills-manager/sources.json` 写入 `installMethod: 'local-copy'` 条目.  `custom/<name>/` 磁盘目录本身就是此 skill 已安装的唯一权威证据.
+
+#### Scenario: Existing skill prompts overwrite
+- **WHEN** 用户执行 `skillsmgr install ./abc`, `findInstalledCustomSkill("abc")` 返回非 null
 - **THEN** 系统使用查找到的路径作为 targetDir, 提示 "Skill 'abc' already exists. Overwrite?"
 
 #### Scenario: User declines overwrite
 - **WHEN** 用户拒绝 overwrite 确认
 - **THEN** 系统输出 "Cancelled." 并以退出码 0 正常结束
 
-#### Scenario: Existing skill with different URL is rejected
-- **WHEN** 用户执行 `skillsmgr install /new/path/abc`, `findInstalledCustomSkill("abc")` 返回非 null, 已记录 source 的 `url` 归一化后为 `/old/path/abc` (不等于 `/new/path/abc`)
-- **THEN** 系统 SHALL 报错, 错误文案 SHALL 形如 `Error: Skill 'abc' is already installed from /old/path/abc. To move it to /new/path/abc, run: skillsmgr update /new/path/abc`
-- **AND** 系统 SHALL 以非 0 退出码终止, 不写入 `sources.json`, 不修改物理目录
+#### Scenario: User accepts overwrite from different path
+- **WHEN** 用户先后执行 `skillsmgr install /path/a/abc`, 再 `skillsmgr install /path/b/abc`, 第二次 `findInstalledCustomSkill("abc")` 返回非 null
+- **THEN** 系统 SHALL 提示 overwrite
+- **AND** 用户确认后, 从 `/path/b/abc` 覆盖已安装副本
+- **AND** 系统 SHALL NOT 报"URL mismatch"类错误 (已无 URL 记录可比较)
 
 #### Scenario: skill 在子目录中被找到
 - **WHEN** 用户执行 `skillsmgr install ./abc`, 且 `custom/abc/SKILL.md` 不存在, 但 `custom/openspec/abc/SKILL.md` 存在
-- **THEN** `findInstalledCustomSkill("abc")` SHALL 返回 `{ key: "custom/abc", path: "...custom/openspec/abc" }`
+- **THEN** `findInstalledCustomSkill("abc")` SHALL 返回 `{ key: "custom/openspec/abc", path: "...custom/openspec/abc" }`
+
+#### Scenario: Install 完成不写 sources.json
+- **WHEN** 用户执行 `skillsmgr install ./abc` 并完成拷贝
+- **THEN** `~/.skills-manager/sources.json` 的 `sources` 字段 SHALL NOT 包含 `custom/abc` 或任何 `installMethod === 'local-copy'` 的新条目
 
 ### Requirement: install --group 自动入组
 `install` 命令 SHALL 接受 `--group <name>` 选项.  安装完成后, 系统 SHALL 自动将已安装 skill 的 source key 添加到指定虚拟 group 中.  group 不存在时自动创建.  安装目标路径不受 `--group` 影响 (始终按来源类型决定路径).  批量安装本地目录时, 若未指定 `--group`, 系统 SHALL 自动使用源目录名作为 group 名.

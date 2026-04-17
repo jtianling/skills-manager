@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { Bundle, GroupEntry, SkillInfo } from '../types.js';
 import { SourceResolver } from './source-resolver.js';
 import { makeBundleId } from '../utils/url-normalize.js';
+import * as constants from '../constants.js';
 
 vi.mock('../utils/prompts.js', () => ({
   promptSelect: vi.fn().mockResolvedValue('community/acme/other/shared-skill'),
@@ -20,15 +21,23 @@ function createSkillDir(path: string, name: string): void {
 
 describe('SourceResolver', () => {
   let testRoot: string;
+  let testManagerDir: string;
 
   beforeEach(() => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     testRoot = join(tmpdir(), `skillsmgr-source-resolver-${id}`);
+    testManagerDir = join(tmpdir(), `skillsmgr-source-resolver-mgr-${id}`);
     mkdirSync(testRoot, { recursive: true });
+    mkdirSync(testManagerDir, { recursive: true });
+    Object.defineProperty(constants, 'SKILLS_MANAGER_DIR', {
+      value: testManagerDir,
+      writable: true,
+    });
   });
 
   afterEach(() => {
     rmSync(testRoot, { recursive: true, force: true });
+    rmSync(testManagerDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -87,14 +96,6 @@ describe('SourceResolver', () => {
               group.url.split('/').pop() === lookupBasename
             )
             .map(([name, group]) => ({ name, group })),
-        findLocalCopySourcesByBasename: (lookupBasename: string) =>
-          Object.entries(sources)
-            .filter(([key, info]) =>
-              info.installMethod === 'local-copy' &&
-              info.repoName === lookupBasename &&
-              key.split('/').length === 2
-            )
-            .map(([key, info]) => ({ key, info })),
       } as never,
       {
         getAllSkills: () => skills,
@@ -287,21 +288,15 @@ describe('SourceResolver', () => {
   });
 
   it('resolves local single-skill path and physical group batch path', async () => {
-    const singleSkillDir = join(testRoot, 'local-single');
+    const singleSkillDir = join(testRoot, 'workspace', 'local-single');
+    const installedSingleSkillDir = join(testManagerDir, 'custom', 'local-single');
     const batchDir = join(testRoot, 'spec-tdd');
     createSkillDir(singleSkillDir, 'local-single');
+    createSkillDir(installedSingleSkillDir, 'local-single');
     createSkillDir(join(batchDir, 'child-a'), 'child-a');
     createSkillDir(join(batchDir, 'child-b'), 'child-b');
 
     const resolver = createResolver({
-      sources: {
-        'custom/local-single': {
-          url: singleSkillDir,
-          type: 'custom',
-          repoName: 'local-single',
-          installMethod: 'local-copy',
-        },
-      },
       bundles: {
         [makeBundleId('local-batch', batchDir)]: {
           type: 'local-batch',
@@ -336,7 +331,7 @@ describe('SourceResolver', () => {
     });
     await expect(resolver.resolve(join(testRoot, 'missing-skill'))).resolves.toMatchObject({
       kind: 'not-found',
-      reason: expect.stringContaining('No installed skill found from path'),
+      reason: expect.stringContaining('Directory not found'),
     });
   });
 
@@ -517,33 +512,21 @@ describe('SourceResolver', () => {
     });
   });
 
-  it('returns a rebind candidate for a moved local single skill', async () => {
-    const oldDir = join(testRoot, 'old', 'my-lint');
+  it('resolves a moved local single skill by basename without rebind', async () => {
     const newDir = join(testRoot, 'new', 'my-lint');
+    const installedDir = join(testManagerDir, 'custom', 'my-lint');
     createSkillDir(newDir, 'my-lint');
+    createSkillDir(installedDir, 'my-lint');
 
-    const resolver = createResolver({
-      sources: {
-        'custom/my-lint': {
-          url: oldDir,
-          type: 'custom',
-          repoName: 'my-lint',
-          installMethod: 'local-copy',
-        },
-      },
-    });
+    const resolver = createResolver();
 
     await expect(resolver.resolve(newDir)).resolves.toMatchObject({
-      kind: 'rebind-candidate',
-      candidateType: 'source',
-      candidateKey: 'custom/my-lint',
-      candidateUrl: oldDir,
-      newAbsolutePath: newDir,
-      candidateStructureType: 'single',
+      kind: 'source',
+      sourceKeys: ['custom/my-lint'],
     });
   });
 
-  it('does not offer a rebind candidate for a new single skill when only a batch member shares the basename', async () => {
+  it('reports install guidance for a new single skill when only a batch member shares the basename', async () => {
     const oldBatchDir = join(testRoot, 'old', 'my-tools');
     const newSingleDir = join(testRoot, 'new', 'foo');
     createSkillDir(newSingleDir, 'foo');
@@ -571,30 +554,21 @@ describe('SourceResolver', () => {
 
     await expect(resolver.resolve(newSingleDir)).resolves.toMatchObject({
       kind: 'not-found',
-      reason: `No installed skill found from path: ${newSingleDir}`,
+      reason: `Skill 'foo' is not installed. Run: skillsmgr install ${newSingleDir}`,
     });
   });
 
-  it('rejects rebind when the old path still exists', async () => {
-    const oldDir = join(testRoot, 'old', 'my-lint');
+  it('prefers installed single-skill resolution over any previous path state', async () => {
     const newDir = join(testRoot, 'new', 'my-lint');
-    createSkillDir(oldDir, 'my-lint');
+    const installedDir = join(testManagerDir, 'custom', 'my-lint');
     createSkillDir(newDir, 'my-lint');
+    createSkillDir(installedDir, 'my-lint');
 
-    const resolver = createResolver({
-      sources: {
-        'custom/my-lint': {
-          url: oldDir,
-          type: 'custom',
-          repoName: 'my-lint',
-          installMethod: 'local-copy',
-        },
-      },
-    });
+    const resolver = createResolver();
 
     await expect(resolver.resolve(newDir)).resolves.toMatchObject({
-      kind: 'not-found',
-      reason: expect.stringContaining('(still exists)'),
+      kind: 'source',
+      sourceKeys: ['custom/my-lint'],
     });
   });
 

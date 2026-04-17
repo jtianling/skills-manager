@@ -15,6 +15,7 @@ import { SourceInfo, SourcesService } from './sources.js';
 import { SourceUpdater, UpdateResult } from './source-updater.js';
 import {
   createInstallResult,
+  findCustomSkillByKey,
   getCustomSkillDir,
   getCustomSkillKey,
   getLocalOverwriteMessage,
@@ -383,6 +384,12 @@ export class GroupManager {
       const direct = this.sourcesService.getSource(member);
       if (direct) {
         grouped.set(member, { info: direct });
+        continue;
+      }
+
+      if (member.split('/').length === 2 && findCustomSkillByKey(member)) {
+        console.log(`  ⚠ ${member}: local skill, run \`skillsmgr update ./path\` to update`);
+        result.skipped++;
         continue;
       }
 

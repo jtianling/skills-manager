@@ -217,28 +217,21 @@ describe('GroupManager', () => {
     expect(groupsService.getGroupMembers('tools')).toEqual(['custom/tdd-suite/alpha']);
   });
 
-  it('updates a virtual group across tracked members and skips dangling references', async () => {
+  it('skips top-level local skills and dangling references in virtual groups', async () => {
     const originalDir = join(tmpdir(), `skillsmgr-group-virtual-${Date.now()}`, 'foo');
     writeSkill(originalDir, 'foo', 'updated foo');
     writeSkill(join(testManagerDir, 'custom', 'foo'), 'foo', 'old foo');
 
     const groupsService = new GroupsService();
-    const sourcesService = new SourcesService();
     groupsService.addSkill('python', 'custom/foo');
     groupsService.addSkill('python', 'custom/missing');
-    sourcesService.addSource('custom/foo', {
-      url: originalDir,
-      type: 'custom',
-      repoName: 'foo',
-      installMethod: 'local-copy',
-    });
 
     const result = await new GroupManager().updateVirtualGroup('python');
 
-    expect(result.updated).toBe(1);
-    expect(result.skipped).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(result.skipped).toBe(2);
     expect(readFileSync(join(testManagerDir, 'custom', 'foo', 'SKILL.md'), 'utf-8')).toContain(
-      'updated foo',
+      'old foo',
     );
 
     rmSync(join(originalDir, '..'), { recursive: true, force: true });

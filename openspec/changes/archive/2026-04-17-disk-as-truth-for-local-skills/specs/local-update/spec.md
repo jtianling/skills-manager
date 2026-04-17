@@ -1,8 +1,4 @@
-# Local Update
-
-从原始路径更新 installMethod 为 `'local-copy'` 的已安装 skill.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 从原始路径更新 local-copy skill
 update 命令 SHALL 通过 `skillsmgr update <path>` 的显式路径参数更新 local-copy skill — 由用户在调用时提供原始路径, 系统 SHALL NOT 从 `sources.json` 读取记忆的 `url`.
@@ -50,8 +46,6 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 `resolveLocalPath` 对 single-skill 情形 SHALL 按 `findInstalledCustomSkill(basename)` 结果决定返回 kind: 'source' (已安装) 或 kind: 'not-found' (未安装), 不再查 sources.json 做 URL 匹配, 也不再为 single-skill 返回 `rebind-candidate` kind.
 
-物理 group 不再走旧的 bundle sync 路径 (该路径在新模型下被废弃, 仅 git bundle 保留).
-
 #### Scenario: 路径精确匹配物理 group
 - **WHEN** 用户执行 `skillsmgr update ./tdd-spec`, 解析为绝对路径后在 `groups.json` 中找到 `kind === 'local-batch'` 且 `url` 相等的物理 group
 - **THEN** 走 "物理 group update 默认源为真同步" 流程 (行为不变)
@@ -92,16 +86,14 @@ basename 匹配规则 (仅物理 group):
 多候选处理不变: basename 匹配返回 > 1 个候选时 SHALL 报错列出所有候选.
 
 #### Scenario: 物理 group 搬家后 rebind 成功
-- **GIVEN** 物理 group `tdd-spec`, `groups.json` 中 `url = /old/path/tdd-spec`, sources 含 `custom/tdd-spec/ts-apply` 等 8 条 (url 字段也指 `/old/path/tdd-spec`)
+- **GIVEN** 物理 group `tdd-spec`, `groups.json` 中 `url = /old/path/tdd-spec`
 - **AND** `/old/path/tdd-spec` 已不存在
 - **AND** `/new/path/tdd-spec/` 存在, 无根 SKILL.md, 但有 `ts-apply/SKILL.md` 等子目录
 - **WHEN** 用户执行 `skillsmgr update /new/path/tdd-spec`, 精确匹配失败
 - **THEN** 系统进入 basename fallback, 找到唯一候选物理 group
-- **AND** 确认旧路径不存在
-- **AND** 确认新路径为 batch 结构
 - **AND** prompt 用户确认 rebind
 - **WHEN** 用户确认
-- **THEN** 系统原子更新: `groups.json[tdd-spec].url` 为新路径; `sources.json` 中所有 `custom/tdd-spec/*` 的 `url` 也更新为新路径
+- **THEN** 系统原子更新 `groups.json[tdd-spec].url` 为新路径, sources.json 中 `custom/tdd-spec/*` 的 `url` 也同步更新
 - **AND** 系统继续执行物理 group update 同步
 
 #### Scenario: 单 skill 换路径不再走 rebind
@@ -133,43 +125,14 @@ basename 匹配规则 (仅物理 group):
 - **THEN** 系统 SHALL 报错 `Path type mismatch: existing local-batch group 'tdd-spec' is a batch, but <abs> looks like a single skill.`
 
 #### Scenario: basename 多候选报错列出
-- **GIVEN** `groups.json` 历史脏数据, 存在两个物理 group 基名都等于 `tdd-spec` 但 URL 不同 (理论上禁止, 但脏数据保护), 两者旧路径都不存在
+- **GIVEN** `groups.json` 脏数据: 两个物理 group basename 都等于 `tdd-spec` 且旧路径都不存在
 - **WHEN** 用户执行 `skillsmgr update /new/path/tdd-spec`
-- **THEN** 系统进入 basename fallback, 发现多个候选
-- **AND** 系统 SHALL 报错列出所有候选的 group 名和 URL, 提示用户手动清理后重试
+- **THEN** 系统 SHALL 报错列出所有候选, 提示手动清理
 
 #### Scenario: bareword update 不走 basename fallback
-- **WHEN** 用户执行 `skillsmgr update tdd-spec` (无 `./` 前缀, 无绝对路径)
-- **THEN** 系统按 bareword 解析: 优先匹配 group 名 → 命中物理 group `tdd-spec` → 直接走物理 group update
-- **AND** 不进入 basename fallback / rebind 流程
-
-### Requirement: 物理 group update 默认源为真同步
-
-`update` 命令对物理 group (顶层 `update <input>` 命中 group target 或 `group update <name>`) SHALL 默认以源目录为权威, 自动 diff 并同步:
-
-- `existing` (源 ∩ 目标): SKILL.md 内容比较, 不同则覆盖, 输出 `↑`; 相同则输出 `✓`
-- `added` (源 - 目标): 安装新 skill, 写入 sources.json, 输出 `+`
-- `orphaned` (目标 - 源): 默认删除物理目录 + sources entry + 清理逻辑 group 引用, 输出 `-`
-
-新增 `--keep-local` 选项: 保留 orphaned 的物理目录和 sources entry, 输出 `- (kept locally)`.
-
-旧 `--sync` 选项 SHALL 保留为 no-op 兼容标记 (默认行为已等同 sync).
-
-#### Scenario: 默认 sync 删除孤儿
-- **GIVEN** 物理 group `tdd-spec`, 源目录新增 `ts-renamed/`, 已有 `tdd-old/` 在源中已删除, 物理目录仍有
 - **WHEN** 用户执行 `skillsmgr update tdd-spec`
-- **THEN** `ts-renamed` 被 install 并加 sources entry, 输出 `+ ts-renamed`
-- **THEN** `tdd-old` 物理目录删除, sources entry 清理, 逻辑 group 引用清理, 输出 `- tdd-old`
-
-#### Scenario: --keep-local 保留孤儿
-- **GIVEN** 同上场景
-- **WHEN** 用户执行 `skillsmgr update tdd-spec --keep-local`
-- **THEN** `tdd-old` 物理目录和 sources entry 都保留, 输出 `- tdd-old (kept locally)`
-
-#### Scenario: --sync 兼容标记 no-op
-- **WHEN** 用户执行 `skillsmgr update tdd-spec --sync`
-- **THEN** 行为与不带 `--sync` 完全一致 (默认即 sync)
-- **THEN** 系统 SHALL 不报错, 视为兼容性 no-op
+- **THEN** 按 bareword 解析: 优先匹配 group 名 → 命中物理 group `tdd-spec` → 直接走物理 group update
+- **AND** 不进入 basename fallback / rebind 流程
 
 ### Requirement: 逻辑 group update 遍历 member
 
@@ -192,6 +155,8 @@ basename 匹配规则 (仅物理 group):
 - **WHEN** 用户执行 `skillsmgr update python`
 - **THEN** 输出 `⚠ custom/bar: dangling reference, skipped`
 - **THEN** 不计入 failed
+
+## ADDED Requirements
 
 ### Requirement: 裸 update 跳过 local-copy skill
 

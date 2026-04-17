@@ -20,6 +20,12 @@ describe('local install E2E', () => {
   async function setup(): Promise<void> {
   }
 
+  function getGroupMembers(groupName: string): string[] {
+    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
+    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    return groups.groups?.[groupName]?.members ?? groups[groupName] ?? [];
+  }
+
   function createLocalSkill(name: string, dir?: string): string {
     const skillDir = join(dir ?? env.projectDir, name);
     mkdirSync(skillDir, { recursive: true });
@@ -39,7 +45,7 @@ describe('local install E2E', () => {
     await tmux.waitForText(/Unknown source format/, 15_000);
   });
 
-  it('install ./name resolves to local directory and records metadata', async () => {
+  it('install ./name resolves to local directory without persisting local-copy metadata', async () => {
     await setup();
     createLocalSkill('my-local-skill');
 
@@ -51,9 +57,10 @@ describe('local install E2E', () => {
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sourcesPath = join(env.homeDir, '.skills-manager', 'sources.json');
-    const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
-    expect(sources.sources['custom/my-local-skill']).toBeDefined();
-    expect(sources.sources['custom/my-local-skill'].installMethod).toBe('local-copy');
+    if (existsSync(sourcesPath)) {
+      const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
+      expect(sources.sources['custom/my-local-skill']).toBeUndefined();
+    }
   });
 
   it('install ./path resolves to local directory', async () => {
@@ -80,12 +87,12 @@ describe('local install E2E', () => {
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sourcesPath = join(env.homeDir, '.skills-manager', 'sources.json');
-    const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
-    expect(sources.sources['custom/grouped-skill']).toBeDefined();
+    if (existsSync(sourcesPath)) {
+      const sources = JSON.parse(readFileSync(sourcesPath, 'utf-8'));
+      expect(sources.sources['custom/grouped-skill']).toBeUndefined();
+    }
 
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
-    expect(groups['my-tools']).toContain('custom/grouped-skill');
+    expect(getGroupMembers('my-tools')).toContain('custom/grouped-skill');
   });
 
   it('install ./nonexistent fails when directory does not exist', async () => {
@@ -132,10 +139,8 @@ describe('local install E2E', () => {
     const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'conflict-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
-    expect(groups['group-a']).toContain('custom/conflict-skill');
-    expect(groups['group-b']).toContain('custom/conflict-skill');
+    expect(getGroupMembers('group-a')).toContain('custom/conflict-skill');
+    expect(getGroupMembers('group-b')).toContain('custom/conflict-skill');
   });
 
   it('install zip with --group installs flat and records virtual group', async () => {
@@ -152,8 +157,6 @@ describe('local install E2E', () => {
     const targetDir = join(env.homeDir, '.skills-manager', 'custom', 'zip-grouped-skill');
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    const groups = JSON.parse(readFileSync(groupsPath, 'utf-8'));
-    expect(groups['zip-tools']).toContain('custom/zip-grouped-skill');
+    expect(getGroupMembers('zip-tools')).toContain('custom/zip-grouped-skill');
   });
 });

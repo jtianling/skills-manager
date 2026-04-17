@@ -12,7 +12,7 @@
 ## 常用命令
 
 - `skillsmgr install ./dir`: 安装 physical group。
-- `skillsmgr update <group-or-source>`: 如果输入命中 physical group, 默认以源目录为真同步。  需要保留本地孤儿成员时, 使用 `--keep-local`。
+- `skillsmgr update <group-or-source>`: 如果输入命中 physical group, 默认以源目录为真同步。  需要保留本地孤儿成员时, 使用 `--keep-local`。  单个本地 skill 必须用 `skillsmgr update ./path` 显式传入源目录。
 - `skillsmgr uninstall <group-or-source>`: 如果输入命中 physical group, 会按物理目录 + `sources.json` 记录的并集做清理。
 - `skillsmgr group install ./dir`: physical group 的显式入口。
 - `skillsmgr group update <name>`: physical group 走目录同步, virtual group 逐个 member 分发到各自的 update 路径。
@@ -22,7 +22,7 @@
 ## 存储边界
 
 - `groups.json`: 保存 group 元数据。  physical group 只保存 `kind`, `url`, `installedAt`, `updatedAt`。  virtual group 保存显式 `members`。
-- `sources.json`: 只保存 skill 级 source 元数据, 以及 git/zip bundle。  `local-batch` 不再写入 `bundles`。
+- `sources.json`: 只保存 git/registry/zip source 元数据, 以及 git/zip bundle。  `local-batch` 不再写入 `bundles`, 顶层单个本地 skill (`custom/<name>`) 也不再写入 `sources.json`。
 - `~/.skills-manager/custom/<name>/`: physical group 拥有的目录边界。  不要手动塞入无关文件或无关 skill, 否则 update 和 uninstall 会把它们视为该 physical group 的成员。
 
 ## 兼容与迁移
@@ -30,3 +30,4 @@
 - V1 `groups.json` 会自动升级到 V2 schema。
 - V2 `sources.json` 中的 `local-batch bundle` 会自动迁移为 physical group。
 - `skillsmgr update ./new-path/<same-name>` 可以在旧路径丢失后触发 rebind, 更新 physical group 的 `url` 和对应 `custom/<group>/*` source 记录。
+- 单个本地 skill 改为以磁盘为唯一真相源。  `skillsmgr install ./path` 不再写入 `sources.json`, 裸 `skillsmgr update` 也不会更新它们, CLI 会提示改用 `skillsmgr update ./path`。

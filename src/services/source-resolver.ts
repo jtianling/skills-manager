@@ -18,6 +18,7 @@ import {
   normalizeLocalPath,
 } from '../utils/url-normalize.js';
 import { GroupsService } from './groups.js';
+import { findInstalledCustomSkill } from '../commands/install-utils.js';
 
 export type ResolvedTargetKind =
   | 'source'
@@ -278,24 +279,27 @@ export class SourceResolver {
     const absolutePath = normalizeLocalPath(input);
     if (!fileExists(absolutePath)) {
       return createTarget(input, 'not-found', [], {
-        reason: `No installed skill found from path: ${absolutePath}`,
+        reason: `Directory not found: ${absolutePath}`,
       });
     }
 
     const rootSkillMd = join(absolutePath, 'SKILL.md');
     if (fileExists(rootSkillMd)) {
-      const matchedKeys = Object.entries(this.getAllSources())
-        .filter(
-          ([, info]) =>
-            info.installMethod === 'local-copy' &&
-            normalizeLocalPath(info.url) === absolutePath
-        )
-        .map(([key]) => key);
-
-      if (matchedKeys.length > 0) {
-        return createTarget(input, 'source', matchedKeys, {});
+      const skillName = basename(absolutePath);
+      const installed = findInstalledCustomSkill(skillName);
+      if (installed) {
+        return createTarget(input, 'source', [installed.key], {});
       }
-      return this.resolveLocalRebindCandidate(input, absolutePath, 'single');
+
+      const hasGroupCandidate =
+        this.sourcesService.findPhysicalGroupsByBasename(skillName).length > 0;
+      if (hasGroupCandidate) {
+        return this.resolveLocalRebindCandidate(input, absolutePath, 'single');
+      }
+
+      return createTarget(input, 'not-found', [], {
+        reason: `Skill '${skillName}' is not installed. Run: skillsmgr install ${input}`,
+      });
     }
 
     const hasNestedSkills = getDirectoriesInDir(absolutePath).some((dir) =>
@@ -415,15 +419,7 @@ export class SourceResolver {
         candidateUrl: normalizeLocalPath(group.url),
         candidateStructureType: 'batch' as const,
       }));
-    const sourceCandidates = this.sourcesService
-      .findLocalCopySourcesByBasename(lookupBasename)
-      .map(({ key, info }) => ({
-        candidateType: 'source' as const,
-        candidateKey: key,
-        candidateUrl: normalizeLocalPath(info.url),
-        candidateStructureType: 'single' as const,
-      }));
-    const candidates = [...groupCandidates, ...sourceCandidates];
+    const candidates = [...groupCandidates];
 
     if (candidates.length === 0) {
       return createTarget(input, 'not-found', [], {

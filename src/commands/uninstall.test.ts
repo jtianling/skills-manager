@@ -69,16 +69,15 @@ function createSkillDir(path: string, name?: string): void {
   }
 
   if (rel[0] === 'custom' && rel.length >= 2) {
-    const sourceKey = rel.length >= 3
-      ? `custom/${rel[1]}/${rel[2]}`
-      : `custom/${rel[1]}`;
-    const repoName = rel.length >= 3 ? rel[2] : rel[1];
-    sourcesService.addSource(sourceKey, {
-      url: path,
-      type: 'custom',
-      repoName,
-      installMethod: 'local-copy',
-    });
+    if (rel.length >= 3) {
+      const sourceKey = `custom/${rel[1]}/${rel[2]}`;
+      sourcesService.addSource(sourceKey, {
+        url: path,
+        type: 'custom',
+        repoName: rel[2],
+        installMethod: 'local-copy',
+      });
+    }
   }
 }
 

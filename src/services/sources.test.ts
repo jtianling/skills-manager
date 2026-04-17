@@ -156,6 +156,62 @@ describe('SourcesService', () => {
     expect(found!.url).toBe(normalized);
   });
 
+  it('rejects persisting top-level local-copy sources', () => {
+    expect(() =>
+      service.addSource('custom/jt-share', {
+        url: normalizeLocalPath('./fixtures/jt-share'),
+        type: 'custom',
+        repoName: 'jt-share',
+        installMethod: 'local-copy',
+      }),
+    ).toThrow(
+      'Refusing to persist local-copy source: custom/jt-share. Local skills are tracked by disk presence under custom/.',
+    );
+  });
+
+  it('filters top-level legacy local-copy sources on load but keeps physical-group members', () => {
+    writeFileSync(
+      sourcesFile,
+      JSON.stringify({
+        version: '3.0',
+        sources: {
+          'custom/jt-share': {
+            url: './fixtures/jt-share',
+            type: 'custom',
+            repoName: 'jt-share',
+            installMethod: 'local-copy',
+            installedAt: '2026-04-01T00:00:00.000Z',
+            updatedAt: '2026-04-01T00:00:00.000Z',
+          },
+          'custom/spec-tdd/ts-apply': {
+            url: './fixtures/spec-tdd',
+            type: 'custom',
+            repoName: 'ts-apply',
+            installMethod: 'local-copy',
+            installedAt: '2026-04-01T00:00:00.000Z',
+            updatedAt: '2026-04-01T00:00:00.000Z',
+          },
+          'community/acme/repo': {
+            url: 'https://github.com/acme/repo',
+            type: 'community',
+            repoName: 'repo',
+            installMethod: 'git',
+            installedAt: '2026-04-02T00:00:00.000Z',
+            updatedAt: '2026-04-02T00:00:00.000Z',
+          },
+        },
+        bundles: {},
+      }, null, 2),
+    );
+
+    const sources = service.getAllSources();
+
+    expect(sources['custom/jt-share']).toBeUndefined();
+    expect(sources['custom/spec-tdd/ts-apply']).toBeDefined();
+    expect(sources['community/acme/repo']).toBeDefined();
+    expect(readFileSync(sourcesFile, 'utf-8')).toContain('"custom/jt-share"');
+  });
+
   it('migrates V2 local-batch bundles into physical groups and writes backup', () => {
     writeFileSync(
       sourcesFile,
@@ -300,8 +356,10 @@ describe('SourcesService', () => {
       repoName: 'b',
       installMethod: 'local-copy',
     });
-    service.addSource('custom/other', {
-      url: normalizeLocalPath('./fixtures/other'),
+    createPhysicalSkill('other-tools', 'other');
+    groupsService.createLocalBatchGroup('other-tools', normalizeLocalPath('./fixtures/other-tools'));
+    service.addSource('custom/other-tools/other', {
+      url: normalizeLocalPath('./fixtures/other-tools'),
       type: 'custom',
       repoName: 'other',
       installMethod: 'local-copy',
@@ -325,8 +383,8 @@ describe('SourcesService', () => {
     expect(service.getSource('custom/spec-tdd/b')!.url).toBe(
       normalizeLocalPath('./fixtures/spec-tdd-renamed'),
     );
-    expect(service.getSource('custom/other')!.url).toBe(
-      normalizeLocalPath('./fixtures/other'),
+    expect(service.getSource('custom/other-tools/other')!.url).toBe(
+      normalizeLocalPath('./fixtures/other-tools'),
     );
   });
 

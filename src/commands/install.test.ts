@@ -51,7 +51,11 @@ describe('install command', () => {
   });
 
   function readSources() {
-    return JSON.parse(readFileSync(join(testManagerDir, 'sources.json'), 'utf-8'));
+    const path = join(testManagerDir, 'sources.json');
+    if (!existsSync(path)) {
+      return { version: '3.0', sources: {}, bundles: {} };
+    }
+    return JSON.parse(readFileSync(path, 'utf-8'));
   }
 
   function readGroups() {
@@ -81,12 +85,7 @@ describe('install command', () => {
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sources = readSources();
-    expect(sources.sources['custom/local-skill']).toMatchObject({
-      url: skillDir,
-      type: 'custom',
-      repoName: 'local-skill',
-      installMethod: 'local-copy',
-    });
+    expect(sources.sources['custom/local-skill']).toBeUndefined();
     expect(sources.bundles).toEqual({});
   });
 
@@ -102,12 +101,7 @@ describe('install command', () => {
     expect(existsSync(join(targetDir, 'SKILL.md'))).toBe(true);
 
     const sources = readSources();
-    expect(sources.sources['custom/grouped-local-skill']).toMatchObject({
-      url: skillDir,
-      type: 'custom',
-      repoName: 'grouped-local-skill',
-      installMethod: 'local-copy',
-    });
+    expect(sources.sources['custom/grouped-local-skill']).toBeUndefined();
 
     // Added to virtual group
     const groups = readGroups();
@@ -213,54 +207,26 @@ describe('install command', () => {
     mkdirSync(existingDir, { recursive: true });
     writeFileSync(join(existingDir, 'SKILL.md'), '---\nname: overwrite-skill\n---\nold');
 
-    const sourcesService = new SourcesService();
-    sourcesService.addSource('custom/overwrite-skill', {
-      url: skillDir,
-      type: 'custom',
-      repoName: 'overwrite-skill',
-      installMethod: 'local-copy',
-    });
-
     await executeInstall('./overwrite-skill', {});
 
     expect(readFileSync(join(existingDir, 'SKILL.md'), 'utf-8')).toContain('new');
   });
 
-  it('rejects reinstalling the same skill name from a different local path', async () => {
-    const oldDir = join(tmpdir(), `skillsmgr-install-old-${Date.now()}`, 'abc');
+  it('overwrites an existing same-name local skill from a different path', async () => {
     const newDir = join(testProjectDir, 'abc');
-    mkdirSync(oldDir, { recursive: true });
     mkdirSync(newDir, { recursive: true });
-    writeFileSync(join(oldDir, 'SKILL.md'), '---\nname: abc\n---\nold');
     writeFileSync(join(newDir, 'SKILL.md'), '---\nname: abc\n---\nnew');
 
     const existingDir = join(testManagerDir, 'custom', 'abc');
     mkdirSync(existingDir, { recursive: true });
-    writeFileSync(join(existingDir, 'SKILL.md'), 'installed');
+    writeFileSync(join(existingDir, 'SKILL.md'), 'old');
 
-    const sourcesService = new SourcesService();
-    sourcesService.addSource('custom/abc', {
-      url: oldDir,
-      type: 'custom',
-      repoName: 'abc',
-      installMethod: 'local-copy',
-    });
+    await executeInstall('./abc', {});
 
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit');
-    }) as never);
-
-    await expect(executeInstall('./abc', {})).rejects.toThrow('process.exit');
-    expect(console.error).toHaveBeenCalledWith(
-      `Error: Skill 'abc' is already installed from ${oldDir}. ` +
-      `To move it to ${newDir}, run: skillsmgr update ${newDir}`,
-    );
-    expect(readFileSync(join(existingDir, 'SKILL.md'), 'utf-8')).toBe('installed');
-    mockExit.mockRestore();
-    rmSync(join(oldDir, '..'), { recursive: true, force: true });
+    expect(readFileSync(join(existingDir, 'SKILL.md'), 'utf-8')).toContain('new');
   });
 
-  it('installs a single local skill even when a same-name batch member already exists', async () => {
+  it('overwrites a same-name batch member when installing a single local skill', async () => {
     const batchDir = join(tmpdir(), `skillsmgr-batch-member-${Date.now()}`, 'tdd-spec');
     const singleDir = join(testProjectDir, 'child-a');
     mkdirSync(batchDir, { recursive: true });
@@ -283,15 +249,11 @@ describe('install command', () => {
 
     await executeInstall('./child-a', {});
 
-    expect(existsSync(join(testManagerDir, 'custom', 'child-a', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(testManagerDir, 'custom', 'child-a', 'SKILL.md'))).toBe(false);
+    expect(readFileSync(join(existingBatchMemberDir, 'SKILL.md'), 'utf-8')).toContain('single');
 
     const sources = readSources();
-    expect(sources.sources['custom/child-a']).toMatchObject({
-      url: singleDir,
-      type: 'custom',
-      repoName: 'child-a',
-      installMethod: 'local-copy',
-    });
+    expect(sources.sources['custom/child-a']).toBeUndefined();
     expect(sources.sources['custom/tdd-spec/child-a']).toMatchObject({
       url: batchDir,
       type: 'custom',
@@ -302,39 +264,17 @@ describe('install command', () => {
     rmSync(join(batchDir, '..'), { recursive: true, force: true });
   });
 
-  it('rejects reinstalling a top-level skill from a different local path', async () => {
-    const oldDir = join(tmpdir(), `skillsmgr-install-old-top-${Date.now()}`, 'child-a');
+  it('overwrites a top-level skill from a different local path', async () => {
     const newDir = join(testProjectDir, 'child-a');
-    mkdirSync(oldDir, { recursive: true });
     mkdirSync(newDir, { recursive: true });
-    writeFileSync(join(oldDir, 'SKILL.md'), '---\nname: child-a\n---\nold');
     writeFileSync(join(newDir, 'SKILL.md'), '---\nname: child-a\n---\nnew');
 
     const existingDir = join(testManagerDir, 'custom', 'child-a');
     mkdirSync(existingDir, { recursive: true });
     writeFileSync(join(existingDir, 'SKILL.md'), 'installed');
 
-    const sourcesService = new SourcesService();
-    sourcesService.addSource('custom/child-a', {
-      url: oldDir,
-      type: 'custom',
-      repoName: 'child-a',
-      installMethod: 'local-copy',
-    });
-
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit');
-    }) as never);
-
-    await expect(executeInstall('./child-a', {})).rejects.toThrow('process.exit');
-    expect(console.error).toHaveBeenCalledWith(
-      `Error: Skill 'child-a' is already installed from ${oldDir}. ` +
-      `To move it to ${newDir}, run: skillsmgr update ${newDir}`,
-    );
-    expect(readFileSync(join(existingDir, 'SKILL.md'), 'utf-8')).toBe('installed');
-
-    mockExit.mockRestore();
-    rmSync(join(oldDir, '..'), { recursive: true, force: true });
+    await executeInstall('./child-a', {});
+    expect(readFileSync(join(existingDir, 'SKILL.md'), 'utf-8')).toContain('new');
   });
 
   describe('batch install from directory', () => {
@@ -439,14 +379,6 @@ describe('install command', () => {
       const singleSourceDir = join(tmpdir(), `skillsmgr-single-source-${Date.now()}`, 'tdd-spec');
       mkdirSync(singleSourceDir, { recursive: true });
       writeFileSync(join(singleSourceDir, 'SKILL.md'), '---\nname: tdd-spec\n---\n');
-
-      const sourcesService = new SourcesService();
-      sourcesService.addSource('custom/tdd-spec', {
-        url: singleSourceDir,
-        type: 'custom',
-        repoName: 'tdd-spec',
-        installMethod: 'local-copy',
-      });
 
       const batchDir = join(testProjectDir, 'tdd-spec');
       createSkillDir(batchDir, 'child-a');

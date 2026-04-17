@@ -65,20 +65,22 @@ function removeSkills(
 ): void {
   const affectedPhysicalGroups = new Set<string>();
   for (const skill of skills) {
+    const skillKey = `${skill.source}/${skill.name}`;
     removeDir(skill.path);
 
     const skillParent = join(skill.path, '..');
-    const sourceParts = skill.source.split('/');
+    const sourceParts = skillKey.split('/');
     const categoryDir = join(SKILLS_MANAGER_DIR, sourceParts[0]);
 
     cleanEmptyParents(skillParent, categoryDir);
     cleanSourcesForDir(skill.source, sourcesService);
-    groupsService.removeSkillFromAll(`${skill.source}/${skill.name}`);
-    console.log(`Removed: ${skill.name}`);
-
-    if (sourceParts[0] === 'custom' && sourceParts.length === 2) {
+    if (sourceParts[0] === 'custom' && sourceParts.length === 3) {
+      cleanSourcesForDir(skillKey, sourcesService);
       affectedPhysicalGroups.add(sourceParts[1]);
     }
+
+    groupsService.removeSkillFromAll(skillKey);
+    console.log(`Removed: ${skill.name}`);
   }
 
   for (const groupName of affectedPhysicalGroups) {

@@ -14,8 +14,10 @@ import { SourcesService } from '../services/sources.js';
 import { SourceUpdater, UpdateResult } from '../services/source-updater.js';
 import { SkillsService } from '../services/skills.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
+import { fileExists, getDirectoriesInDir } from '../utils/fs.js';
 import { promptConfirm } from '../utils/prompts.js';
 import { detectSourceType } from '../utils/source-detection.js';
+import { normalizeLocalPath } from '../utils/url-normalize.js';
 import { ensureSetup } from './setup.js';
 
 const groupsService = new GroupsService();
@@ -46,6 +48,32 @@ interface UpdateOptions {
   keepLocal?: boolean;
   verbose?: boolean;
   force?: boolean;
+}
+
+function isTopLevelCustomSourceKey(key: string): boolean {
+  return key.startsWith('custom/') && key.split('/').length === 2;
+}
+
+function getResolvedSkillSourceKeys(target: ResolvedTarget): string[] {
+  const skills = target.skills ?? [];
+  const keys = skills.map((skill) =>
+    skill.source.startsWith('custom')
+      ? `${skill.source}/${skill.name}`
+      : skill.source,
+  );
+
+  return [...new Set(keys)];
+}
+
+function countStandaloneLocalSkills(): number {
+  const customDir = `${SKILLS_MANAGER_DIR}/custom`;
+  if (!fileExists(customDir)) {
+    return 0;
+  }
+
+  return getDirectoriesInDir(customDir)
+    .filter((entry) => fileExists(`${entry.path}/SKILL.md`))
+    .length;
 }
 
 function isRebindCandidate(
@@ -201,8 +229,9 @@ export async function executeUpdateWithOptions(
   await ensureSetup();
 
   let allSources = sourcesService.getAllSources();
+  const skippedLocalCount = source ? 0 : countStandaloneLocalSkills();
 
-  if (Object.keys(allSources).length === 0) {
+  if (!source && Object.keys(allSources).length === 0 && skippedLocalCount === 0) {
     console.log('No installed sources found.');
     console.log('\nRun: skillsmgr install anthropics/skills');
     return;
@@ -287,13 +316,24 @@ export async function executeUpdateWithOptions(
     }
 
     const sourceKeys = target.kind === 'skill'
-      ? [...new Set((target.skills ?? []).map((skill) => skill.source))]
+      ? getResolvedSkillSourceKeys(target)
       : target.sourceKeys;
     const totals: UpdateResult = { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
+    const sourceType = detectSourceType(source);
 
     for (const key of sourceKeys) {
       const info = allSources[key];
       if (!info) {
+        if (sourceType === 'local-path' && isTopLevelCustomSourceKey(key)) {
+          console.log(`Updating ${key}...\n`);
+          const result = sourceUpdater.updateLocalPath(key, normalizeLocalPath(source));
+          totals.updated += result.updated;
+          totals.upToDate += result.upToDate;
+          totals.failed += result.failed;
+          totals.skipped += result.skipped;
+          continue;
+        }
+
         totals.failed++;
         continue;
       }
@@ -317,6 +357,9 @@ export async function executeUpdateWithOptions(
       `\nDone! ${totals.updated} updated, ${totals.upToDate} up to date, ` +
         `${totals.failed} failed, ${totals.skipped} skipped`
     );
+    if (totals.failed > 0) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -329,6 +372,10 @@ export async function executeUpdateWithOptions(
   let totalSkipped = 0;
 
   for (const [key, info] of Object.entries(allSources)) {
+    if (info.installMethod === 'local-copy') {
+      continue;
+    }
+
     console.log(`${key}:`);
     const result = await sourceUpdater.updateSource(key, info);
     totalUpdated += result.updated;
@@ -339,6 +386,14 @@ export async function executeUpdateWithOptions(
   }
 
   console.log(`Done! ${totalUpdated} updated, ${totalUpToDate} up to date, ${totalFailed} failed, ${totalSkipped} skipped`);
+  if (skippedLocalCount > 0) {
+    console.log(
+      `${skippedLocalCount} local skill(s) skipped. Use \`skillsmgr update ./path\` to update a local skill.`,
+    );
+  }
+  if (totalFailed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 export const updateCommand = new Command('update')

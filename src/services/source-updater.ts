@@ -56,10 +56,12 @@ export class SourceUpdater {
     return join(info.url, parts[2]);
   }
 
-  updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
+  private syncLocalPath(
+    key: string,
+    originalPath: string,
+  ): UpdateResult {
     const result = createEmptyUpdateResult();
     const skillName = key.split('/').pop() || key;
-    const originalPath = this.resolveLocalCopyOriginalPath(key, info);
 
     if (!fileExists(originalPath)) {
       console.log(`  ⚠ ${skillName}: original path not found: ${originalPath}`);
@@ -93,7 +95,23 @@ export class SourceUpdater {
     warnScriptFiles(findScriptFiles(targetDir));
     console.log(`  ↑ ${skillName}: updated`);
     result.updated++;
-    this.sourcesService.updateTimestamp(key);
+    return result;
+  }
+
+  updateLocalPath(key: string, originalPath: string): UpdateResult {
+    return this.syncLocalPath(key, originalPath);
+  }
+
+  updateLocalCopy(key: string, info: SourceInfo): UpdateResult {
+    const result = this.syncLocalPath(
+      key,
+      this.resolveLocalCopyOriginalPath(key, info),
+    );
+
+    if (result.updated > 0) {
+      this.sourcesService.updateTimestamp(key);
+    }
+
     return result;
   }
 

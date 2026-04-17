@@ -325,7 +325,7 @@ npx skillsmgr remove code-review -g -a claude-code
 - `custom/`: local skills and skills explicitly installed as custom
 - `registry/`: skills installed from skillsmgr.dev registry
 - `groups.json`: physical and virtual group definitions managed by `group` commands
-- `sources.json`: skill-level source metadata, plus git/zip bundle metadata used by `update`
+- `sources.json`: git/registry/zip source metadata, plus git/zip bundle metadata used by `update`.  Single local installs under `custom/<name>/` are tracked by disk presence only, not by `sources.json`
 - `auth.json`: registry authentication token
 
 See [docs/group-first-class-unit.md](docs/group-first-class-unit.md) for the physical vs virtual group model, migration behavior, and the ownership boundary of `~/.skills-manager/custom/<name>/`.

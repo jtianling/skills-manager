@@ -61,7 +61,12 @@ describe('list --json', () => {
       expect.objectContaining({ name: 'code-review', source: 'official/anthropic/skills' }),
     );
     expect(parsed.skills).toContainEqual(
-      expect.objectContaining({ name: 'my-tool', source: 'custom' }),
+      expect.objectContaining({
+        name: 'my-tool',
+        source: 'custom',
+        url: null,
+        installMethod: 'local-copy',
+      }),
     );
   });
 

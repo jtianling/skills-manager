@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
 import { tmpdir } from 'os';
 import { GroupManager } from '../services/group-manager.js';
-import { formatReinstallConflictMessage } from '../services/group-conflict-messages.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
 import { copyDir, fileExists, findScriptFiles, removeDir, warnScriptFiles } from '../utils/fs.js';
@@ -26,10 +25,6 @@ const groupManager = new GroupManager();
 
 function isBareLocalSource(input: string): boolean {
   return !input.includes('/') && !input.startsWith('~');
-}
-
-function isTopLevelCustomSkillKey(sourceKey: string): boolean {
-  return sourceKey.split('/').length === 2;
 }
 
 export function resolveLocalSourcePath(input: string): string {
@@ -55,23 +50,9 @@ export async function installFromLocalDir(source: string, options: InstallOption
   let targetDir: string;
   let sourceKey: string;
 
-  if (existing && isTopLevelCustomSkillKey(existing.key)) {
+  if (existing) {
     targetDir = existing.path;
     sourceKey = existing.key;
-    const existingSource = sourcesService.getSource(sourceKey);
-    if (
-      existingSource?.installMethod === 'local-copy' &&
-      normalizeLocalPath(existingSource.url) !== skillDir
-    ) {
-      throw new Error(
-        formatReinstallConflictMessage(
-          'Skill',
-          skillName,
-          normalizeLocalPath(existingSource.url),
-          skillDir,
-        ),
-      );
-    }
   } else {
     targetDir = getCustomSkillDir(skillName);
     sourceKey = getCustomSkillKey(skillName);
@@ -83,13 +64,6 @@ export async function installFromLocalDir(source: string, options: InstallOption
   }
 
   installSingleSkillToLocalTarget(skillDir, targetDir);
-
-  sourcesService.addSource(sourceKey, {
-    url: skillDir,
-    type: 'custom',
-    repoName: skillName,
-    installMethod: 'local-copy',
-  });
 
   console.log(`✓ Installed skill '${skillName}' to ${targetDir}`);
   return createInstallResult([targetDir], [sourceKey]);

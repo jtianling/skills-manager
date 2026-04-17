@@ -58,6 +58,13 @@ interface StoredSourcesData {
   bundles: Record<string, Bundle>;
 }
 
+function isTopLevelLocalCopySource(
+  key: string,
+  info: Pick<SourceInfo, 'installMethod'>,
+): boolean {
+  return info.installMethod === 'local-copy' && key.split('/').length === 2;
+}
+
 function isStoredSourcesData(data: unknown): data is StoredSourcesData {
   if (data === null || typeof data !== 'object') {
     return false;
@@ -139,7 +146,19 @@ export class SourcesService {
 
     return {
       version,
-      sources: data.sources ?? {},
+      sources: Object.entries(data.sources ?? {}).reduce<Record<string, SourceInfo>>(
+        (acc, [key, info]) => {
+          if (isTopLevelLocalCopySource(key, info)) {
+            return acc;
+          }
+
+          return {
+            ...acc,
+            [key]: info,
+          };
+        },
+        {},
+      ),
       bundles,
     };
   }
@@ -296,6 +315,13 @@ export class SourcesService {
   }
 
   addSource(key: string, info: Omit<SourceInfo, 'installedAt' | 'updatedAt'>): void {
+    if (isTopLevelLocalCopySource(key, info)) {
+      throw new Error(
+        `Refusing to persist local-copy source: ${key}. ` +
+        'Local skills are tracked by disk presence under custom/.',
+      );
+    }
+
     const data = this.load();
     const now = new Date().toISOString();
 
@@ -450,18 +476,6 @@ export class SourcesService {
     basename: string,
   ): Array<{ name: string; group: Extract<GroupEntry, { kind: 'local-batch' }> }> {
     return this.groupsService.findPhysicalGroupsByBasename(basename);
-  }
-
-  findLocalCopySourcesByBasename(
-    basename: string,
-  ): Array<{ key: string; info: SourceInfo }> {
-    return Object.entries(this.getAllSources())
-      .filter(([key, info]) =>
-        info.installMethod === 'local-copy' &&
-        info.repoName === basename &&
-        key.split('/').length === 2
-      )
-      .map(([key, info]) => ({ key, info }));
   }
 
   findBundleByUrl(normalizedUrl: string, type: BundleType): Bundle | undefined {

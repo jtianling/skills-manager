@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
+import { SourcesService } from '../services/sources.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ListOptions } from '../types.js';
@@ -22,13 +23,25 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
   const skills = skillsService.getAllSkills();
 
   if (options.json) {
+    const sourcesService = new SourcesService();
+    const allSources = sourcesService.getAllSources();
+
     jsonOutput({
-      skills: skills.map((s) => ({
-        name: s.name,
-        source: s.source,
-        category: s.source.split('/')[0],
-        path: s.path,
-      })),
+      skills: skills.map((s) => {
+        const skillKey = `${s.source}/${s.name}`;
+        const isCustom = s.source.startsWith('custom');
+        const sourceInfo = allSources[s.source] ?? allSources[skillKey];
+
+        return {
+          name: s.name,
+          source: s.source,
+          category: s.source.split('/')[0],
+          path: s.path,
+          url: sourceInfo?.url ?? null,
+          installMethod:
+            sourceInfo?.installMethod ?? (isCustom ? 'local-copy' : null),
+        };
+      }),
     });
     return;
   }
