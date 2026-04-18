@@ -2,7 +2,7 @@
 
 Change 2 (`add-deployment-manifest`) 让每个项目自己知道"我 follow 了什么, pin 了什么".  但 `skillsmgr update` 完成后只能笼统提示, 无法定向到具体项目.  这让用户在多项目场景下很容易漏刷某个项目.
 
-本 change 在用户目录加一张全局注册表, 作为 "哪些项目 deploy 了什么" 的索引.  注册表是 **派生数据** (可重建), 不代表真实状态 — 真实状态永远在各项目的 `.skills-manager/deployment.json` 里.  注册表的任务是加速反查, 不是真相源.
+本 change 在用户目录加一张全局注册表, 作为 "哪些项目 deploy 了什么" 的索引.  注册表是 **派生数据** (可重建), 不代表真实状态 — 真实状态永远在各项目的 `skillsmgr-deploy.json` 里.  注册表的任务是加速反查, 不是真相源.
 
 ## Goals / Non-Goals
 
@@ -44,7 +44,7 @@ Change 2 (`add-deployment-manifest`) 让每个项目自己知道"我 follow 了�
 ### Decision 2: deploy/refresh 写入注册表
 
 一处写入两个地方:
-1. 项目 `.skills-manager/deployment.json` (Change 2 行为)
+1. 项目 `skillsmgr-deploy.json` (Change 2 行为)
 2. 全局 `~/.skills-manager/deployments.json` 里对应条目 (本 change 新增)
 
 为保证两者一致, 实现上由 `DeploymentManifestService` 内部协调调用 `DeploymentsRegistryService`, 外部看是单次 "write" 调用.  任一失败 → 报错, manifest 优先写 (项目侧是真相源), registry 失败只 warn (派生数据, 不 block 用户).
@@ -121,7 +121,7 @@ skillsmgr deployments remove <path>  # 精准删除
 
 - 无破坏性; 从 Change 2 的笼统提示升级为精确提示, 提示内容变好
 - 已有用户: 
-  - 有 `.skills-manager/deployment.json` 的项目但无全局注册表条目 → 下次 `deploy` 或 `deploy --refresh` 时回填
+  - 有 `skillsmgr-deploy.json` 的项目但无全局注册表条目 → 下次 `deploy` 或 `deploy --refresh` 时回填
   - 用户可选 `skillsmgr deployments adopt` (本 change 不做, 延后扩展)
 - 回滚: 删除 `~/.skills-manager/deployments.json` 即可; 项目侧 manifest 无影响
 

@@ -155,7 +155,7 @@ Prune 只删注册表条目, **不**触达项目 manifest 或 `.agents/skills/` 
 #### Scenario: 精准移除
 - **WHEN** 用户执行 `skillsmgr deployments remove /path/a`
 - **THEN** 注册表中 `/path/a` 条目 SHALL 被移除
-- **AND** `/path/a/.skills-manager/deployment.json` SHALL 保持不变
+- **AND** `/path/a/skillsmgr-deploy.json` SHALL 保持不变
 
 #### Scenario: 路径不存在于注册表
 - **WHEN** 用户执行 `skillsmgr deployments remove /not-registered`

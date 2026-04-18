@@ -356,7 +356,7 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
   }
 
   if (!manifest) {
-    const msg = `No deployment manifest found at ${join(projectRoot, '.skills-manager', 'deployment.json')}.  Run \`skillsmgr deploy\` first to create one.`;
+    const msg = `No deployment manifest found at ${join(projectRoot, 'skillsmgr-deploy.json')}.  Run \`skillsmgr deploy\` first to create one.`;
     if (options.json) {
       jsonError(msg, 'NO_MANIFEST');
     } else {

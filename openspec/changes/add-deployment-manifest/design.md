@@ -12,7 +12,7 @@
 
 **Goals:**
 - 区分 follow 和 pinned 语义, 各自可独立使用或组合
-- 单一文件项目根 `.skills-manager/deployment.json`, schema 简单明确
+- 单一文件项目根 `skillsmgr-deploy.json`, schema 简单明确
 - `deploy --refresh` 幂等, 可重复运行, 不依赖任何交互
 - 交互式 `deploy` 不引入 follow UX (保持最小改动), follow 仅由 CLI flag 声明
 - update 输出笼统提示, 不强制推动用户 (尊重多项目自治)
@@ -83,7 +83,7 @@ skillsmgr deploy --all
 ### Decision 4: refresh 的原子性和冲突处理
 
 `deploy --refresh` 步骤:
-1. 读取 `.skills-manager/deployment.json`, 无文件 → 报错指引 "Run `skillsmgr deploy` first to create the manifest."
+1. 读取 `skillsmgr-deploy.json`, 无文件 → 报错指引 "Run `skillsmgr deploy` first to create the manifest."
 2. 解析 followGroups + pinnedSkills, 计算 `expected_set` (跳过已删除的 group, warn 但不 fail)
 3. 扫描 `.agents/skills/` 当前状态, 计算 `current_set`
 4. 计算 `to_add = expected \ current`, `to_remove = current \ expected - unmanaged`
@@ -101,11 +101,11 @@ Note: if projects follow this bundle's group, run `skillsmgr deploy --refresh` i
 
 不枚举具体项目路径 (留给 Change 3).  不强制停顿, 不交互.
 
-### Decision 6: manifest 位置 `.skills-manager/deployment.json`
+### Decision 6: manifest 位置 `skillsmgr-deploy.json`
 
-- 放在项目根 `.skills-manager/` 子目录而非根 `.deployment.json`, 留出将来扩展空间 (未来可能再加 `cache.json`, `lock.json` 等)
-- 目录不存在时自动创建
-- 建议用户 `.gitignore` 加 `.skills-manager/`, 但**不强制**, manifest 可入仓 (项目标准化场景): 如果用户 commit manifest, 多机器执行 `deploy --refresh` 可复现项目部署状态.  这是额外收益
+- 直接放在项目根, 不再套 `.skills-manager/` 子目录.  文件本身即作为"此目录是 skillsmgr 部署目标"的标记, 将来可被其他命令用于反查项目部署目录
+- 项目根目录必然存在 (用户在项目内执行命令), 无需额外 mkdir
+- 建议用户 `.gitignore` 加 `skillsmgr-deploy.json`, 但**不强制**, manifest 可入仓 (项目标准化场景): 如果用户 commit manifest, 多机器执行 `deploy --refresh` 可复现项目部署状态.  这是额外收益
 
 ## Risks / Trade-offs
 
@@ -121,7 +121,7 @@ Note: if projects follow this bundle's group, run `skillsmgr deploy --refresh` i
 - 无破坏性变更
 - 已部署项目: 没 manifest 时, 现有交互式 `deploy` 仍可用, 下次部署自动创建 manifest
 - `deploy --refresh` 在无 manifest 时给出明确指引 (error message 非 0 exit)
-- 回滚: 删除项目的 `.skills-manager/deployment.json` 即可; manifest 是纯附加, 不影响已部署文件
+- 回滚: 删除项目的 `skillsmgr-deploy.json` 即可; manifest 是纯附加, 不影响已部署文件
 
 ## Open Questions
 

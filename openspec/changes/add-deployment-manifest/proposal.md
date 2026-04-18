@@ -9,7 +9,7 @@
 
 ## What Changes
 
-- **新增** 项目根 `.skills-manager/deployment.json` 清单文件, 结构:
+- **新增** 项目根 `skillsmgr-deploy.json` 清单文件, 结构:
   ```json
   {
     "mode": "link" | "copy",
@@ -43,4 +43,4 @@
 - `src/commands/update.ts` (或 `src/services/bundle-manager.ts` 调用处): 检测 members 变化后追加一行提示
 - 新增测试: `src/services/deployment-manifest.test.ts`, `src/commands/deploy.test.ts` (新增 flag 和 refresh 行为)
 - 向后兼容: 现有已部署项目没有 manifest → 下一次 `deploy` 时被创建; `deploy --refresh` 在无 manifest 时报错指引用户先跑一次普通 deploy
-- 用户 `.gitignore` 建议加 `.skills-manager/` (design 里讨论)
+- 用户 `.gitignore` 建议加 `skillsmgr-deploy.json` (design 里讨论)

@@ -149,7 +149,7 @@ describe('deploy command', () => {
     } {
       return JSON.parse(
         require('fs').readFileSync(
-          join(testProjectDir, '.skills-manager', 'deployment.json'),
+          join(testProjectDir, 'skillsmgr-deploy.json'),
           'utf-8',
         ),
       );
@@ -182,7 +182,7 @@ describe('deploy command', () => {
       ).rejects.toThrow('process.exit');
 
       expect(mockExit).toHaveBeenCalledWith(1);
-      expect(existsSync(join(testProjectDir, '.skills-manager', 'deployment.json'))).toBe(false);
+      expect(existsSync(join(testProjectDir, 'skillsmgr-deploy.json'))).toBe(false);
     });
 
     it('--follow-group filters group skills from prompt and deploys them', async () => {
@@ -229,9 +229,8 @@ describe('deploy command', () => {
 
     it('--refresh aligns deployed skills to manifest', async () => {
       writeGroupsJson({ dev: ['custom/my-skill', 'official/anthropic/skills/code-review'] });
-      mkdirSync(join(testProjectDir, '.skills-manager'), { recursive: true });
       writeFileSync(
-        join(testProjectDir, '.skills-manager', 'deployment.json'),
+        join(testProjectDir, 'skillsmgr-deploy.json'),
         JSON.stringify({
           mode: 'link',
           followGroups: ['dev'],
@@ -274,9 +273,8 @@ describe('deploy command', () => {
         JSON.stringify({ dev: ['custom/my-skill'] }),
       );
 
-      mkdirSync(join(testProjectDir, '.skills-manager'), { recursive: true });
       writeFileSync(
-        join(testProjectDir, '.skills-manager', 'deployment.json'),
+        join(testProjectDir, 'skillsmgr-deploy.json'),
         JSON.stringify({
           mode: 'link',
           followGroups: ['dev'],
@@ -327,9 +325,8 @@ describe('deploy command', () => {
 
     it('--refresh updates global registry lastDeployedAt', async () => {
       writeGroupsJson({ dev: ['custom/my-skill'] });
-      mkdirSync(join(testProjectDir, '.skills-manager'), { recursive: true });
       writeFileSync(
-        join(testProjectDir, '.skills-manager', 'deployment.json'),
+        join(testProjectDir, 'skillsmgr-deploy.json'),
         JSON.stringify({
           mode: 'link',
           followGroups: ['dev'],
@@ -366,9 +363,8 @@ describe('deploy command', () => {
 
     it('--refresh warns on missing follow group and skips it', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      mkdirSync(join(testProjectDir, '.skills-manager'), { recursive: true });
       writeFileSync(
-        join(testProjectDir, '.skills-manager', 'deployment.json'),
+        join(testProjectDir, 'skillsmgr-deploy.json'),
         JSON.stringify({
           mode: 'link',
           followGroups: ['gone'],

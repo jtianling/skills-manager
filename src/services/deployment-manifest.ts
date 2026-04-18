@@ -1,5 +1,5 @@
-import { join, dirname } from 'path';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { renameSync, writeFileSync } from 'fs';
 import { fileExists, readFileContent } from '../utils/fs.js';
 import { SkillInfo } from '../types.js';
 import { GroupsService } from './groups.js';
@@ -18,15 +18,14 @@ export interface ResolvedExpectedSkills {
   warnings: string[];
 }
 
-const MANIFEST_DIR = '.skills-manager';
-const MANIFEST_FILE = 'deployment.json';
+export const MANIFEST_FILE = 'skillsmgr-deploy.json';
 
 export function skillToKey(skill: SkillInfo): string {
   return `${skill.source}/${skill.name}`;
 }
 
 export function getManifestPath(projectRoot: string): string {
-  return join(projectRoot, MANIFEST_DIR, MANIFEST_FILE);
+  return join(projectRoot, MANIFEST_FILE);
 }
 
 function normalizeManifest(parsed: unknown): DeploymentManifest {
@@ -64,10 +63,6 @@ export class DeploymentManifestService {
 
   writeManifest(projectRoot: string, manifest: DeploymentManifest): void {
     const path = getManifestPath(projectRoot);
-    const dir = dirname(path);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
     const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
     writeFileSync(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
     renameSync(tmp, path);

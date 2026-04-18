@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 项目部署清单文件 schema
-项目根 SHALL 使用 `.skills-manager/deployment.json` 记录已部署 skill 的声明式意图.  文件结构:
+项目根 SHALL 使用 `skillsmgr-deploy.json` 记录已部署 skill 的声明式意图.  文件结构:
 
 ```json
 {
@@ -21,15 +21,15 @@
 不合法字段 SHALL 被忽略 (向前兼容); 核心字段缺失时 refresh SHALL 报错并给出 schema 指引.
 
 #### Scenario: 首次 deploy 创建 manifest
-- **GIVEN** 项目根没有 `.skills-manager/` 目录
+- **GIVEN** 项目根没有 `skillsmgr-deploy.json`
 - **WHEN** 用户执行 `skillsmgr deploy --all` 并完成选择
-- **THEN** 系统 SHALL 创建 `.skills-manager/deployment.json`
+- **THEN** 系统 SHALL 在项目根创建 `skillsmgr-deploy.json`
 - **AND** `pinnedSkills` SHALL 包含本次部署的所有 skill key
 - **AND** `followGroups` SHALL 为空数组
 - **AND** `mode` SHALL 反映本次部署模式 (未传 `--copy` 时为 `"link"`)
 
 #### Scenario: manifest 非法 JSON
-- **WHEN** `.skills-manager/deployment.json` 存在但非法 JSON
+- **WHEN** `skillsmgr-deploy.json` 存在但非法 JSON
 - **THEN** 系统 SHALL 报错 "Invalid deployment manifest: <path>.  Re-run `skillsmgr deploy` to regenerate."
 - **AND** refresh SHALL 以非 0 退出码终止, 不触达部署阶段
 
@@ -106,7 +106,7 @@ Unmanaged skill (存在于 `.agents/skills/` 但没有对应 `~/.skills-manager/
 - **AND** 不影响其它 followGroup 或 pinnedSkills 的处理
 
 #### Scenario: 无 manifest 报错
-- **WHEN** 用户在无 `.skills-manager/deployment.json` 的项目执行 `skillsmgr deploy --refresh`
+- **WHEN** 用户在无 `skillsmgr-deploy.json` 的项目执行 `skillsmgr deploy --refresh`
 - **THEN** 系统 SHALL 报错 "No deployment manifest found at <path>.  Run \`skillsmgr deploy\` first to create one."
 - **AND** 以非 0 退出码终止, 不修改 `.agents/skills/`
 
@@ -180,7 +180,7 @@ Note: projects following this bundle's group may need `skillsmgr deploy --refres
 `skillsmgr deploy -g` (全局部署) SHALL **不**创建或修改项目 manifest.  全局部署无"项目"概念, 项目 manifest 与之无关.
 
 #### Scenario: 全局 deploy 不影响当前目录 manifest
-- **GIVEN** 当前目录是某项目, 可能已有 `.skills-manager/deployment.json`
+- **GIVEN** 当前目录是某项目, 可能已有 `skillsmgr-deploy.json`
 - **WHEN** 用户执行 `skillsmgr deploy -g -a claude-code`
 - **THEN** 系统 SHALL 按现有全局部署逻辑执行
 - **AND** 当前目录的 manifest (若有) SHALL 保持不变

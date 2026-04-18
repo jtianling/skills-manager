@@ -56,7 +56,7 @@ describe('DeploymentManifestService', () => {
     expect(service.readManifest(projectRoot)).toEqual(manifest);
   });
 
-  it('writeManifest creates .skills-manager directory if missing', () => {
+  it('writeManifest writes skillsmgr-deploy.json at project root', () => {
     const service = new DeploymentManifestService();
     service.writeManifest(projectRoot, {
       mode: 'copy',
@@ -65,13 +65,13 @@ describe('DeploymentManifestService', () => {
       deployedAt: '2026-04-15T00:00:00.000Z',
     });
     const path = getManifestPath(projectRoot);
+    expect(path).toBe(join(projectRoot, 'skillsmgr-deploy.json'));
     expect(JSON.parse(readFileSync(path, 'utf-8')).mode).toBe('copy');
   });
 
   it('readManifest throws on invalid JSON', () => {
     const service = new DeploymentManifestService();
     const path = getManifestPath(projectRoot);
-    mkdirSync(join(projectRoot, '.skills-manager'));
     writeFileSync(path, '{ not valid json');
     expect(() => service.readManifest(projectRoot)).toThrow(/Invalid deployment manifest/);
   });

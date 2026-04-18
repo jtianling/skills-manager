@@ -1,8 +1,8 @@
 ## 1. Manifest 服务层
 
 - [x] 1.1 新增 `src/services/deployment-manifest.ts`, 导出 `DeploymentManifest` 接口和 `DeploymentManifestService` 类
-- [x] 1.2 实现 `readManifest(projectRoot)`: 读 `.skills-manager/deployment.json`, 返回 `DeploymentManifest | null`; 非法 JSON 抛错
-- [x] 1.3 实现 `writeManifest(projectRoot, manifest)`: 原子写入 (tmp file + rename), 自动创建 `.skills-manager/` 目录
+- [x] 1.2 实现 `readManifest(projectRoot)`: 读 `skillsmgr-deploy.json`, 返回 `DeploymentManifest | null`; 非法 JSON 抛错
+- [x] 1.3 实现 `writeManifest(projectRoot, manifest)`: 原子写入 (tmp file + rename) 到项目根 `skillsmgr-deploy.json`
 - [x] 1.4 实现 `resolveExpectedSkills(manifest, groupsService, skillsService)`: 展开 followGroups + pinnedSkills, 返回 `Set<skillKey>`, 对不存在的 group / skill 收集 warnings
 - [x] 1.5 实现 `mergeForDeploy(prev, incoming)`: `pinnedSkills` 覆盖, `followGroups` union, `mode` / `deployedAt` 取 incoming
 
