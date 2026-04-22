@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, hasExplicitLocalPrefix, isZipLikeExtension, extractOwnerRepo, parseRegistryInput, parseOwnerRepoSkill } from './source-detection.js';
+import {
+  detectSourceType,
+  hasExplicitLocalPrefix,
+  isZipLikeExtension,
+  extractOwnerRepo,
+  parseRegistryInput,
+  parseOwnerRepoSkill,
+  normalizeCollectionRef,
+} from './source-detection.js';
 
 describe('detectSourceType', () => {
   it('detects bare words as unknown', () => {
@@ -186,5 +194,43 @@ describe('extractOwnerRepo', () => {
 
   it('returns null for URL with insufficient path segments', () => {
     expect(extractOwnerRepo('https://example.com/')).toBeNull();
+  });
+});
+
+describe('normalizeCollectionRef', () => {
+  it('accepts @owner/slug form', () => {
+    expect(normalizeCollectionRef('@alice/kit')).toBe('@alice/kit');
+  });
+
+  it('auto-prefixes @ on bare owner/slug form', () => {
+    expect(normalizeCollectionRef('alice/kit')).toBe('@alice/kit');
+  });
+
+  it('strips protocol + host for full URL', () => {
+    expect(normalizeCollectionRef('https://skillsmgr.dev/c/@alice/kit')).toBe('@alice/kit');
+  });
+
+  it('strips host for protocol-less URL', () => {
+    expect(normalizeCollectionRef('skillsmgr.dev/c/@alice/kit')).toBe('@alice/kit');
+  });
+
+  it('handles URL with bare owner/slug (no @)', () => {
+    expect(normalizeCollectionRef('skillsmgr.dev/c/alice/kit')).toBe('@alice/kit');
+  });
+
+  it('lowercases ref', () => {
+    expect(normalizeCollectionRef('@Alice/MyKit')).toBe('@alice/mykit');
+  });
+
+  it('throws on empty input', () => {
+    expect(() => normalizeCollectionRef('')).toThrow('Collection ref is empty');
+  });
+
+  it('throws on invalid format', () => {
+    expect(() => normalizeCollectionRef('not-a-ref')).toThrow('Invalid collection ref');
+  });
+
+  it('throws on ref with invalid characters', () => {
+    expect(() => normalizeCollectionRef('@alice/invalid slug')).toThrow('Invalid collection ref');
   });
 });

@@ -17,12 +17,14 @@ import {
 import { SkillInfo, collect } from '../types.js';
 import { resolveSkillByName } from '../utils/skill-resolve.js';
 import { ensureSetup } from './setup.js';
+import { expandCollectionRefToSkillNames } from './install-collection.js';
 
 interface UninstallOptions {
   all?: boolean;
   force?: boolean;
   y?: boolean;
   skill?: string[];
+  from?: string;
 }
 
 function cleanSourcesForDir(dirPrefix: string, service?: SourcesService): void {
@@ -280,6 +282,40 @@ export async function executeUninstall(
     if (!options.force) options.force = true;
   }
 
+  if (options.from) {
+    try {
+      const expanded = await expandCollectionRefToSkillNames(options.from);
+      if (!expanded) return;
+
+      await ensureSetup();
+      const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+      const installedNames = new Set(skillsService.getAllSkills().map((s) => s.name));
+
+      const toUninstall: string[] = [];
+      for (const name of expanded.skillNames) {
+        if (installedNames.has(name)) {
+          toUninstall.push(name);
+        } else {
+          console.log(`  · ${name} (not installed, skipped)`);
+        }
+      }
+
+      if (toUninstall.length === 0) {
+        console.log(`No installed skills from collection '${expanded.normalizedRef}'.`);
+        return;
+      }
+
+      options = {
+        ...options,
+        skill: [...(options.skill ?? []), ...toUninstall],
+      };
+      console.log(`Uninstalling ${toUninstall.length} skills from collection '${expanded.normalizedRef}'...`);
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
+
   await ensureSetup();
 
   if (options.skill && options.skill.length > 0) {
@@ -371,6 +407,7 @@ export const uninstallCommand = new Command('uninstall')
   .option('-f, --force', 'Skip confirmation prompt')
   .option('-y', 'Skip all prompts (implies --all --force)')
   .option('-s, --skill <name>', 'Specific skill to uninstall (repeatable)', collect, [])
+  .option('--from <ref>', 'Uninstall all skills from a collection (e.g. @alice/kit)')
   .action(async (identifier: string | undefined, options: UninstallOptions) => {
     await executeUninstall(identifier, options);
   });

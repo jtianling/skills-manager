@@ -16,6 +16,37 @@ export interface RegistryDetectedSource {
 
 const BARE_PACKAGE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SCOPED_PACKAGE_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
+const COLLECTION_REF_PATTERN = /^@[a-z0-9][a-z0-9._-]{0,48}\/[a-z0-9][a-z0-9-]{0,48}$/;
+
+export function normalizeCollectionRef(input: string): string {
+  let ref = input.trim();
+  if (!ref) {
+    throw new Error('Collection ref is empty');
+  }
+
+  // Strip protocol + host for URL forms
+  // https://skillsmgr.dev/c/@alice/kit → @alice/kit
+  // skillsmgr.dev/c/@alice/kit → @alice/kit
+  const urlMatch = ref.match(/^(?:https?:\/\/)?[^/]+\/c\/(.+)$/);
+  if (urlMatch) {
+    ref = urlMatch[1];
+  }
+
+  // Add leading @ if omitted (alice/kit → @alice/kit)
+  if (!ref.startsWith('@') && ref.includes('/')) {
+    ref = `@${ref}`;
+  }
+
+  ref = ref.toLowerCase();
+
+  if (!COLLECTION_REF_PATTERN.test(ref)) {
+    throw new Error(
+      `Invalid collection ref "${input}". Expected format: @owner/slug or skillsmgr.dev/c/@owner/slug`,
+    );
+  }
+
+  return ref;
+}
 
 export function parseRegistryInput(input: string): RegistryDetectedSource | null {
   // Don't match URLs, local paths, or owner/repo patterns

@@ -269,4 +269,96 @@ describe('RegistryService', () => {
       await expect(service.npmLogin('user', 'wrong')).rejects.toThrow('Invalid username or password');
     });
   });
+
+  describe('resolveCollection', () => {
+    it('sends POST with extends body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ members: [], warnings: [] }),
+      });
+
+      await service.resolveCollection({ extends: ['@alice/kit'] });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://test-registry.dev/api/collections/resolve',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ extends: ['@alice/kit'] }),
+        }),
+      );
+    });
+
+    it('attaches Authorization header when token provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ members: [], warnings: [] }),
+      });
+
+      await service.resolveCollection({ extends: ['@me/private'] }, 'spm_abc');
+
+      const call = mockFetch.mock.calls[0];
+      const init = call[1] as RequestInit;
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer spm_abc');
+    });
+
+    it('omits Authorization header when no token', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ members: [], warnings: [] }),
+      });
+
+      await service.resolveCollection({ extends: ['@alice/kit'] });
+
+      const call = mockFetch.mock.calls[0];
+      const init = call[1] as RequestInit;
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('returns parsed members and warnings', async () => {
+      const response = {
+        members: [
+          { packageName: '@alice/skill-a', pinnedVersion: '1.0.0', source: '@alice/kit' },
+          { packageName: '@alice/skill-b', pinnedVersion: null, source: '@alice/kit' },
+        ],
+        warnings: [
+          { kind: 'private-skipped', detail: '@alice/secret' },
+        ],
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(response),
+      });
+
+      const result = await service.resolveCollection({ extends: ['@alice/kit'] });
+      expect(result.members).toHaveLength(2);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0].kind).toBe('private-skipped');
+    });
+
+    it('throws on 400 invalid request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('bad input'),
+      });
+
+      await expect(
+        service.resolveCollection({ extends: ['bad'] }),
+      ).rejects.toThrow('Invalid collection request: bad input');
+    });
+
+    it('throws on server error', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+
+      await expect(
+        service.resolveCollection({ extends: ['@alice/kit'] }),
+      ).rejects.toThrow('Failed to resolve collection: 500 Internal Server Error');
+    });
+  });
 });

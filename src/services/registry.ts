@@ -5,7 +5,13 @@ import { tmpdir } from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { REGISTRY_URL } from '../constants.js';
-import type { Packument, PublishPayload, SearchResult } from '../types.js';
+import type {
+  CollectionResolveRequest,
+  CollectionResolveResponse,
+  Packument,
+  PublishPayload,
+  SearchResult,
+} from '../types.js';
 import { removeDir } from '../utils/fs.js';
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -138,6 +144,39 @@ export class RegistryService {
     }
 
     return response.json() as Promise<{ username: string }>;
+  }
+
+  async resolveCollection(
+    body: CollectionResolveRequest,
+    token?: string | null,
+  ): Promise<CollectionResolveResponse> {
+    const url = `${this.baseUrl}/api/collections/resolve`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, withTimeout({
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    }));
+
+    if (response.status === 400) {
+      const text = await response.text();
+      throw new Error(`Invalid collection request: ${text}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to resolve collection: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return response.json() as Promise<CollectionResolveResponse>;
   }
 
   async npmLogin(username: string, password: string): Promise<{ ok: boolean; token: string }> {

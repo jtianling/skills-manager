@@ -35,6 +35,7 @@ export interface InstallOptions {
   group?: string;
   skill?: string[];
   json?: boolean;
+  from?: string;
 }
 
 export interface DeployOptions {
@@ -60,6 +61,7 @@ export interface AddOptions {
   all?: boolean;
   y?: boolean;
   json?: boolean;
+  from?: string;
 }
 
 export interface RemoveOptions {
@@ -71,6 +73,7 @@ export interface RemoveOptions {
   y?: boolean;
   group?: string;
   json?: boolean;
+  from?: string;
 }
 
 export interface ListOptions {
@@ -200,6 +203,29 @@ export interface SearchResult {
 export interface AuthInfo {
   token: string;
   username: string;
+}
+
+export interface CollectionResolveRequest {
+  extends?: string[];
+  skills?: string[];
+}
+
+export type CollectionWarningKind = 'missing' | 'private-skipped' | 'cycle' | 'depth';
+
+export interface CollectionWarning {
+  kind: CollectionWarningKind;
+  detail: string;
+}
+
+export interface CollectionMember {
+  packageName: string;
+  pinnedVersion: string | null;
+  source: string;
+}
+
+export interface CollectionResolveResponse {
+  members: CollectionMember[];
+  warnings: CollectionWarning[];
 }
 
 export function collect(val: string, acc: string[]): string[] {

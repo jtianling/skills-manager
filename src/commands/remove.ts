@@ -20,6 +20,7 @@ import { extractOwnerRepo } from '../utils/source-detection.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
+import { expandCollectionRefToSkillNames } from './install-collection.js';
 
 interface ResolvedDeployedSkill extends ScannedSkill {
   skillKey: string | null;
@@ -471,6 +472,41 @@ export async function executeRemove(
     if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
   }
 
+  if (options.from) {
+    try {
+      const expanded = await expandCollectionRefToSkillNames(options.from);
+      if (!expanded) return;
+
+      await ensureSetup();
+      const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+      const deployedNames = new Set(scanner.getDeployedSkills().map((s) => s.name));
+
+      const toRemove: string[] = [];
+      for (const name of expanded.skillNames) {
+        if (deployedNames.has(name)) {
+          toRemove.push(name);
+        } else {
+          console.log(`  · ${name} (not deployed, skipped)`);
+        }
+      }
+
+      if (toRemove.length === 0) {
+        console.log(`No deployed skills from collection '${expanded.normalizedRef}'.`);
+        return;
+      }
+
+      options = {
+        ...options,
+        skill: [...(options.skill ?? []), ...toRemove],
+        all: true,
+      };
+      console.log(`Removing ${toRemove.length} skills from collection '${expanded.normalizedRef}'...`);
+    } catch (e) {
+      console.error(`Error: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
+
   await ensureSetup();
 
   const skillNames = resolveSkillNames(name, options);
@@ -602,6 +638,7 @@ export const removeCommand = new Command('remove')
   .option('-a, --agent <name>', 'Target agent (repeatable)', collect, [])
   .option('--same-agents', 'Use currently configured agents')
   .option('--group <name>', 'Batch remove deployed skills from a group')
+  .option('--from <ref>', 'Remove all skills from a collection (e.g. @alice/kit)')
   .option('--json', 'Output as JSON (implies --all)')
   .action(async (name: string | undefined, options: RemoveOptions) => {
     await executeRemove(name, options);

@@ -6,6 +6,8 @@ import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
 import { rollbackInstall } from '../services/rollback.js';
 import { installSource } from './install.js';
+import { installFromRegistry } from './install-registry.js';
+import { memberToSkillName, resolveCollectionMembers } from './install-collection.js';
 import { AddOptions, SkillInfo, ToolName, collect } from '../types.js';
 import {
   buildSourceGroupedChoices,
@@ -541,6 +543,88 @@ async function handleGroupBatchDeploy(
   ensureSymlinkBridges(selectedAgents, deployer);
 }
 
+async function executeAddFromCollection(ref: string, options: AddOptions): Promise<void> {
+  await ensureSetup();
+
+  let resolved;
+  try {
+    resolved = await resolveCollectionMembers(ref);
+  } catch (e) {
+    console.error(`Error: ${(e as Error).message}`);
+    process.exit(1);
+  }
+
+  for (const w of resolved.warnings) {
+    console.log(`⚠ [${w.kind}] ${w.detail}`);
+  }
+
+  if (resolved.members.length === 0) {
+    console.log(`Collection '${resolved.normalizedRef}' is empty.`);
+    return;
+  }
+
+  console.log(`\nSkills from '${resolved.normalizedRef}' (${resolved.members.length}):`);
+  for (const m of resolved.members) {
+    const v = m.pinnedVersion ? `@${m.pinnedVersion}` : '';
+    console.log(`  ${m.packageName}${v}`);
+  }
+
+  // Install each member from registry (idempotent — will skip if already installed via existing overwrite flow when --all)
+  const installOptions = { ...options, all: true };
+  const installedNames: string[] = [];
+
+  for (const member of resolved.members) {
+    console.log(`\n=== Installing ${member.packageName}${member.pinnedVersion ? `@${member.pinnedVersion}` : ''} ===`);
+    try {
+      await installFromRegistry(
+        {
+          type: 'registry',
+          packageName: member.packageName,
+          requestedVersion: member.pinnedVersion ?? undefined,
+        },
+        installOptions,
+      );
+      installedNames.push(memberToSkillName(member.packageName));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to install ${member.packageName}: ${message}`);
+    }
+  }
+
+  if (installedNames.length === 0) {
+    console.log('No skills available to deploy.');
+    return;
+  }
+
+  // Deploy installed skills
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+  const deployer = new Deployer(process.cwd());
+
+  const selectedAgents = await resolveTargetAgents(
+    options,
+    () => scanner.getConfiguredTools(),
+    options.global,
+  );
+  const deployMode = options.copy ? 'copy' : 'link';
+
+  console.log(`\nDeploying to [${selectedAgents.join(', ')}]...`);
+  const deployResults = await deploySkills(
+    installedNames, skillsService, deployer, scanner, deployMode, options.json,
+  );
+
+  ensureSymlinkBridges(selectedAgents, deployer);
+
+  if (options.json) {
+    jsonOutput({
+      collection: resolved.normalizedRef,
+      members: resolved.members,
+      deployed: deployResults.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
+      warnings: resolved.warnings,
+    });
+  }
+}
+
 export async function executeAdd(
   arg: string | undefined,
   options: AddOptions
@@ -548,6 +632,15 @@ export async function executeAdd(
   if (options.json || options.y) {
     if (!options.all) options.all = true;
     if (!options.agent?.length && !options.sameAgents) options.sameAgents = true;
+  }
+
+  if (options.from) {
+    if (arg) {
+      console.log('Cannot use --from with a skill argument.');
+      process.exit(1);
+    }
+    await executeAddFromCollection(options.from, options);
+    return;
   }
 
   if (options.group && arg) {
@@ -607,6 +700,7 @@ export const addCommand = new Command('add')
   .option('--group <name>', 'Batch deploy all skills from a group')
   .option('-s, --skill <name>', 'Specific skill to add (repeatable)', collect, [])
   .option('--same-agents', 'Use currently configured agents')
+  .option('--from <ref>', 'Install and deploy all skills from a collection (e.g. @alice/kit)')
   .option('--json', 'Output as JSON (implies --all)')
   .action(async (arg: string | undefined, options: AddOptions) => {
     await executeAdd(arg, options);

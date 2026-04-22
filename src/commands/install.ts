@@ -5,6 +5,7 @@ import { SourcesService } from '../services/sources.js';
 import { ensureSetup } from './setup.js';
 import {
   detectSourceType,
+  normalizeCollectionRef,
   parseOwnerRepoSkill,
   parseRegistryInput,
 } from '../utils/source-detection.js';
@@ -13,6 +14,7 @@ import { installFromLocalDir, installFromRemoteZip, installFromZip } from './ins
 import { installFromRegistry } from './install-registry.js';
 import type { InstallResult } from './install-utils.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
+import { executeInstallFromCollection } from './install-collection.js';
 
 const sourcesService = new SourcesService();
 
@@ -64,7 +66,17 @@ export async function installSource(source: string, options: InstallOptions = {}
   return installBySourceType(source, { all: true, ...options });
 }
 
-export async function executeInstall(source: string, options: InstallOptions): Promise<void> {
+export async function executeInstall(source: string | undefined, options: InstallOptions): Promise<void> {
+  if (options.from) {
+    await executeInstallFromCollection(options.from, options);
+    return;
+  }
+
+  if (!source) {
+    console.error('Error: source is required (or use --from <collection>)');
+    process.exit(1);
+  }
+
   if (options.y) {
     if (!options.all) options.all = true;
   }
@@ -144,15 +156,16 @@ export { InstallResult };
 
 export const installCommand = new Command('install')
   .alias('i')
-  .description('Install skills from a local path, zip archive, repository, URL, or registry')
-  .argument('<source>', 'Local path, zip file, owner/repo, URL, or package name')
+  .description('Install skills from a local path, zip archive, repository, URL, registry, or collection')
+  .argument('[source]', 'Local path, zip file, owner/repo, URL, or package name')
   .option('--all', 'Install all skills without prompting')
   .option('-y', 'Skip all prompts (implies --all)')
   .option('--custom', 'Install to custom/ instead of community/')
   .option('-f, --force', 'Overwrite existing skill without confirmation')
   .option('--group <name>', 'Add installed skills to a virtual group')
   .option('-s, --skill <name>', 'Specific skill to install (repeatable)', collect, [])
+  .option('--from <ref>', 'Install all skills from a collection (e.g. @alice/kit)')
   .option('--json', 'Output as JSON (logs to stderr)')
-  .action(async (source: string, options: InstallOptions) => {
+  .action(async (source: string | undefined, options: InstallOptions) => {
     await executeInstall(source, options);
   });
