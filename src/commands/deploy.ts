@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { join } from 'path';
 import { existsSync, readdirSync } from 'fs';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
-import { SkillsService } from '../services/skills.js';
+import { SkillsService, filterByTargetAgents } from '../services/skills.js';
 import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
@@ -181,7 +181,16 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
     }
   }
   const followNames = new Set(followSkills.map((s) => s.name));
-  const promptableSkills = allSkills.filter((s) => !followNames.has(s.name));
+  const promptableSkillsAll = allSkills.filter((s) => !followNames.has(s.name));
+
+  // For deploy: filter by targetAgents, but always include already-deployed
+  // skills (so user can deselect to remove them).
+  const matched = filterByTargetAgents(promptableSkillsAll, selectedTools);
+  const matchedNameSet = new Set(matched.map((s) => s.name));
+  const deployedNameSet = new Set(deployedSkillNames);
+  const promptableSkills = promptableSkillsAll.filter((s) =>
+    matchedNameSet.has(s.name) || deployedNameSet.has(s.name),
+  );
 
   const promptedNames = options.all
     ? promptableSkills.map((s) => s.name)
@@ -223,7 +232,7 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
   }
 
   for (const skill of toAdd) {
-    deployer.deploySkill(skill, deployMode);
+    deployer.deploySkill(skill, deployMode, selectedTools as ToolName[]);
   }
 
   writeProjectManifest({
@@ -380,11 +389,23 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
     (s) => !expectedNames.has(s.name) && s.source !== 'unknown',
   );
 
+  // Use registry's tracked agent set: refresh re-applies companions for the
+  // deployed agent set. We approximate via configured tools.
+  const refreshAgents = new DeploymentScanner(projectRoot, SKILLS_MANAGER_DIR)
+    .getConfiguredTools();
+
   for (const skill of toRemove) {
     deployer.removeSkill(skill.name);
   }
   for (const skill of toAdd) {
-    deployer.deploySkill(skill, manifest.mode);
+    deployer.deploySkill(skill, manifest.mode, refreshAgents);
+  }
+  // For kept skills: re-sync companions (manifest may have changed).
+  for (const skill of toKeep) {
+    // Clean old companion artifacts then redeploy, so manifest companion
+    // diffs (added / removed) take effect on refresh.
+    deployer.removeCompanions(skill.name);
+    deployer.deploySkill(skill, manifest.mode, refreshAgents);
   }
 
   const refreshedAt = new Date().toISOString();
@@ -422,6 +443,7 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
   );
   for (const s of toAdd) console.log(`  ✓ ${s.name} (added)`);
   for (const s of toRemove) console.log(`  ✗ ${s.name} (removed)`);
+  console.log('Done.');
 }
 
 export const deployCommand = new Command('deploy')

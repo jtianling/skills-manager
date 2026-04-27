@@ -345,11 +345,34 @@ Every publishable skill needs a `skill.json` manifest:
   "keywords": ["code", "review"],
   "author": "your-name",
   "license": "MIT",
-  "dependencies": ["base-prompts", "owner/repo:helper-skill"]
+  "dependencies": ["base-prompts", "owner/repo:helper-skill"],
+  "targetAgents": ["claude-code"],
+  "companions": [
+    {
+      "source": "agents/my-runner.md",
+      "agentTargets": {
+        "claude-code": ".claude/agents/my-runner.md"
+      }
+    }
+  ]
 }
 ```
 
 **Required fields**: `name`, `version`, `description`. All others are optional.
+
+### Target Agents
+
+`targetAgents` declares which agents the skill applies to.  Empty / unset means "all agents" (universal).  When set, `add` / `deploy` filter the candidate list so the skill only appears when the user's selected agent set intersects with `targetAgents`.
+
+### Companions
+
+`companions[]` declares additional single files that must be deployed outside the skill directory (for example, a Claude Code subagent at `.claude/agents/<name>.md`):
+
+- `source`: path inside the skill (relative to skill root, no `..`)
+- `agentTargets`: per-agent target path inside the project (relative, no `..`)
+- The keys of `agentTargets` MUST be a subset of `targetAgents` when `targetAgents` is set
+
+Companions follow the deploy mode (link / copy) of the skill body and are tracked in `~/.skills-manager/deployments.json` so uninstall / remove cleans them up exactly.  Two skills writing to the same companion target path is detected at deploy time and reported as a conflict.
 
 ### Dependencies
 

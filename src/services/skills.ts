@@ -2,6 +2,7 @@ import { join } from 'path';
 import { SkillInfo, SkillSource } from '../types.js';
 import { SKILL_SOURCES } from '../constants.js';
 import { getDirectoriesInDir, fileExists, readFileContent } from '../utils/fs.js';
+import { readManifest } from './manifest.js';
 
 export class SkillsService {
   constructor(private skillsDir: string) {}
@@ -182,6 +183,10 @@ export class SkillsService {
     };
   }
 
+  getTargetAgents(skill: SkillInfo): string[] | undefined {
+    return readSkillTargetAgents(skill.path);
+  }
+
   private parseSkillMd(content: string): { name: string; description: string } {
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
     if (!frontmatterMatch) {
@@ -198,4 +203,42 @@ export class SkillsService {
       description: descMatch ? stripQuotes(descMatch[1].trim()) : '',
     };
   }
+}
+
+export function readSkillTargetAgents(skillPath: string): string[] | undefined {
+  try {
+    const manifest = readManifest(skillPath);
+    if (!manifest?.targetAgents || manifest.targetAgents.length === 0) {
+      return undefined;
+    }
+    return manifest.targetAgents;
+  } catch {
+    return undefined;
+  }
+}
+
+export function filterByTargetAgents(
+  skills: SkillInfo[],
+  selectedAgents: string[] | undefined,
+): SkillInfo[] {
+  const agents = selectedAgents ?? [];
+  if (agents.length === 0) return skills;
+  const selected = new Set(agents);
+  return skills.filter((skill) => {
+    const target = readSkillTargetAgents(skill.path);
+    if (!target || target.length === 0) return true;
+    return target.some((a) => selected.has(a));
+  });
+}
+
+export function skillMatchesAgents(
+  skill: SkillInfo,
+  selectedAgents: string[] | undefined,
+): boolean {
+  const agents = selectedAgents ?? [];
+  if (agents.length === 0) return true;
+  const target = readSkillTargetAgents(skill.path);
+  if (!target || target.length === 0) return true;
+  const selected = new Set(agents);
+  return target.some((a) => selected.has(a));
 }

@@ -142,6 +142,11 @@ export interface LegacySourcesData {
   bundles: Record<string, Bundle>;
 }
 
+export interface Companion {
+  source: string;
+  agentTargets: Record<string, string>;
+}
+
 export interface SkillManifest {
   name: string;
   version: string;
@@ -152,6 +157,8 @@ export interface SkillManifest {
   license?: string;
   engines?: Record<string, string>;
   dependencies?: string[];
+  targetAgents?: string[];
+  companions?: Companion[];
 }
 
 export interface PackumentVersion {

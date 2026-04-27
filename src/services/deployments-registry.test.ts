@@ -218,6 +218,100 @@ describe('DeploymentsRegistryService', () => {
     expect(service.pruneStale()).toEqual([]);
   });
 
+  it('legacy record without skillCompanions reads as empty list', () => {
+    writeFileSync(
+      join(testManagerDir, 'deployments.json'),
+      JSON.stringify({
+        version: '1.0',
+        deployments: {
+          '/legacy': {
+            mode: 'link',
+            followGroups: [],
+            pinnedSkills: ['custom/x'],
+            lastDeployedAt: '',
+          },
+        },
+      }),
+    );
+    const service = new DeploymentsRegistryService();
+    expect(service.getCompanionsForSkill('x', '/legacy')).toEqual([]);
+  });
+
+  it('addCompanion appends absolute path and persists', () => {
+    const dir = join(tmpdir(), `smgr-comp-add-${Date.now()}`);
+    mkdirSync(dir);
+    const service = new DeploymentsRegistryService();
+    service.addCompanion('jt-codex', dir, '/abs/.claude/agents/runner.md');
+    service.addCompanion('jt-codex', dir, '/abs/.claude/agents/helper.md');
+    expect(service.getCompanionsForSkill('jt-codex', dir)).toEqual([
+      '/abs/.claude/agents/runner.md',
+      '/abs/.claude/agents/helper.md',
+    ]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('addCompanion deduplicates same path', () => {
+    const dir = join(tmpdir(), `smgr-comp-dedup-${Date.now()}`);
+    mkdirSync(dir);
+    const service = new DeploymentsRegistryService();
+    service.addCompanion('s', dir, '/abs/x.md');
+    service.addCompanion('s', dir, '/abs/x.md');
+    expect(service.getCompanionsForSkill('s', dir)).toEqual(['/abs/x.md']);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('clearCompanions removes per-skill record only', () => {
+    const dir = join(tmpdir(), `smgr-comp-clear-${Date.now()}`);
+    mkdirSync(dir);
+    const service = new DeploymentsRegistryService();
+    service.addCompanion('alpha', dir, '/abs/a.md');
+    service.addCompanion('beta', dir, '/abs/b.md');
+    service.clearCompanions('alpha', dir);
+    expect(service.getCompanionsForSkill('alpha', dir)).toEqual([]);
+    expect(service.getCompanionsForSkill('beta', dir)).toEqual(['/abs/b.md']);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('listAllCompanionPaths flattens (skill, path) pairs', () => {
+    const dir = join(tmpdir(), `smgr-comp-list-${Date.now()}`);
+    mkdirSync(dir);
+    const service = new DeploymentsRegistryService();
+    service.addCompanion('a', dir, '/abs/1.md');
+    service.addCompanion('a', dir, '/abs/2.md');
+    service.addCompanion('b', dir, '/abs/3.md');
+    const list = service.listAllCompanionPaths(dir);
+    expect(list).toEqual(
+      expect.arrayContaining([
+        { skill: 'a', path: '/abs/1.md' },
+        { skill: 'a', path: '/abs/2.md' },
+        { skill: 'b', path: '/abs/3.md' },
+      ]),
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('JSON round-trip preserves skillCompanions', () => {
+    const service = new DeploymentsRegistryService();
+    service.writeRegistry({
+      version: '1.0',
+      deployments: {
+        '/p': {
+          mode: 'link',
+          followGroups: [],
+          pinnedSkills: [],
+          lastDeployedAt: '',
+          skillCompanions: {
+            'x': { deployedCompanions: ['/abs/a.md'] },
+          },
+        },
+      },
+    });
+    const r = service.readRegistry();
+    expect(r.deployments['/p'].skillCompanions).toEqual({
+      'x': { deployedCompanions: ['/abs/a.md'] },
+    });
+  });
+
   it('atomic write: file ends up with correct content', () => {
     const service = new DeploymentsRegistryService();
     service.writeRegistry({

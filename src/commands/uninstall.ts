@@ -9,6 +9,13 @@ import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
 import { cleanEmptyParents, fileExists, removeDir, getDirectoriesInDir } from '../utils/fs.js';
+import { Deployer } from '../services/deployer.js';
+import { DeploymentScanner } from '../services/scanner.js';
+import {
+  DeploymentManifestService,
+  type DeploymentManifest,
+} from '../services/deployment-manifest.js';
+import { DeploymentsRegistryService } from '../services/deployments-registry.js';
 import {
   loadGroupsData,
   promptConfirm,
@@ -60,6 +67,54 @@ async function confirmUninstall(skillNames: string[], force: boolean): Promise<b
   return promptConfirm('Confirm uninstall?', false);
 }
 
+function cleanCurrentProjectDeployment(skillKey: string, skillName: string): void {
+  try {
+    const projectDir = process.cwd();
+    const scanner = new DeploymentScanner(projectDir, SKILLS_MANAGER_DIR);
+    const deployed = scanner.getDeployedSkills().some((s) => s.name === skillName);
+    const deployer = new Deployer(projectDir);
+    if (deployed) {
+      deployer.removeSkill(skillName);
+    } else {
+      // Still clear any companion records that may have been registered.
+      deployer.removeCompanions(skillName);
+    }
+    pruneFromManifestAndRegistry(projectDir, skillKey);
+  } catch {
+    // best effort
+  }
+}
+
+function pruneFromManifestAndRegistry(projectDir: string, skillKey: string): void {
+  try {
+    const manifestService = new DeploymentManifestService();
+    let prev: DeploymentManifest | null = null;
+    try {
+      prev = manifestService.readManifest(projectDir);
+    } catch {
+      prev = null;
+    }
+    if (prev && prev.pinnedSkills.includes(skillKey)) {
+      const next = {
+        ...prev,
+        pinnedSkills: prev.pinnedSkills.filter((k) => k !== skillKey),
+      };
+      manifestService.writeManifest(projectDir, next);
+    }
+    const registryService = new DeploymentsRegistryService();
+    const reg = registryService.readRegistry();
+    for (const [path, entry] of Object.entries(reg.deployments)) {
+      const filtered = entry.pinnedSkills.filter((k) => k !== skillKey);
+      if (filtered.length !== entry.pinnedSkills.length) {
+        const updated = { ...entry, pinnedSkills: filtered };
+        registryService.recordDeploy(path, updated);
+      }
+    }
+  } catch {
+    // best effort
+  }
+}
+
 function removeSkills(
   skills: SkillInfo[],
   sourcesService: SourcesService,
@@ -68,6 +123,7 @@ function removeSkills(
   const affectedPhysicalGroups = new Set<string>();
   for (const skill of skills) {
     const skillKey = `${skill.source}/${skill.name}`;
+    cleanCurrentProjectDeployment(skillKey, skill.name);
     removeDir(skill.path);
 
     const skillParent = join(skill.path, '..');

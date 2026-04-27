@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { validatePackageName, validateManifest } from './manifest.js';
+import {
+  validatePackageName,
+  validateManifest,
+  resolveCompanionSource,
+  resolveCompanionTarget,
+} from './manifest.js';
 
 describe('validatePackageName', () => {
   it('accepts valid bare package names', () => {
@@ -157,5 +162,242 @@ describe('validateManifest', () => {
     });
     expect(result.valid).toBe(false);
     expect(result.errors[0]).toContain('expected string');
+  });
+});
+
+describe('validateManifest targetAgents', () => {
+  const base = { name: 'my-skill', version: '1.0.0', description: 'd' };
+
+  it('accepts manifest without targetAgents', () => {
+    expect(validateManifest({ ...base }).valid).toBe(true);
+  });
+
+  it('accepts empty targetAgents array', () => {
+    expect(validateManifest({ ...base, targetAgents: [] }).valid).toBe(true);
+  });
+
+  it('accepts targetAgents with valid agent', () => {
+    expect(
+      validateManifest({ ...base, targetAgents: ['claude-code'] }).valid,
+    ).toBe(true);
+  });
+
+  it('rejects unknown agent in targetAgents', () => {
+    const r = validateManifest({
+      ...base,
+      targetAgents: ['unknown-agent'] as unknown as string[],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('unknown agent'))).toBe(true);
+    expect(r.errors.some((e) => e.includes('Known agents'))).toBe(true);
+  });
+
+  it('rejects non-array targetAgents', () => {
+    const r = validateManifest({
+      ...base,
+      targetAgents: 'claude-code' as unknown as string[],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('targetAgents must be a string array'))).toBe(true);
+  });
+
+  it('rejects non-string element in targetAgents', () => {
+    const r = validateManifest({
+      ...base,
+      targetAgents: [123 as unknown as string],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('targetAgents must be a string array'))).toBe(true);
+  });
+});
+
+describe('validateManifest companions', () => {
+  const base = { name: 'my-skill', version: '1.0.0', description: 'd' };
+
+  it('accepts manifest without companions', () => {
+    expect(validateManifest({ ...base }).valid).toBe(true);
+  });
+
+  it('accepts a valid single companion', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'agents/runner.md',
+          agentTargets: { 'claude-code': '.claude/agents/runner.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it('rejects companion with empty source', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: '',
+          agentTargets: { 'claude-code': '.claude/agents/x.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('source'))).toBe(true);
+  });
+
+  it('rejects companion source containing ..', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: '../etc/passwd',
+          agentTargets: { 'claude-code': '.claude/agents/x.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('..'))).toBe(true);
+  });
+
+  it('rejects companion source nested .. segment', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'agents/../../etc',
+          agentTargets: { 'claude-code': '.claude/agents/x.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+  });
+
+  it('rejects companion with empty agentTargets object', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [{ source: 'a.md', agentTargets: {} }],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('at least one agent target'))).toBe(true);
+  });
+
+  it('rejects companion with unknown agent in agentTargets', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'a.md',
+          agentTargets: { 'unknown-tool': '.x/y.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('unknown agent'))).toBe(true);
+  });
+
+  it('rejects target path containing ..', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'a.md',
+          agentTargets: { 'claude-code': '../../outside/file.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('..'))).toBe(true);
+  });
+
+  it('rejects absolute target path', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'a.md',
+          agentTargets: { 'claude-code': '/etc/passwd' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('absolute'))).toBe(true);
+  });
+
+  it('rejects companion with agent outside targetAgents subset', () => {
+    const r = validateManifest({
+      ...base,
+      targetAgents: ['claude-code'],
+      companions: [
+        {
+          source: 'a.md',
+          agentTargets: {
+            'claude-code': '.claude/agents/a.md',
+            'codex': '.codex/agents/a.md',
+          },
+        },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("'codex'"))).toBe(true);
+    expect(r.errors.some((e) => e.includes('targetAgents'))).toBe(true);
+  });
+
+  it('accepts companion when targetAgents undefined (full set)', () => {
+    const r = validateManifest({
+      ...base,
+      companions: [
+        {
+          source: 'a.md',
+          agentTargets: { 'claude-code': '.claude/agents/a.md' },
+        },
+      ],
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it('rejects companions not an array', () => {
+    const r = validateManifest({
+      ...base,
+      companions: 'not-array' as unknown as never,
+    });
+    expect(r.valid).toBe(false);
+  });
+});
+
+describe('resolveCompanionSource', () => {
+  it('resolves a source inside skill dir', () => {
+    const r = resolveCompanionSource('/tmp/skill', 'agents/runner.md');
+    expect(r.ok).toBe(true);
+    expect(r.resolvedPath).toBe('/tmp/skill/agents/runner.md');
+  });
+
+  it('rejects source with .. that escapes skill dir', () => {
+    const r = resolveCompanionSource('/tmp/skill', '../outside.md');
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/\.\./);
+  });
+
+  it('rejects absolute source', () => {
+    const r = resolveCompanionSource('/tmp/skill', '/etc/passwd');
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/absolute/);
+  });
+});
+
+describe('resolveCompanionTarget', () => {
+  it('resolves a target inside project dir', () => {
+    const r = resolveCompanionTarget('/tmp/proj', '.claude/agents/x.md');
+    expect(r.ok).toBe(true);
+    expect(r.resolvedPath).toBe('/tmp/proj/.claude/agents/x.md');
+  });
+
+  it('rejects target with .. that escapes project dir', () => {
+    const r = resolveCompanionTarget('/tmp/proj', '../outside/x.md');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects absolute target', () => {
+    const r = resolveCompanionTarget('/tmp/proj', '/etc/x.md');
+    expect(r.ok).toBe(false);
   });
 });

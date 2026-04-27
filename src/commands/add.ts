@@ -1,6 +1,12 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
-import { SkillsService } from '../services/skills.js';
+import { SkillsService, filterByTargetAgents, skillMatchesAgents, readSkillTargetAgents } from '../services/skills.js';
+import {
+  DeploymentManifestService,
+  skillToKey,
+  type DeploymentManifest,
+} from '../services/deployment-manifest.js';
+import { DeploymentsRegistryService } from '../services/deployments-registry.js';
 import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { Deployer } from '../services/deployer.js';
@@ -51,6 +57,7 @@ async function deploySkills(
   scanner: DeploymentScanner,
   deployMode: 'link' | 'copy',
   json?: boolean,
+  selectedAgents?: ToolName[],
 ): Promise<Array<{ name: string; mode: string }>> {
   const deployedSkills = scanner.getDeployedSkills();
   const deployedNames = new Set(deployedSkills.map((s) => s.name));
@@ -65,13 +72,13 @@ async function deploySkills(
       continue;
     }
 
-    deployer.deploySkill(skill, deployMode);
+    deployer.deploySkill(skill, deployMode, selectedAgents);
     results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
     if (!json) console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
 
     // Deploy dependencies
     const depResults = await deployDependencies(
-      skill.path, skillsService, deployer, scanner, deployMode, json,
+      skill.path, skillsService, deployer, scanner, deployMode, json, selectedAgents,
     );
     results.push(...depResults);
   }
@@ -86,6 +93,7 @@ async function deployDependencies(
   scanner: DeploymentScanner,
   deployMode: 'link' | 'copy',
   json?: boolean,
+  selectedAgents?: ToolName[],
   visited: Set<string> = new Set(),
 ): Promise<Array<{ name: string; mode: string }>> {
   const manifest = readManifest(skillPath);
@@ -114,7 +122,7 @@ async function deployDependencies(
     }
 
     if (!deployedNames.has(skill.name)) {
-      deployer.deploySkill(skill, deployMode);
+      deployer.deploySkill(skill, deployMode, selectedAgents);
       deployedNames.add(skill.name);
       results.push({ name: skill.name, mode: deployMode === 'link' ? 'linked' : 'copied' });
       if (!json) console.log(`  ✓ ${skill.name} (dependency, ${deployMode === 'link' ? 'linked' : 'copied'})`);
@@ -122,7 +130,7 @@ async function deployDependencies(
 
     // Recurse into dependency's dependencies
     const subResults = await deployDependencies(
-      skill.path, skillsService, deployer, scanner, deployMode, json, visited,
+      skill.path, skillsService, deployer, scanner, deployMode, json, selectedAgents, visited,
     );
     results.push(...subResults);
   }
@@ -157,6 +165,40 @@ async function deploySkillsGlobal(
   }
 
   return results;
+}
+
+function recordAddDeployment(
+  deployedSkills: SkillInfo[],
+  deployMode: 'link' | 'copy',
+): void {
+  if (deployedSkills.length === 0) return;
+  try {
+    const projectRoot = process.cwd();
+    const manifestService = new DeploymentManifestService();
+    let prev: DeploymentManifest | null = null;
+    try {
+      prev = manifestService.readManifest(projectRoot);
+    } catch {
+      // ignore corrupt; will overwrite below
+    }
+    const newKeys = deployedSkills.map((s) => skillToKey(s));
+    const previousPinned = prev?.pinnedSkills ?? [];
+    const mergedPinned = Array.from(new Set([...previousPinned, ...newKeys]));
+    const merged = manifestService.mergeForDeploy(prev, {
+      mode: deployMode,
+      followGroups: prev?.followGroups ?? [],
+      pinnedSkills: mergedPinned,
+    });
+    manifestService.writeManifest(projectRoot, merged);
+    new DeploymentsRegistryService().recordDeploy(projectRoot, {
+      mode: merged.mode,
+      followGroups: merged.followGroups,
+      pinnedSkills: merged.pinnedSkills,
+      lastDeployedAt: merged.deployedAt,
+    });
+  } catch (e) {
+    console.warn(`⚠ Failed to update deployment manifest: ${(e as Error).message}`);
+  }
 }
 
 function ensureSymlinkBridges(
@@ -213,16 +255,28 @@ async function handleSkillName(
   }
 
   const selectedAgents = await resolveTargetAgents(options, () => scanner.getConfiguredTools());
+  if (!skillMatchesAgents(skill, selectedAgents)) {
+    const target = readSkillTargetAgents(skill.path) ?? [];
+    const message = `Skill '${skill.name}' targetAgents [${target.join(', ')}] does not include any of selected agents [${selectedAgents.join(', ')}].`;
+    if (options.json) {
+      jsonError(message, 'TARGET_AGENTS_MISMATCH');
+    } else {
+      console.error(`Error: ${message}`);
+    }
+    process.exit(1);
+  }
   const deployMode = options.copy ? 'copy' : 'link';
 
-  deployer.deploySkill(skill, deployMode);
+  deployer.deploySkill(skill, deployMode, selectedAgents);
   if (!options.json) {
     console.log(`  ✓ ${skill.name} (${deployMode === 'link' ? 'linked' : 'copied'})`);
   }
 
+  recordAddDeployment([skill], deployMode);
+
   // Deploy dependencies
   const depResults = await deployDependencies(
-    skill.path, skillsService, deployer, scanner, deployMode, options.json,
+    skill.path, skillsService, deployer, scanner, deployMode, options.json, selectedAgents,
   );
 
   if (options.json) {
@@ -308,12 +362,20 @@ async function handleRepoSkillSelection(
     options.global,
   );
 
+  if (options.skill && options.skill.length > 0) {
+    enforceTargetAgentsForExplicit(options.skill, repoSkills, selectedAgents, options.json);
+  }
+
+  const filteredCandidates = options.global
+    ? repoSkills
+    : filterByTargetAgents(repoSkills, selectedAgents);
+
   const groupsData = loadGroupsData(new GroupsService());
   const selectedNames = (options.skill && options.skill.length > 0)
     ? filterSkillsByFlag(repoSkills, options.skill)
     : options.all
-      ? repoSkills.map((s) => s.name)
-      : await promptSkillsFromRepo(repoSkills, options.global ? [] : deployedNames, groupsData);
+      ? filteredCandidates.map((s) => s.name)
+      : await promptSkillsFromRepo(filteredCandidates, options.global ? [] : deployedNames, groupsData);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));
@@ -335,7 +397,11 @@ async function handleRepoSkillSelection(
     return;
   }
 
-  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json);
+  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json, selectedAgents);
+  recordAddDeployment(
+    skillsService.getSkillsByNames(results.map((r) => r.name)),
+    deployMode,
+  );
   if (options.json) {
     jsonOutput({
       deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
@@ -343,6 +409,29 @@ async function handleRepoSkillSelection(
     return;
   }
   ensureSymlinkBridges(selectedAgents, deployer);
+}
+
+function enforceTargetAgentsForExplicit(
+  explicitNames: string[],
+  candidates: SkillInfo[],
+  selectedAgents: string[] | undefined,
+  json?: boolean,
+): void {
+  const agents = selectedAgents ?? [];
+  for (const name of explicitNames) {
+    const skill = candidates.find((s) => s.name === name);
+    if (!skill) continue;
+    if (!skillMatchesAgents(skill, agents)) {
+      const target = readSkillTargetAgents(skill.path) ?? [];
+      const message = `Skill '${name}' targetAgents [${target.join(', ')}] does not include any of selected agents [${agents.join(', ')}].`;
+      if (json) {
+        jsonError(message, 'TARGET_AGENTS_MISMATCH');
+      } else {
+        console.error(`Error: ${message}`);
+      }
+      process.exit(1);
+    }
+  }
 }
 
 async function handleRemoteInstallAndDeploy(
@@ -412,13 +501,25 @@ async function handleRemoteInstallAndDeploy(
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
   const groupsData = loadGroupsData(new GroupsService());
 
+  if (options.skill && options.skill.length > 0) {
+    try {
+      enforceTargetAgentsForExplicit(options.skill, installedSkills, selectedAgents, options.json);
+    } catch (e) {
+      rollback();
+      throw e;
+    }
+  }
+  const filteredInstalled = options.global
+    ? installedSkills
+    : filterByTargetAgents(installedSkills, selectedAgents);
+
   let selectedNames: string[];
   try {
     selectedNames = (options.skill && options.skill.length > 0)
       ? filterSkillsByFlag(installedSkills, options.skill)
       : options.all
-        ? installedSkills.map((s) => s.name)
-        : await promptSkillsFromRepo(installedSkills, options.global ? [] : deployedNames, groupsData);
+        ? filteredInstalled.map((s) => s.name)
+        : await promptSkillsFromRepo(filteredInstalled, options.global ? [] : deployedNames, groupsData);
   } catch {
     rollback();
     return;
@@ -444,7 +545,11 @@ async function handleRemoteInstallAndDeploy(
         });
       }
     } else {
-      const results = await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode, options.json);
+      const results = await deploySkills(newSkills, freshSkillsService, deployer, scanner, deployMode, options.json, selectedAgents);
+      recordAddDeployment(
+        freshSkillsService.getSkillsByNames(results.map((r) => r.name)),
+        deployMode,
+      );
       if (options.json) {
         jsonOutput({
           deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),
@@ -509,9 +614,12 @@ async function handleGroupBatchDeploy(
 
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
   const groupsData = loadGroupsData(groupsService);
+  const filteredGroupSkills = options.global
+    ? groupSkills
+    : filterByTargetAgents(groupSkills, selectedAgents);
   const selectedNames = options.all
-    ? groupSkills.map((s) => s.name)
-    : await promptSkillsFromRepo(groupSkills, options.global ? [] : deployedNames, groupsData);
+    ? filteredGroupSkills.map((s) => s.name)
+    : await promptSkillsFromRepo(filteredGroupSkills, options.global ? [] : deployedNames, groupsData);
   const newSkills = options.global
     ? selectedNames
     : selectedNames.filter((n) => !deployedNames.includes(n));
@@ -533,7 +641,11 @@ async function handleGroupBatchDeploy(
     return;
   }
 
-  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json);
+  const results = await deploySkills(newSkills, skillsService, deployer, scanner, deployMode, options.json, selectedAgents);
+  recordAddDeployment(
+    skillsService.getSkillsByNames(results.map((r) => r.name)),
+    deployMode,
+  );
   if (options.json) {
     jsonOutput({
       deployed: results.map((r) => ({ name: r.name, agents: selectedAgents, mode: r.mode })),

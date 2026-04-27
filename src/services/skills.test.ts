@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { SkillsService } from './skills.js';
+import { SkillsService, filterByTargetAgents, skillMatchesAgents } from './skills.js';
+import type { SkillInfo } from '../types.js';
 
 describe('SkillsService', () => {
   let testDir: string;
@@ -162,5 +163,73 @@ describe('SkillsService', () => {
       const skill = freshService.getSkillByName('nested');
       expect(skill).toBeUndefined();
     });
+  });
+});
+
+describe('filterByTargetAgents', () => {
+  let testDir: string;
+
+  function makeSkill(
+    name: string,
+    targetAgents?: string[],
+  ): SkillInfo {
+    const dir = join(testDir, name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: ${name}\n---\n# ${name}\n`,
+    );
+    const m: Record<string, unknown> = {
+      name,
+      version: '0.1.0',
+      description: name,
+    };
+    if (targetAgents !== undefined) m.targetAgents = targetAgents;
+    writeFileSync(join(dir, 'skill.json'), JSON.stringify(m));
+    return { name, description: name, path: dir, source: 'custom' };
+  }
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `skillsmgr-filter-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (testDir && existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns all skills when selectedAgents is empty', () => {
+    const a = makeSkill('a', ['claude-code']);
+    const b = makeSkill('b');
+    expect(filterByTargetAgents([a, b], [])).toEqual([a, b]);
+  });
+
+  it('keeps skills with no targetAgents (universal) regardless', () => {
+    const a = makeSkill('a');
+    expect(filterByTargetAgents([a], ['codex'])).toEqual([a]);
+  });
+
+  it('drops skill when targetAgents and selected are disjoint', () => {
+    const a = makeSkill('a', ['claude-code']);
+    expect(filterByTargetAgents([a], ['codex'])).toEqual([]);
+  });
+
+  it('keeps skill when intersection non-empty', () => {
+    const a = makeSkill('a', ['claude-code', 'codex']);
+    expect(filterByTargetAgents([a], ['codex'])).toEqual([a]);
+  });
+
+  it('skillMatchesAgents matches the same logic', () => {
+    const a = makeSkill('a', ['claude-code']);
+    expect(skillMatchesAgents(a, ['codex'])).toBe(false);
+    expect(skillMatchesAgents(a, ['claude-code'])).toBe(true);
+    expect(skillMatchesAgents(a, [])).toBe(true);
+  });
+
+  it('treats empty targetAgents array as universal', () => {
+    const a = makeSkill('a', []);
+    expect(filterByTargetAgents([a], ['codex'])).toEqual([a]);
   });
 });

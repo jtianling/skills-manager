@@ -13,6 +13,8 @@ import { GroupsService, validateGroupName } from './groups.js';
 import { RegistryService } from './registry.js';
 import { SourceInfo, SourcesService } from './sources.js';
 import { SourceUpdater, UpdateResult } from './source-updater.js';
+import { Deployer } from './deployer.js';
+import { DeploymentScanner } from './scanner.js';
 import {
   createInstallResult,
   findCustomSkillByKey,
@@ -71,6 +73,26 @@ function scanSkillSubdirs(dir: string): string[] {
 function printUninstallWarning(): void {
   console.log('\nWarning: Symlinked deployments in projects will break.');
   console.log('Use `skillsmgr remove <name>` in affected projects first.\n');
+}
+
+function cleanCurrentProjectDeploymentsForKeys(keys: string[]): void {
+  try {
+    const projectDir = process.cwd();
+    const scanner = new DeploymentScanner(projectDir, SKILLS_MANAGER_DIR);
+    const deployedNames = new Set(scanner.getDeployedSkills().map((s) => s.name));
+    const deployer = new Deployer(projectDir);
+    for (const key of keys) {
+      const skillName = key.split('/').pop();
+      if (!skillName) continue;
+      if (deployedNames.has(skillName)) {
+        deployer.removeSkill(skillName);
+      } else {
+        deployer.removeCompanions(skillName);
+      }
+    }
+  } catch {
+    // best effort
+  }
 }
 
 export class GroupManager {
@@ -233,6 +255,7 @@ export class GroupManager {
       }
     }
 
+    cleanCurrentProjectDeploymentsForKeys(affectedKeys);
     removeDir(join(SKILLS_MANAGER_DIR, 'custom', name));
     for (const key of affectedKeys) {
       this.sourcesService.removeSource(key);

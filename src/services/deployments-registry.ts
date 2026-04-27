@@ -3,11 +3,16 @@ import { existsSync, mkdirSync, realpathSync, renameSync, writeFileSync } from '
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { fileExists, readFileContent } from '../utils/fs.js';
 
+export interface SkillCompanionsRecord {
+  deployedCompanions: string[];
+}
+
 export interface DeploymentEntry {
   mode: 'link' | 'copy';
   followGroups: string[];
   pinnedSkills: string[];
   lastDeployedAt: string;
+  skillCompanions?: Record<string, SkillCompanionsRecord>;
 }
 
 export interface DeploymentsRegistry {
@@ -44,8 +49,27 @@ function normalizePath(projectPath: string): string {
   }
 }
 
+function normalizeSkillCompanions(
+  raw: unknown,
+): Record<string, SkillCompanionsRecord> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, SkillCompanionsRecord> = {};
+  for (const [skill, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const inner = value as Record<string, unknown>;
+    const list = Array.isArray(inner.deployedCompanions)
+      ? (inner.deployedCompanions as unknown[]).filter(
+          (v): v is string => typeof v === 'string',
+        )
+      : [];
+    out[skill] = { deployedCompanions: list };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function normalizeEntry(raw: unknown): DeploymentEntry {
   const obj = (raw ?? {}) as Record<string, unknown>;
+  const skillCompanions = normalizeSkillCompanions(obj.skillCompanions);
   return {
     mode: obj.mode === 'copy' ? 'copy' : 'link',
     followGroups: Array.isArray(obj.followGroups)
@@ -55,6 +79,7 @@ function normalizeEntry(raw: unknown): DeploymentEntry {
       ? (obj.pinnedSkills as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
     lastDeployedAt: typeof obj.lastDeployedAt === 'string' ? obj.lastDeployedAt : '',
+    ...(skillCompanions ? { skillCompanions } : {}),
   };
 }
 
@@ -96,7 +121,14 @@ export class DeploymentsRegistryService {
   recordDeploy(projectPath: string, entry: DeploymentEntry): void {
     const key = normalizePath(projectPath);
     const registry = this.readRegistry();
-    registry.deployments[key] = entry;
+    const previous = registry.deployments[key];
+    const merged: DeploymentEntry = {
+      ...entry,
+      ...(previous?.skillCompanions && !entry.skillCompanions
+        ? { skillCompanions: previous.skillCompanions }
+        : {}),
+    };
+    registry.deployments[key] = merged;
     this.writeRegistry(registry);
   }
 
@@ -162,5 +194,93 @@ export class DeploymentsRegistryService {
       this.writeRegistry(registry);
     }
     return removed;
+  }
+
+  getCompanionsForSkill(skill: string, projectPath: string): string[] {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const entry = registry.deployments[key];
+    return entry?.skillCompanions?.[skill]?.deployedCompanions ?? [];
+  }
+
+  ensureSkillRecord(skill: string, projectPath: string): void {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const previous = registry.deployments[key] ?? {
+      mode: 'link' as const,
+      followGroups: [],
+      pinnedSkills: [],
+      lastDeployedAt: '',
+    };
+    const prevSkills = previous.skillCompanions ?? {};
+    if (skill in prevSkills) return;
+    const nextEntry: DeploymentEntry = {
+      ...previous,
+      skillCompanions: {
+        ...prevSkills,
+        [skill]: { deployedCompanions: [] },
+      },
+    };
+    registry.deployments[key] = nextEntry;
+    this.writeRegistry(registry);
+  }
+
+  addCompanion(skill: string, projectPath: string, absPath: string): void {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const previous = registry.deployments[key] ?? {
+      mode: 'link' as const,
+      followGroups: [],
+      pinnedSkills: [],
+      lastDeployedAt: '',
+    };
+    const prevSkills = previous.skillCompanions ?? {};
+    const prevList = prevSkills[skill]?.deployedCompanions ?? [];
+    const nextList = prevList.includes(absPath) ? prevList : [...prevList, absPath];
+    const nextEntry: DeploymentEntry = {
+      ...previous,
+      skillCompanions: {
+        ...prevSkills,
+        [skill]: { deployedCompanions: nextList },
+      },
+    };
+    registry.deployments[key] = nextEntry;
+    this.writeRegistry(registry);
+  }
+
+  clearCompanions(skill: string, projectPath: string): void {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const previous = registry.deployments[key];
+    if (!previous?.skillCompanions || !(skill in previous.skillCompanions)) {
+      return;
+    }
+    const nextSkills = { ...previous.skillCompanions };
+    delete nextSkills[skill];
+    const nextEntry: DeploymentEntry = {
+      ...previous,
+      ...(Object.keys(nextSkills).length > 0
+        ? { skillCompanions: nextSkills }
+        : { skillCompanions: undefined }),
+    };
+    if (nextEntry.skillCompanions === undefined) {
+      delete (nextEntry as { skillCompanions?: unknown }).skillCompanions;
+    }
+    registry.deployments[key] = nextEntry;
+    this.writeRegistry(registry);
+  }
+
+  listAllCompanionPaths(projectPath: string): Array<{ skill: string; path: string }> {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const entry = registry.deployments[key];
+    if (!entry?.skillCompanions) return [];
+    const out: Array<{ skill: string; path: string }> = [];
+    for (const [skill, rec] of Object.entries(entry.skillCompanions)) {
+      for (const p of rec.deployedCompanions) {
+        out.push({ skill, path: p });
+      }
+    }
+    return out;
   }
 }

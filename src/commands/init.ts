@@ -101,7 +101,11 @@ export async function executeInit(options: { yes?: boolean }): Promise<void> {
 }
 
 export const initCommand = new Command('init')
-  .description('Create a skill.json manifest interactively')
+  .description(
+    'Create a skill.json manifest interactively. ' +
+      'Optional fields targetAgents / companions are not prompted; add them ' +
+      'manually after init. See README "Target Agents" and "Companions" sections.',
+  )
   .option('-y, --yes', 'Skip prompts and use defaults')
   .action(async (options: { yes?: boolean }) => {
     await executeInit(options);
