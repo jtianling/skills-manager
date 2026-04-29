@@ -802,7 +802,12 @@ export async function executeAdd(
 }
 
 export const addCommand = new Command('add')
-  .description('Add a skill to the project (or globally with -g)')
+  .description(
+    'Add a skill to the project (or globally with -g). ' +
+      "Candidates are filtered by each skill's 'targetAgents' against the " +
+      'selected agent set; skills declaring companions deploy those extra ' +
+      'files automatically (see `skillsmgr --help` for skill.json details).',
+  )
   .argument('[arg]', 'Skill name, owner/repo, or URL')
   .option('--all', 'Add all skills without prompting')
   .option('-y', 'Skip all prompts (implies --all --same-agents)')

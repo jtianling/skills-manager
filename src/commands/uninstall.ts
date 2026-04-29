@@ -457,7 +457,11 @@ export async function executeUninstall(
 }
 
 export const uninstallCommand = new Command('uninstall')
-  .description('Remove skills from ~/.skills-manager/')
+  .description(
+    'Remove skills from ~/.skills-manager/. Also reverse-cleans any ' +
+      'companion files the skill deployed to the current project (e.g. ' +
+      '.claude/agents/<name>.md) using deployments-registry records.',
+  )
   .argument('[identifier]', 'owner/repo or skill name')
   .option('--all', 'Skip selection prompt and uninstall all matching skills')
   .option('-f, --force', 'Skip confirmation prompt')

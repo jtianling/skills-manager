@@ -25,7 +25,15 @@ const program = new Command();
 program
   .name('skillsmgr')
   .description('Unified skills manager for AI coding tools')
-  .version(version);
+  .version(version)
+  .addHelpText(
+    'after',
+    `\nSkill authoring:\n` +
+      `  skill.json supports optional 'targetAgents' (which agents the skill\n` +
+      `  applies to) and 'companions[]' (extra files deployed outside the skill\n` +
+      `  directory, e.g. Claude Code subagent files at .claude/agents/<name>.md).\n` +
+      `  See docs/skill-manifest-reference.md or README "Publishing Skills".\n`,
+  );
 
 program.addCommand(installCommand);
 program.addCommand(updateCommand);
