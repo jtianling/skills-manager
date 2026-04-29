@@ -16,3 +16,4 @@ CLAUDE.md
 .worktrees/
 skills-lock.json
 .mcp.json
+skillsmgr-deploy.json
