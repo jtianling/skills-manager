@@ -2,27 +2,31 @@ import { existsSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
 import { Command } from 'commander';
 import inquirer from 'inquirer';
-import { validatePackageName, validateManifest } from '../services/manifest.js';
+import { validatePackageName } from '../services/manifest.js';
+import { readAuth } from '../services/auth.js';
 import { handlePromptError } from '../utils/prompts.js';
 import type { SkillManifest } from '../types.js';
 
-export async function executeInit(options: { yes?: boolean }): Promise<void> {
-  const cwd = process.cwd();
-  const manifestPath = join(cwd, 'skill.json');
+export async function executeInit(options: { yes?: boolean; dir?: string }): Promise<void> {
+  const targetDir = options.dir ?? process.cwd();
+  const manifestPath = join(targetDir, 'skill.json');
 
   if (existsSync(manifestPath)) {
     console.log('skill.json already exists.');
     process.exit(1);
   }
 
-  const dirName = basename(cwd).toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+  const dirName = basename(targetDir).toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+  const author = readAuth()?.username ?? '';
 
   if (options.yes) {
     const manifest: SkillManifest = {
       name: dirName,
       version: '1.0.0',
       description: '',
+      license: 'MIT',
     };
+    if (author) manifest.author = author;
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     console.log('Created skill.json');
     return;
@@ -43,32 +47,14 @@ export async function executeInit(options: { yes?: boolean }): Promise<void> {
       },
       {
         type: 'input',
-        name: 'version',
-        message: 'Version:',
-        default: '1.0.0',
-        validate: (input: string) =>
-          /^\d+\.\d+\.\d+/.test(input) || 'Must be valid semver (e.g., 1.0.0)',
-      },
-      {
-        type: 'input',
         name: 'description',
         message: 'Description:',
-      },
-      {
-        type: 'input',
-        name: 'author',
-        message: 'Author:',
-      },
-      {
-        type: 'input',
-        name: 'license',
-        message: 'License:',
-        default: 'MIT',
+        validate: (input: string) => input.trim().length > 0 || 'Description is required',
       },
       {
         type: 'input',
         name: 'dependencies',
-        message: 'Dependencies (comma-separated, e.g. pkg-name, owner/repo:skill):',
+        message: 'Dependencies (optional, comma-separated):',
       },
     ]);
   } catch (error) {
@@ -77,24 +63,18 @@ export async function executeInit(options: { yes?: boolean }): Promise<void> {
 
   const manifest: SkillManifest = {
     name: answers.name,
-    version: answers.version,
+    version: '1.0.0',
     description: answers.description,
+    license: 'MIT',
   };
 
-  if (answers.author) manifest.author = answers.author;
-  if (answers.license) manifest.license = answers.license;
+  if (author) manifest.author = author;
 
   const deps = (answers.dependencies as string)
     .split(',')
     .map((d: string) => d.trim())
     .filter(Boolean);
   if (deps.length > 0) manifest.dependencies = deps;
-
-  const { valid, errors } = validateManifest(manifest);
-  if (!valid) {
-    console.error(`Validation failed: ${errors.join(', ')}`);
-    process.exit(1);
-  }
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   console.log('Created skill.json');

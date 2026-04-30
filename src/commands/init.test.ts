@@ -3,6 +3,17 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+const mockPrompt = vi.hoisted(() => vi.fn());
+const mockReadAuth = vi.hoisted(() => vi.fn());
+
+vi.mock('inquirer', () => ({
+  default: { prompt: mockPrompt },
+}));
+
+vi.mock('../services/auth.js', () => ({
+  readAuth: mockReadAuth,
+}));
+
 import { executeInit } from './init.js';
 
 describe('init command', () => {
@@ -17,6 +28,8 @@ describe('init command', () => {
     process.cwd = () => testDir;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockPrompt.mockReset();
+    mockReadAuth.mockReset().mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -60,5 +73,81 @@ describe('init command', () => {
     expect(content.name).not.toMatch(/[A-Z]/);
 
     rmSync(namedDir, { recursive: true, force: true });
+  });
+
+  it('defaults version=1.0.0 and license=MIT, no prompts for them', async () => {
+    mockPrompt.mockResolvedValueOnce({
+      name: 'my-skill',
+      description: 'A test skill',
+      dependencies: '',
+    });
+
+    await executeInit({});
+
+    const promptArgs = mockPrompt.mock.calls[0][0] as Array<{ name: string }>;
+    const promptedNames = promptArgs.map((p) => p.name);
+    expect(promptedNames).toEqual(['name', 'description', 'dependencies']);
+
+    const content = JSON.parse(readFileSync(join(testDir, 'skill.json'), 'utf-8'));
+    expect(content.version).toBe('1.0.0');
+    expect(content.license).toBe('MIT');
+    expect(content.description).toBe('A test skill');
+  });
+
+  it('uses logged-in username as author', async () => {
+    mockReadAuth.mockReturnValue({ username: 'alice', token: 'spm_test' });
+    mockPrompt.mockResolvedValueOnce({
+      name: 'my-skill',
+      description: 'desc',
+      dependencies: '',
+    });
+
+    await executeInit({});
+
+    const content = JSON.parse(readFileSync(join(testDir, 'skill.json'), 'utf-8'));
+    expect(content.author).toBe('alice');
+  });
+
+  it('omits author field when not logged in', async () => {
+    mockReadAuth.mockReturnValue(null);
+    mockPrompt.mockResolvedValueOnce({
+      name: 'my-skill',
+      description: 'desc',
+      dependencies: '',
+    });
+
+    await executeInit({});
+
+    const content = JSON.parse(readFileSync(join(testDir, 'skill.json'), 'utf-8'));
+    expect(content).not.toHaveProperty('author');
+  });
+
+  it('parses dependencies from comma-separated input', async () => {
+    mockPrompt.mockResolvedValueOnce({
+      name: 'my-skill',
+      description: 'desc',
+      dependencies: '@scope/a, @scope/b , owner/repo:c',
+    });
+
+    await executeInit({});
+
+    const content = JSON.parse(readFileSync(join(testDir, 'skill.json'), 'utf-8'));
+    expect(content.dependencies).toEqual(['@scope/a', '@scope/b', 'owner/repo:c']);
+  });
+
+  it('description prompt validates non-empty', async () => {
+    mockPrompt.mockResolvedValueOnce({
+      name: 'my-skill',
+      description: 'has content',
+      dependencies: '',
+    });
+
+    await executeInit({});
+
+    const promptArgs = mockPrompt.mock.calls[0][0] as Array<{ name: string; validate?: (s: string) => boolean | string }>;
+    const desc = promptArgs.find((p) => p.name === 'description');
+    expect(desc?.validate).toBeDefined();
+    expect(desc!.validate!('')).toBe('Description is required');
+    expect(desc!.validate!('something')).toBe(true);
   });
 });
