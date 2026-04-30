@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { checkDependencyAvailability, handleUnavailableDeps, type UnavailableDep } from './publish.js';
+import {
+  checkDependencyAvailability,
+  handleUnavailableDeps,
+  normalizePackageScope,
+  type UnavailableDep,
+} from './publish.js';
 
 // vi.hoisted so the mock fn is available when vi.mock is hoisted
 const { mockGetPackument } = vi.hoisted(() => ({
@@ -125,5 +130,35 @@ describe('handleUnavailableDeps', () => {
     expect(result.proceed).toBe(false);
     // Dependency should NOT be removed — user must publish manually first
     expect(result.updatedDependencies).toContain('owner/repo:helper');
+  });
+});
+
+describe('normalizePackageScope', () => {
+  it('prepends user scope to bare package name', () => {
+    const result = normalizePackageScope('write-lyric', 'alice');
+    expect(result).toEqual({ name: '@alice/write-lyric', rewrote: true });
+  });
+
+  it('keeps name as-is when scope matches user', () => {
+    const result = normalizePackageScope('@alice/write-lyric', 'alice');
+    expect(result).toEqual({ name: '@alice/write-lyric', rewrote: false });
+  });
+
+  it('throws when scope does not match logged-in user', () => {
+    expect(() => normalizePackageScope('@bob/skill', 'alice')).toThrow(
+      'scope "@bob" does not match logged-in user "@alice"',
+    );
+  });
+
+  it('suggests the corrected name in the error message', () => {
+    expect(() => normalizePackageScope('@bob/skill', 'alice')).toThrow(
+      '@alice/skill',
+    );
+  });
+
+  it('throws on malformed scoped name without slash', () => {
+    expect(() => normalizePackageScope('@brokenname', 'alice')).toThrow(
+      'Invalid scoped package name',
+    );
   });
 });

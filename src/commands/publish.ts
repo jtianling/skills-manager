@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { Command } from 'commander';
-import { getToken } from '../services/auth.js';
+import { readAuth } from '../services/auth.js';
 import { readManifest } from '../services/manifest.js';
 import { RegistryService } from '../services/registry.js';
 import { parseDependencyIdentifier, type ParsedDependency } from '../services/dependency.js';
@@ -139,16 +139,54 @@ async function cascadePublishDep(
   return null;
 }
 
+export function normalizePackageScope(
+  name: string,
+  username: string,
+): { name: string; rewrote: boolean } {
+  // @scope/pkg → must match current user
+  if (name.startsWith('@')) {
+    const slashIdx = name.indexOf('/');
+    if (slashIdx < 0) {
+      throw new Error(`Invalid scoped package name "${name}".`);
+    }
+    const scope = name.slice(1, slashIdx);
+    if (scope !== username) {
+      throw new Error(
+        `Cannot publish "${name}" — scope "@${scope}" does not match logged-in user "@${username}". ` +
+        `Update skill.json name to "@${username}/${name.slice(slashIdx + 1)}" or log in as @${scope}.`,
+      );
+    }
+    return { name, rewrote: false };
+  }
+  // bare → prepend current user's scope
+  return { name: `@${username}/${name}`, rewrote: true };
+}
+
 export async function executePublish(dir: string): Promise<void> {
-  const token = getToken();
-  if (!token) {
+  const auth = readAuth();
+  if (!auth) {
     console.error('Not logged in. Run "skillsmgr login" first.');
     process.exit(1);
   }
+  const token = auth.token;
 
   const manifest = readManifest(dir);
   if (!manifest) {
     console.error('No skill.json found. Run "skillsmgr init" to create one.');
+    process.exit(1);
+  }
+
+  // Force publishing under the logged-in user's scope
+  let scopedName: string;
+  try {
+    const { name, rewrote } = normalizePackageScope(manifest.name, auth.username);
+    scopedName = name;
+    if (rewrote) {
+      console.log(`Publishing under your scope as "${scopedName}" (was "${manifest.name}").`);
+    }
+    manifest.name = scopedName;
+  } catch (e) {
+    console.error(`Error: ${(e as Error).message}`);
     process.exit(1);
   }
 
