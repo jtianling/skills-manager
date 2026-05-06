@@ -339,9 +339,11 @@ export async function executeUninstall(
   }
 
   if (options.from) {
+    let normalizedRef: string;
     try {
       const expanded = await expandCollectionRefToSkillNames(options.from);
       if (!expanded) return;
+      normalizedRef = expanded.normalizedRef;
 
       await ensureSetup();
       const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -356,20 +358,25 @@ export async function executeUninstall(
         }
       }
 
-      if (toUninstall.length === 0) {
-        console.log(`No installed skills from collection '${expanded.normalizedRef}'.`);
-        return;
+      if (toUninstall.length > 0) {
+        console.log(`Uninstalling ${toUninstall.length} skills from collection '${normalizedRef}'...`);
+        for (const name of toUninstall) {
+          await uninstallExplicitSkillName(name, options);
+        }
+      } else {
+        console.log(`No installed skills from collection '${normalizedRef}'.`);
       }
-
-      options = {
-        ...options,
-        skill: [...(options.skill ?? []), ...toUninstall],
-      };
-      console.log(`Uninstalling ${toUninstall.length} skills from collection '${expanded.normalizedRef}'...`);
     } catch (e) {
       console.error(`Error: ${(e as Error).message}`);
       process.exit(1);
     }
+
+    // Always clean up the collection group entry, even if some/all skills weren't installed
+    const removed = new GroupsService().removeCollectionGroup(normalizedRef);
+    if (removed) {
+      console.log(`Removed collection group '${normalizedRef}'.`);
+    }
+    return;
   }
 
   await ensureSetup();

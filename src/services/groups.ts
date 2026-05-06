@@ -51,6 +51,20 @@ export function validateGroupName(name: string): void {
   }
 }
 
+const COLLECTION_GROUP_KEY_PATTERN = /^@[a-z0-9][a-z0-9._-]{0,48}\/[a-z0-9][a-z0-9-]{0,48}$/;
+
+export function isCollectionGroupKey(name: string): boolean {
+  return COLLECTION_GROUP_KEY_PATTERN.test(name);
+}
+
+export function validateCollectionGroupKey(key: string): void {
+  if (!COLLECTION_GROUP_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `Invalid collection group key "${key}". Expected format: @owner/slug.`,
+    );
+  }
+}
+
 export class GroupsService {
   private load(): GroupsDataV2 {
     const file = getGroupsFile();
@@ -167,7 +181,7 @@ export class GroupsService {
       return [];
     }
 
-    if (group.kind === 'virtual') {
+    if (group.kind === 'virtual' || group.kind === 'collection') {
       return [...group.members];
     }
 
@@ -374,6 +388,11 @@ export class GroupsService {
   }
 
   addSkill(group: string, skillKey: string): boolean {
+    if (isCollectionGroupKey(group)) {
+      throw new Error(
+        `Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`,
+      );
+    }
     validateGroupName(group);
     const data = this.load();
     const existing = data.groups[group];
@@ -381,6 +400,11 @@ export class GroupsService {
     if (existing?.kind === 'local-batch') {
       throw new Error(
         `Cannot add to physical group '${group}'. Members of physical groups are derived from custom/${group}/.`,
+      );
+    }
+    if (existing?.kind === 'collection') {
+      throw new Error(
+        `Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`,
       );
     }
 
@@ -408,6 +432,11 @@ export class GroupsService {
     if (!existing) {
       return false;
     }
+    if (existing.kind === 'collection') {
+      throw new Error(
+        `Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`,
+      );
+    }
     if (existing.kind !== 'virtual') {
       throw new Error(
         `Cannot modify physical group '${group}'. Members of physical groups are derived from custom/${group}/.`,
@@ -430,6 +459,77 @@ export class GroupsService {
       },
     });
     return true;
+  }
+
+  upsertCollectionGroup(ref: string, members: string[]): { created: boolean } {
+    validateCollectionGroupKey(ref);
+    const data = this.load();
+    const existing = data.groups[ref];
+    if (existing && existing.kind !== 'collection') {
+      throw new Error(`Group '${ref}' already exists with kind '${existing.kind}'.`);
+    }
+
+    const now = new Date().toISOString();
+    const created = !existing;
+    const installedAt = existing && existing.kind === 'collection' ? existing.installedAt : now;
+
+    const entry: GroupEntry = {
+      kind: 'collection',
+      ref,
+      members: [...members],
+      installedAt,
+      updatedAt: now,
+    };
+
+    this.save({
+      ...data,
+      groups: {
+        ...data.groups,
+        [ref]: entry,
+      },
+    });
+
+    return { created };
+  }
+
+  getCollectionGroup(ref: string): Extract<GroupEntry, { kind: 'collection' }> | null {
+    const group = this.getGroup(ref);
+    if (group && group.kind === 'collection') {
+      return group;
+    }
+    return null;
+  }
+
+  removeCollectionGroup(ref: string): boolean {
+    const data = this.load();
+    const existing = data.groups[ref];
+    if (!existing || existing.kind !== 'collection') {
+      return false;
+    }
+    const { [ref]: _removed, ...rest } = data.groups;
+    this.save({ ...data, groups: rest });
+    return true;
+  }
+
+  setCollectionGroupMembers(ref: string, members: string[]): void {
+    validateCollectionGroupKey(ref);
+    const data = this.load();
+    const existing = data.groups[ref];
+    if (!existing || existing.kind !== 'collection') {
+      throw new Error(`Collection group '${ref}' not found.`);
+    }
+    const now = new Date().toISOString();
+    this.save({
+      ...data,
+      groups: {
+        ...data.groups,
+        [ref]: {
+          ...existing,
+          members: [...members],
+          updatedAt: now,
+        },
+      },
+    });
   }
 
   removeSkillFromAll(skillKey: string): void {

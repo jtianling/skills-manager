@@ -4,9 +4,12 @@ const mockResolveCollection = vi.hoisted(() => vi.fn());
 const mockInstallFromRegistry = vi.hoisted(() => vi.fn());
 const mockGetToken = vi.hoisted(() => vi.fn());
 const mockPromptConfirm = vi.hoisted(() => vi.fn());
+const mockUpsertCollectionGroup = vi.hoisted(() => vi.fn().mockReturnValue({ created: true }));
+const mockAddSkill = vi.hoisted(() => vi.fn());
 const mockGroupsCtor = vi.hoisted(() => vi.fn(() => ({
-  addSkill: vi.fn(),
+  addSkill: mockAddSkill,
   getGroupKind: vi.fn().mockReturnValue('virtual'),
+  upsertCollectionGroup: mockUpsertCollectionGroup,
 })));
 
 vi.mock('../services/registry.js', () => ({
@@ -116,6 +119,8 @@ describe('executeInstallFromCollection', () => {
     mockGetToken.mockReset().mockReturnValue(null);
     mockPromptConfirm.mockReset().mockResolvedValue(true);
     mockGroupsCtor.mockClear();
+    mockUpsertCollectionGroup.mockReset().mockReturnValue({ created: true });
+    mockAddSkill.mockReset();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
@@ -284,5 +289,41 @@ describe('executeInstallFromCollection', () => {
     await expect(
       executeInstallFromCollection('not-a-ref', { all: true }),
     ).rejects.toThrow('process.exit');
+  });
+
+  it('upserts a collection group after at least one member installs', async () => {
+    mockResolveCollection.mockResolvedValueOnce({
+      members: [
+        { packageName: '@alice/a', pinnedVersion: '1.0.0', source: '@alice/kit' },
+        { packageName: '@alice/b', pinnedVersion: null, source: '@alice/kit' },
+      ],
+      warnings: [],
+    });
+    mockInstallFromRegistry
+      .mockResolvedValueOnce({ sourceKeys: ['registry/@alice/a'] })
+      .mockResolvedValueOnce({ sourceKeys: ['registry/@alice/b'] });
+
+    await executeInstallFromCollection('@alice/kit', { all: true });
+
+    expect(mockUpsertCollectionGroup).toHaveBeenCalledWith(
+      '@alice/kit',
+      ['registry/@alice/a', 'registry/@alice/b'],
+    );
+  });
+
+  it('skips collection group upsert when nothing installs', async () => {
+    mockResolveCollection.mockResolvedValueOnce({
+      members: [
+        { packageName: '@alice/a', pinnedVersion: null, source: '@alice/kit' },
+      ],
+      warnings: [],
+    });
+    mockInstallFromRegistry.mockRejectedValue(new Error('network'));
+
+    await expect(
+      executeInstallFromCollection('@alice/kit', { all: true }),
+    ).rejects.toThrow('process.exit');
+
+    expect(mockUpsertCollectionGroup).not.toHaveBeenCalled();
   });
 });

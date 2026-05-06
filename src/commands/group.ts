@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GroupManager } from '../services/group-manager.js';
-import { GroupsService, validateGroupName } from '../services/groups.js';
+import { GroupsService, isCollectionGroupKey, validateGroupName } from '../services/groups.js';
 import { SkillsService } from '../services/skills.js';
 import { collect, type InstallOptions, type SkillInfo } from '../types.js';
 import {
@@ -504,6 +504,10 @@ async function executeGroupUpdate(
 
 export async function executeGroupAdd(group: string, identifier: string): Promise<void> {
   await ensureSetup();
+  if (isCollectionGroupKey(group)) {
+    console.log(`Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`);
+    process.exit(1);
+  }
   try {
     validateGroupName(group);
   } catch (e) {
@@ -543,6 +547,10 @@ export async function executeGroupAdd(group: string, identifier: string): Promis
 
 export async function executeGroupRemove(group: string, identifier: string): Promise<void> {
   await ensureSetup();
+  if (isCollectionGroupKey(group)) {
+    console.log(`Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`);
+    process.exit(1);
+  }
   const service = new GroupsService();
 
   const groupSkills = service.getGroup(group);

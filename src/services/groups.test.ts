@@ -8,7 +8,12 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { GroupsService, validateGroupName } from './groups.js';
+import {
+  GroupsService,
+  isCollectionGroupKey,
+  validateCollectionGroupKey,
+  validateGroupName,
+} from './groups.js';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 
 vi.mock('../constants.js', async () => {
@@ -264,5 +269,118 @@ describe('GroupsService', () => {
         },
       },
     });
+  });
+});
+
+describe('collection group keys', () => {
+  it('isCollectionGroupKey accepts @owner/slug', () => {
+    expect(isCollectionGroupKey('@alice/kit')).toBe(true);
+  });
+
+  it('isCollectionGroupKey rejects bare names', () => {
+    expect(isCollectionGroupKey('alice/kit')).toBe(false);
+    expect(isCollectionGroupKey('my-tools')).toBe(false);
+  });
+
+  it('isCollectionGroupKey rejects malformed scoped', () => {
+    expect(isCollectionGroupKey('@alice')).toBe(false);
+    expect(isCollectionGroupKey('@/kit')).toBe(false);
+    expect(isCollectionGroupKey('@alice/kit/extra')).toBe(false);
+  });
+
+  it('validateCollectionGroupKey throws on invalid', () => {
+    expect(() => validateCollectionGroupKey('alice/kit')).toThrow('Invalid collection group key');
+  });
+
+  it('validateCollectionGroupKey accepts valid', () => {
+    expect(() => validateCollectionGroupKey('@alice/kit')).not.toThrow();
+  });
+});
+
+describe('GroupsService collection groups', () => {
+  let service: GroupsService;
+
+  beforeEach(() => {
+    mkdirSync(SKILLS_MANAGER_DIR, { recursive: true });
+    service = new GroupsService();
+  });
+
+  afterEach(() => {
+    rmSync(SKILLS_MANAGER_DIR, { recursive: true, force: true });
+  });
+
+  it('upsertCollectionGroup creates a new entry', () => {
+    const result = service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a', 'registry/@alice/b']);
+    expect(result.created).toBe(true);
+
+    const group = service.getCollectionGroup('@alice/kit');
+    expect(group).not.toBeNull();
+    expect(group!.kind).toBe('collection');
+    expect(group!.ref).toBe('@alice/kit');
+    expect(group!.members).toEqual(['registry/@alice/a', 'registry/@alice/b']);
+    expect(group!.installedAt).toBeTruthy();
+    expect(group!.updatedAt).toBeTruthy();
+  });
+
+  it('upsertCollectionGroup keeps installedAt on second call', async () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+    const first = service.getCollectionGroup('@alice/kit')!;
+    await new Promise((r) => setTimeout(r, 5));
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a', 'registry/@alice/b']);
+    const second = service.getCollectionGroup('@alice/kit')!;
+
+    expect(second.installedAt).toBe(first.installedAt);
+    expect(second.updatedAt).not.toBe(first.updatedAt);
+    expect(second.members).toHaveLength(2);
+  });
+
+  it('upsertCollectionGroup rejects malformed key', () => {
+    expect(() => service.upsertCollectionGroup('alice/kit', [])).toThrow('Invalid collection group key');
+  });
+
+  it('upsertCollectionGroup rejects existing non-collection key', () => {
+    service.createGroup('mykit');
+    expect(() => service.upsertCollectionGroup('mykit', [])).toThrow();
+  });
+
+  it('removeCollectionGroup removes the entry', () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+    expect(service.removeCollectionGroup('@alice/kit')).toBe(true);
+    expect(service.getCollectionGroup('@alice/kit')).toBeNull();
+  });
+
+  it('removeCollectionGroup returns false when not present', () => {
+    expect(service.removeCollectionGroup('@bob/missing')).toBe(false);
+  });
+
+  it('addSkill rejects collection group keys', () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+    expect(() => service.addSkill('@alice/kit', 'registry/@alice/c')).toThrow(
+      'Cannot manually modify collection group',
+    );
+  });
+
+  it('removeSkill rejects collection group keys', () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+    expect(() => service.removeSkill('@alice/kit', 'registry/@alice/a')).toThrow(
+      'Cannot manually modify collection group',
+    );
+  });
+
+  it('getGroupMembers returns collection members', () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a', 'registry/@alice/b']);
+    expect(service.getGroupMembers('@alice/kit')).toEqual(['registry/@alice/a', 'registry/@alice/b']);
+  });
+
+  it('setCollectionGroupMembers replaces snapshot and updates updatedAt', async () => {
+    service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+    const before = service.getCollectionGroup('@alice/kit')!;
+    await new Promise((r) => setTimeout(r, 5));
+    service.setCollectionGroupMembers('@alice/kit', ['registry/@alice/x', 'registry/@alice/y']);
+    const after = service.getCollectionGroup('@alice/kit')!;
+
+    expect(after.members).toEqual(['registry/@alice/x', 'registry/@alice/y']);
+    expect(after.installedAt).toBe(before.installedAt);
+    expect(after.updatedAt).not.toBe(before.updatedAt);
   });
 });

@@ -81,7 +81,7 @@ export interface ListOptions {
   json?: boolean;
 }
 
-export type GroupKind = 'virtual' | 'local-batch';
+export type GroupKind = 'virtual' | 'local-batch' | 'collection';
 
 export interface VirtualGroupEntry {
   kind: 'virtual';
@@ -95,7 +95,15 @@ export interface LocalBatchGroupEntry {
   updatedAt: string;
 }
 
-export type GroupEntry = VirtualGroupEntry | LocalBatchGroupEntry;
+export interface CollectionGroupEntry {
+  kind: 'collection';
+  ref: string;
+  members: string[];
+  installedAt: string;
+  updatedAt: string;
+}
+
+export type GroupEntry = VirtualGroupEntry | LocalBatchGroupEntry | CollectionGroupEntry;
 
 export interface GroupsDataV2 {
   version: '2.0';

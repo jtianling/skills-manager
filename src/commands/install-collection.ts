@@ -222,17 +222,31 @@ export async function executeInstallFromCollection(
     }
   }
 
-  // Group assignment
+  // Group assignment (legacy --group <user-name>)
   if (options.group && installedSourceKeys.length > 0) {
     for (const key of installedSourceKeys) {
       groupsService.addSkill(options.group, key);
     }
   }
 
+  // Auto-create / update collection group when at least one member installed
+  let collectionGroupCreated = false;
+  if (installedSourceKeys.length > 0) {
+    const result = groupsService.upsertCollectionGroup(normalizedRef, installedSourceKeys);
+    collectionGroupCreated = result.created;
+  }
+
   const installedList = results.filter((r) => r.status === 'installed');
   const failedList = results.filter((r) => r.status === 'failed');
 
   console.log(`\nInstalled: ${installedList.length}, Failed: ${failedList.length}`);
+  if (installedSourceKeys.length > 0) {
+    console.log(
+      collectionGroupCreated
+        ? `Created collection group '${normalizedRef}'.`
+        : `Updated collection group '${normalizedRef}'.`,
+    );
+  }
 
   if (options.json) {
     console.log = origLog;
@@ -242,6 +256,7 @@ export async function executeInstallFromCollection(
       installed: installedList,
       failed: failedList,
       warnings: resolved.warnings,
+      group: installedSourceKeys.length > 0 ? normalizedRef : null,
     });
   }
 

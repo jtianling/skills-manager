@@ -16,7 +16,10 @@ import { SkillsService } from '../services/skills.js';
 import { ResolvedTarget, SourceResolver } from '../services/source-resolver.js';
 import { fileExists, getDirectoriesInDir } from '../utils/fs.js';
 import { promptConfirm } from '../utils/prompts.js';
-import { detectSourceType } from '../utils/source-detection.js';
+import { detectSourceType, normalizeCollectionRef } from '../utils/source-detection.js';
+import { getToken } from '../services/auth.js';
+import { installFromRegistry } from './install-registry.js';
+import { memberToSkillName } from './install-collection.js';
 import { normalizeLocalPath } from '../utils/url-normalize.js';
 import { ensureSetup } from './setup.js';
 
@@ -222,11 +225,123 @@ function printBundleUpdateSummary(result: BundleSyncResult): void {
   );
 }
 
+function looksLikeCollectionRef(input: string): boolean {
+  // Only treat refs that explicitly start with @ as collection refs to avoid
+  // colliding with GitHub-style "owner/repo" sources update already handles.
+  // URL forms (skillsmgr.dev/c/...) are also accepted.
+  if (input.startsWith('@')) {
+    try {
+      normalizeCollectionRef(input);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (input.includes('/c/')) {
+    try {
+      normalizeCollectionRef(input);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+async function updateCollectionGroup(input: string): Promise<void> {
+  const ref = normalizeCollectionRef(input);
+  const existing = groupsService.getCollectionGroup(ref);
+  if (!existing) {
+    console.error(`Error: collection group '${ref}' not installed. Run: skillsmgr install --from ${ref}`);
+    process.exit(1);
+  }
+
+  console.log(`Resolving collection "${ref}"...`);
+  const token = getToken();
+  const registry = new RegistryService();
+  let resolved;
+  try {
+    resolved = await registry.resolveCollection({ extends: [ref] }, token);
+  } catch (e) {
+    console.error(`Error: ${(e as Error).message}`);
+    process.exit(1);
+  }
+
+  for (const w of resolved.warnings) {
+    console.log(`⚠ [${w.kind}] ${w.detail}`);
+  }
+
+  if (resolved.members.length === 0) {
+    console.log(`Collection '${ref}' is empty on the server.`);
+    return;
+  }
+
+  // Existing members are stored as source keys (registry/<pkg>)
+  const existingKeys = new Set(existing.members);
+  const desiredKeys: string[] = [];
+  const newMembers: typeof resolved.members = [];
+
+  for (const m of resolved.members) {
+    const key = `registry/${m.packageName}`;
+    desiredKeys.push(key);
+    if (!existingKeys.has(key)) {
+      newMembers.push(m);
+    }
+  }
+
+  // Install new members
+  const newlyInstalled: string[] = [];
+  for (const member of newMembers) {
+    console.log(`\n=== Installing ${member.packageName}${member.pinnedVersion ? `@${member.pinnedVersion}` : ''} ===`);
+    try {
+      const result = await installFromRegistry(
+        {
+          type: 'registry',
+          packageName: member.packageName,
+          requestedVersion: member.pinnedVersion ?? undefined,
+        },
+        { all: true },
+      );
+      if (result.sourceKeys && result.sourceKeys.length > 0) {
+        newlyInstalled.push(...result.sourceKeys);
+      } else {
+        newlyInstalled.push(`registry/${member.packageName}`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to install ${member.packageName}: ${msg}`);
+    }
+  }
+
+  // Members removed by the server: prune from group snapshot but don't uninstall
+  const removed = existing.members.filter((k) => !desiredKeys.includes(k));
+
+  // Persist updated snapshot
+  groupsService.setCollectionGroupMembers(ref, desiredKeys);
+
+  console.log(
+    `\nAdded: ${newlyInstalled.length}, Removed from snapshot: ${removed.length}, Unchanged: ${desiredKeys.length - newlyInstalled.length}`,
+  );
+  if (removed.length > 0) {
+    console.log(
+      `Note: ${removed.length} skill(s) no longer in collection — local copies kept. Run \`skillsmgr uninstall <name>\` to remove them.`,
+    );
+  }
+  // Use memberToSkillName to silence "unused import" until needed elsewhere
+  void memberToSkillName;
+}
+
 export async function executeUpdateWithOptions(
   source?: string,
   options: UpdateOptions = {},
 ): Promise<void> {
   await ensureSetup();
+
+  // Route collection refs (e.g. "@alice/kit") to collection sync
+  if (source && looksLikeCollectionRef(source)) {
+    await updateCollectionGroup(source);
+    return;
+  }
 
   let allSources = sourcesService.getAllSources();
   const skippedLocalCount = source ? 0 : countStandaloneLocalSkills();

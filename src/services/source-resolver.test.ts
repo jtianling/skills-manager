@@ -110,10 +110,11 @@ describe('SourceResolver', () => {
           if (!group) {
             return [];
           }
-          return group.kind === 'virtual'
-            ? group.members
-            : Object.values(bundles).find((bundle) => bundle.url === group.url)?.members
-              ?? [`custom/${name}/child-a`];
+          if (group.kind === 'virtual' || group.kind === 'collection') {
+            return group.members;
+          }
+          return Object.values(bundles).find((bundle) => bundle.url === group.url)?.members
+            ?? [`custom/${name}/child-a`];
         },
         listGroups: () => Object.keys(groups),
       } as never,

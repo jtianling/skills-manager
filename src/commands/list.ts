@@ -2,11 +2,27 @@ import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { SkillsService } from '../services/skills.js';
 import { SourcesService } from '../services/sources.js';
+import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { ListOptions } from '../types.js';
 import { ensureSetup } from './setup.js';
 import { jsonOutput } from '../utils/json-output.js';
+
+function buildSkillKeyToCollections(): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const groupsService = new GroupsService();
+  for (const name of groupsService.listGroups()) {
+    const group = groupsService.getGroup(name);
+    if (!group || group.kind !== 'collection') continue;
+    for (const memberKey of group.members) {
+      const list = map.get(memberKey) ?? [];
+      list.push(group.ref);
+      map.set(memberKey, list);
+    }
+  }
+  return map;
+}
 
 export async function executeList(options: ListOptions): Promise<void> {
   if (options.deployed) {
@@ -22,6 +38,8 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const skills = skillsService.getAllSkills();
 
+  const skillToCollections = buildSkillKeyToCollections();
+
   if (options.json) {
     const sourcesService = new SourcesService();
     const allSources = sourcesService.getAllSources();
@@ -31,6 +49,7 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
         const skillKey = `${s.source}/${s.name}`;
         const isCustom = s.source.startsWith('custom');
         const sourceInfo = allSources[s.source] ?? allSources[skillKey];
+        const collections = skillToCollections.get(skillKey) ?? [];
 
         return {
           name: s.name,
@@ -40,6 +59,7 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
           url: sourceInfo?.url ?? null,
           installMethod:
             sourceInfo?.installMethod ?? (isCustom ? 'local-copy' : null),
+          collections,
         };
       }),
     });
@@ -81,19 +101,46 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
 
     console.log(`── ${category} (${totalCount} skill${totalCount > 1 ? 's' : ''}) ──`);
 
+    const renderName = (name: string, sourcePrefix: string): string => {
+      // Try both source path and skillKey forms — collection groups store
+      // sourceKeys returned by installFromRegistry which usually equal the
+      // skill's source path, while virtual groups use full source/name keys.
+      const collections =
+        skillToCollections.get(sourcePrefix) ??
+        skillToCollections.get(`${sourcePrefix}/${name}`);
+      if (!collections || collections.length === 0) return name;
+      return `${name}  ← ${collections.join(', ')}`;
+    };
+
     for (const [groupId, skillNames] of Object.entries(groups)) {
       console.log(`  ${groupId} (${skillNames.length})`);
+      const sourcePrefix = `${category}/${groupId}`;
       for (const name of skillNames) {
-        console.log(`    ${name}`);
+        console.log(`    ${renderName(name, sourcePrefix)}`);
       }
     }
 
     if (ungrouped.length > 0) {
       for (const name of ungrouped) {
-        console.log(`  ${name}`);
+        console.log(`  ${renderName(name, category)}`);
       }
     }
 
+    console.log();
+  }
+
+  // Show explicit collection summary at the end
+  const collectionGroups = new GroupsService()
+    .listGroups()
+    .map((n) => new GroupsService().getGroup(n))
+    .filter((g): g is Extract<NonNullable<ReturnType<GroupsService['getGroup']>>, { kind: 'collection' }> =>
+      g != null && g.kind === 'collection',
+    );
+  if (collectionGroups.length > 0) {
+    console.log('── collections ──');
+    for (const c of collectionGroups) {
+      console.log(`  ${c.ref} (${c.members.length})`);
+    }
     console.log();
   }
 }
