@@ -79,10 +79,36 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **AND** 以退出码 1 退出
 - **AND** 不 crash
 
-#### Scenario: 未找到匹配
+#### Scenario: 未找到匹配的 skill 也不是 group 名
 - **WHEN** 中央仓库中没有名为 `xxx` 的 skill
-- **THEN** 输出 "Skill 'xxx' not found in central repository.\nUse 'skillsmgr add owner/repo' or a full URL to install from remote."
+- **AND** `xxx` 也不是已注册的 group 名 (虚拟或物理)
+- **THEN** 输出 "Skill or group 'xxx' not found. Use 'skillsmgr search xxx' to look it up, or 'skillsmgr install <owner/repo|url|path>' to install from a remote source first."
 - **AND** 以退出码 1 退出
+- **AND** 不触发远程安装 (bare 名字不存在确定的 remote 源)
+
+### Requirement: 纯名称匹配 group 名时按 group 批量部署
+
+当 `add <name>` 的 `name` 在中央仓库中找不到 skill, 但匹配到一个已注册 group (虚拟或物理) 时, 命令 SHALL 派发到 group 批量部署流程, 等价于 `add --group <name>`, 并跳过 skill 选择 UI (用户已显式指定了 group, 无需再让其挑选成员).
+
+#### Scenario: bare 名字匹配虚拟 group
+- **WHEN** 用户执行 `skillsmgr add openspec`
+- **AND** 中央仓库中没有名为 `openspec` 的 skill
+- **AND** `openspec` 已在 `groups.json` 中登记为虚拟 group
+- **THEN** 进入 group 批量部署流程
+- **AND** 跳过 skill 选择 UI
+- **AND** 仅交互 agent 选择 (或在 `-a` / `--same-agents` 已指定时跳过)
+- **AND** 部署该 group 的全部 (符合 targetAgents 过滤后) 成员
+
+#### Scenario: bare 名字匹配物理 group
+- **WHEN** 用户执行 `skillsmgr add openspec`
+- **AND** `openspec` 是 `local-batch` 物理 group, 目录 `~/.skills-manager/custom/openspec/` 下含多个 sub-skill
+- **THEN** 进入 group 批量部署流程
+- **AND** 部署 `custom/openspec/` 下所有 sub-skill
+
+#### Scenario: skill 名与 group 名都存在时优先 skill
+- **WHEN** 中央仓库中存在名为 `foo` 的 skill
+- **AND** `groups.json` 中也存在名为 `foo` 的 group
+- **THEN** 走单 skill 部署流程 (skill 优先于 group)
 
 ## Provider/Repo 流程
 

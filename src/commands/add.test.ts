@@ -143,17 +143,37 @@ describe('add command', () => {
       );
     });
 
-    it('exits with message when skill not found', async () => {
+    it('exits with message when skill not found and not a group', async () => {
       const exitError = new Error('process.exit');
       vi.mocked(process.exit).mockImplementation(() => { throw exitError; });
-      vi.mocked(installSource).mockRejectedValue(new Error('Directory ./nonexistent not found. For remote install, use owner/repo format.'));
 
       await expect(executeAdd('nonexistent', {})).rejects.toThrow('process.exit');
 
+      expect(installSource).not.toHaveBeenCalled();
       expect(console.error).toHaveBeenCalledWith(
-        'Error: Directory ./nonexistent not found. For remote install, use owner/repo format.'
+        expect.stringContaining("Skill or group 'nonexistent' not found"),
       );
       expect(process.exit).toHaveBeenCalledWith(1);
+    });
+
+    it('dispatches to group batch deploy and skips skill picker for bare group name', async () => {
+      createSkill('custom/openspec', 'openspec-apply', 'Apply');
+      createSkill('custom/openspec', 'openspec-archive', 'Archive');
+
+      const groups = new GroupsService();
+      groups.createGroup('openspec');
+      groups.addSkill('openspec', 'custom/openspec/openspec-apply');
+      groups.addSkill('openspec', 'custom/openspec/openspec-archive');
+
+      vi.mocked(interactiveCheckbox).mockResolvedValue(['agents-skills-standard']);
+
+      await executeAdd('openspec', {});
+
+      expect(installSource).not.toHaveBeenCalled();
+      expect(interactiveCheckbox).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(interactiveCheckbox).mock.calls[0][0].message).toContain('agent');
+      expect(existsSync(join(testProjectDir, '.agents', 'skills', 'openspec-apply'))).toBe(true);
+      expect(existsSync(join(testProjectDir, '.agents', 'skills', 'openspec-archive'))).toBe(true);
     });
 
     it('reports already deployed skill', async () => {

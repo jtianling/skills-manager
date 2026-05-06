@@ -235,8 +235,19 @@ async function handleSkillName(
   const skill = await resolveSkillByName(name, allSkills);
 
   if (!skill) {
-    await handleRemoteInstallAndDeploy(name, options, scanner, deployer);
-    return;
+    const groupsService = new GroupsService();
+    if (groupsService.getGroup(name)) {
+      await handleGroupBatchDeploy(name, { ...options, all: true }, scanner, deployer);
+      return;
+    }
+
+    const message = `Skill or group '${name}' not found. Use 'skillsmgr search ${name}' to look it up, or 'skillsmgr install <owner/repo|url|path>' to install from a remote source first.`;
+    if (options.json) {
+      jsonError(message, 'NOT_FOUND');
+    } else {
+      console.error(`Error: ${message}`);
+    }
+    process.exit(1);
   }
 
   if (options.global) {
