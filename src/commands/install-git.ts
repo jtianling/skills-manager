@@ -2,19 +2,16 @@ import { execFileSync } from 'child_process';
 import { basename, join } from 'path';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
-import { SKILLS_MANAGER_DIR, STANDARD_SKILL_PATHS, findOfficialProvider } from '../constants.js';
+import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
-import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
-import { getPluginSkillPaths } from '../services/plugin-manifest.js';
+import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, removeDir, warnScriptFiles } from '../utils/fs.js';
+import { collectSkillsFromClone } from '../services/repo-clone.js';
 import { makeBundleId, normalizeGitUrl } from '../utils/url-normalize.js';
 import {
   createInstallResult,
   getLocalOverwriteMessage,
-  parseMdFrontmatter,
-  parseMdDescription,
   prepareTargetDir,
-  scanSkillDirectories,
   selectSkills,
 } from './install-utils.js';
 import type { InstallableSkill, InstallResult } from './install-utils.js';
@@ -56,92 +53,7 @@ export async function cloneToTemp(source: string): Promise<string> {
   return tempDir;
 }
 
-function discoverManifestSkills(repoPath: string): InstallableSkill[] {
-  const manifestDirs = getPluginSkillPaths(repoPath);
-  if (manifestDirs.length === 0) {
-    return [];
-  }
-
-  const skills: InstallableSkill[] = [];
-  const seenNames = new Set<string>();
-
-  for (const dir of manifestDirs) {
-    for (const skill of scanSkillDirectories(dir)) {
-      if (!seenNames.has(skill.name)) {
-        seenNames.add(skill.name);
-        skills.push(skill);
-      }
-    }
-  }
-
-  return skills;
-}
-
-function mergeSkills(base: InstallableSkill[], extra: InstallableSkill[]): InstallableSkill[] {
-  const seenNames = new Set(base.map((s) => s.name));
-  const merged = [...base];
-
-  for (const skill of extra) {
-    if (!seenNames.has(skill.name)) {
-      seenNames.add(skill.name);
-      merged.push(skill);
-    }
-  }
-
-  return merged;
-}
-
-export function collectGitCloneSkills(repoPath: string): InstallableSkill[] {
-  const manifestSkills = discoverManifestSkills(repoPath);
-
-  let scannedSkills: InstallableSkill[] = [];
-  for (const stdPath of STANDARD_SKILL_PATHS) {
-    const dir = join(repoPath, stdPath);
-    if (fileExists(dir)) {
-      scannedSkills = mergeSkills(scannedSkills, scanForSkills(dir, 3));
-    }
-  }
-
-  let skills = mergeSkills(manifestSkills, scannedSkills);
-
-  if (skills.length === 0) {
-    const rootSkillMd = join(repoPath, 'SKILL.md');
-    if (fileExists(rootSkillMd)) {
-      const nestedSkills = scanForSkills(repoPath, 3);
-      if (nestedSkills.length > 0) {
-        skills = nestedSkills;
-      } else {
-        const content = readFileContent(rootSkillMd);
-        const frontmatter = parseMdFrontmatter(content);
-        skills = [{
-          name: frontmatter.name || basename(repoPath),
-          description: frontmatter.description ?? '',
-          path: repoPath,
-        }];
-      }
-    } else {
-      skills = scanForSkills(repoPath, 3);
-    }
-  }
-
-  return skills;
-}
-
-function scanForSkills(dir: string, maxDepth: number): InstallableSkill[] {
-  const skills: InstallableSkill[] = [];
-
-  for (const subdir of getDirectoriesInDir(dir)) {
-    const skillMdPath = join(subdir.path, 'SKILL.md');
-    if (fileExists(skillMdPath)) {
-      const content = readFileContent(skillMdPath);
-      skills.push({ name: subdir.name, description: parseMdDescription(content), path: subdir.path });
-    } else if (maxDepth > 1) {
-      skills.push(...scanForSkills(subdir.path, maxDepth - 1));
-    }
-  }
-
-  return skills;
-}
+export const collectGitCloneSkills = collectSkillsFromClone;
 
 export function saveGitCloneSource(
   source: string,

@@ -4,6 +4,7 @@ import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileCont
 import { GitHubService } from './github.js';
 import { GroupsService } from './groups.js';
 import { RegistryService } from './registry.js';
+import { cloneRepoToTemp, collectSkillsFromClone } from './repo-clone.js';
 import { SourceInfo, SourcesService } from './sources.js';
 
 export interface UpdateResult {
@@ -17,6 +18,13 @@ export interface UpdateSourceOptions {
   selectedSkillNames?: Set<string>;
   targetVersion?: string;
 }
+
+export type CloneFetcher = (url: string) => Promise<{
+  repoPath: string;
+  cleanup(): void;
+}>;
+
+export type SkillScanner = (repoPath: string) => Array<{ name: string; path: string }>;
 
 function createEmptyUpdateResult(): UpdateResult {
   return { updated: 0, upToDate: 0, failed: 0, skipped: 0 };
@@ -40,6 +48,9 @@ export class SourceUpdater {
     private readonly githubService: GitHubService = new GitHubService(),
     private readonly registryService: RegistryService = new RegistryService(),
     private readonly groupsService: GroupsService = new GroupsService(),
+    private readonly cloneRepo: CloneFetcher = cloneRepoToTemp,
+    private readonly scanSkills: SkillScanner = (repoPath) =>
+      collectSkillsFromClone(repoPath).map((s) => ({ name: s.name, path: s.path })),
   ) {}
 
   private resolveLocalCopyOriginalPath(key: string, info: SourceInfo): string {
@@ -200,17 +211,26 @@ export class SourceUpdater {
       return createEmptyUpdateResult();
     }
 
-    const { owner, repo } = parsed;
     const targetBase = join(SKILLS_MANAGER_DIR, key);
-    const defaultBranch = await this.githubService.getDefaultBranch(owner, repo);
     const localSkills = getInstalledSkillDirs(targetBase);
-    const result = createEmptyUpdateResult();
 
-    if (localSkills.length > 0) {
-      const { skillsPath: skillsBasePath } = await this.githubService.listSkillsWithFallbackPaths(
-        owner,
-        repo,
-      );
+    if (localSkills.length === 0) {
+      console.log('  No skills installed locally');
+      this.sourcesService.updateTimestamp(key);
+      return createEmptyUpdateResult();
+    }
+
+    const cloned = await this.cloneRepo(info.url);
+    try {
+      const scanned = this.scanSkills(cloned.repoPath);
+      const skillMap = new Map<string, string>();
+      for (const skill of scanned) {
+        if (!skillMap.has(skill.name)) {
+          skillMap.set(skill.name, skill.path);
+        }
+      }
+
+      const result = createEmptyUpdateResult();
 
       for (const localSkill of localSkills) {
         const skillName = localSkill.name;
@@ -227,59 +247,45 @@ export class SourceUpdater {
           continue;
         }
 
-        const remotePath = skillsBasePath === '.' ? skillName : `${skillsBasePath}/${skillName}`;
-
         try {
-          const response = await fetch(
-            `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${remotePath}/SKILL.md`,
-          );
-
-          if (!response.ok) {
-            const rootContent = await this.githubService.fetchRootFile(owner, repo, defaultBranch, 'SKILL.md');
-            if (rootContent) {
-              const localContent = readFileContent(localSkillMd);
-              if (rootContent === localContent) {
-                console.log(`  ✓ ${skillName}: up to date`);
-                result.upToDate++;
-              } else {
-                removeDir(targetDir);
-                await this.githubService.downloadRepoRoot(owner, repo, targetDir);
-                warnScriptFiles(findScriptFiles(targetDir));
-                console.log(`  ↑ ${skillName}: updated`);
-                result.updated++;
-              }
-            } else {
-              console.log(`  ⚠ ${skillName}: not found in remote`);
-              result.failed++;
-            }
+          const remoteSkillPath = skillMap.get(skillName);
+          if (!remoteSkillPath) {
+            console.log(`  ⚠ ${skillName}: not found in remote`);
+            result.failed++;
             continue;
           }
 
-          const remoteContent = await response.text();
+          const remoteSkillMd = join(remoteSkillPath, 'SKILL.md');
+          if (!fileExists(remoteSkillMd)) {
+            console.log(`  ⚠ ${skillName}: not found in remote`);
+            result.failed++;
+            continue;
+          }
+
           const localContent = readFileContent(localSkillMd);
+          const remoteContent = readFileContent(remoteSkillMd);
 
           if (remoteContent === localContent) {
             console.log(`  ✓ ${skillName}: up to date`);
             result.upToDate++;
-          } else {
-            removeDir(targetDir);
-            await this.githubService.downloadSkill(owner, repo, remotePath, targetDir);
-            warnScriptFiles(findScriptFiles(targetDir));
-            console.log(`  ↑ ${skillName}: updated`);
-            result.updated++;
+            continue;
           }
-        } catch {
-          console.log(`  ✗ ${skillName}: failed to update`);
+
+          removeDir(targetDir);
+          copyDir(remoteSkillPath, targetDir);
+          warnScriptFiles(findScriptFiles(targetDir));
+          console.log(`  ↑ ${skillName}: updated`);
+          result.updated++;
+        } catch (error) {
+          console.log(`  ✗ ${skillName}: failed to update (${(error as Error).message})`);
           result.failed++;
         }
       }
-    }
 
-    if (localSkills.length === 0) {
-      console.log('  No skills installed locally');
+      this.sourcesService.updateTimestamp(key);
+      return result;
+    } finally {
+      cloned.cleanup();
     }
-
-    this.sourcesService.updateTimestamp(key);
-    return result;
   }
 }

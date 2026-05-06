@@ -49,4 +49,35 @@ describe('GitHubService', () => {
       expect(dir).toBe(join(SKILLS_DIR, 'official', 'anthropic', 'skills', 'code-review'));
     });
   });
+
+  describe('parseGitHubUrl', () => {
+    it('returns owner and repo for basic URL', () => {
+      expect(service.parseGitHubUrl('https://github.com/owner/repo')).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+      });
+    });
+
+    it('strips .git suffix', () => {
+      expect(service.parseGitHubUrl('https://github.com/owner/repo.git')).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+      });
+    });
+
+    it('returns owner, repo, branch, path for tree URL', () => {
+      expect(
+        service.parseGitHubUrl('https://github.com/owner/repo/tree/main/skills/foo'),
+      ).toEqual({
+        owner: 'owner',
+        repo: 'repo',
+        branch: 'main',
+        path: 'skills/foo',
+      });
+    });
+
+    it('returns null for non-GitHub URL', () => {
+      expect(service.parseGitHubUrl('https://example.com/foo/bar')).toBeNull();
+    });
+  });
 });

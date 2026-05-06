@@ -3,9 +3,11 @@ import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { GitHubService } from './github.js';
 import { GroupsService } from './groups.js';
 import { SourcesService } from './sources.js';
+import { cloneRepoToTemp, collectSkillsFromClone } from './repo-clone.js';
 import { Bundle, RemoteBundleInfo } from '../types.js';
 import {
   cleanEmptyParents,
+  copyDir,
   fileExists,
   findScriptFiles,
   getDirectoriesInDir,
@@ -32,6 +34,19 @@ export interface BundleSyncOptions {
   sync?: boolean;
   verbose?: boolean;
 }
+
+interface BundleListing {
+  /** Map of skill name → absolute path inside the cloned repo. */
+  skills: Map<string, string>;
+  cleanup(): void;
+}
+
+export type CloneFetcher = (url: string) => Promise<{
+  repoPath: string;
+  cleanup(): void;
+}>;
+
+export type SkillScanner = (repoPath: string) => Array<{ name: string; path: string }>;
 
 interface BundleManagerFs {
   fileExists(path: string): boolean;
@@ -70,6 +85,9 @@ export class BundleManager {
     private readonly githubService: GitHubService = new GitHubService(),
     private readonly groupsService: GroupsService = new GroupsService(),
     private readonly fs: BundleManagerFs = defaultFs,
+    private readonly cloneRepo: CloneFetcher = cloneRepoToTemp,
+    private readonly scanSkills: SkillScanner = (repoPath) =>
+      collectSkillsFromClone(repoPath).map((s) => ({ name: s.name, path: s.path })),
   ) {}
 
   async sync(bundleId: string, options: BundleSyncOptions = {}): Promise<BundleSyncResult> {
@@ -91,71 +109,80 @@ export class BundleManager {
     }
 
     const remoteBundle = bundle as RemoteBundleInfo;
-    const currentSkills = await this.scanCurrentSourceSkills(remoteBundle);
-    const installedNames = this.getInstalledSkillNames(remoteBundle);
-    const diff = this.computeDiff(currentSkills, installedNames);
-    const result = createEmptySyncResult();
-    const primarySourceKey = this.getPrimarySourceKey(remoteBundle);
+    if (remoteBundle.type !== 'git') {
+      throw new Error(`Unsupported bundle type for sync: ${remoteBundle.type}`);
+    }
 
-    for (const skillName of diff.existing) {
-      try {
-        const changed = await this.applyExisting(remoteBundle, skillName);
-        if (changed) {
-          result.updated++;
-          console.log(`  ↑ ${skillName}: updated`);
-        } else {
-          result.upToDate++;
-          if (options.verbose) {
-            console.log(`  ✓ ${skillName}: up to date`);
+    const listing = await this.cloneAndScan(remoteBundle);
+    try {
+      const currentSkills = [...listing.skills.keys()].sort();
+      const installedNames = this.getInstalledSkillNames(remoteBundle);
+      const diff = this.computeDiff(currentSkills, installedNames);
+      const result = createEmptySyncResult();
+      const primarySourceKey = this.getPrimarySourceKey(remoteBundle);
+
+      for (const skillName of diff.existing) {
+        try {
+          const changed = this.applyExisting(remoteBundle, skillName, listing);
+          if (changed) {
+            result.updated++;
+            console.log(`  ↑ ${skillName}: updated`);
+          } else {
+            result.upToDate++;
+            if (options.verbose) {
+              console.log(`  ✓ ${skillName}: up to date`);
+            }
           }
+        } catch (error) {
+          result.failed++;
+          console.log(`  ✗ ${skillName}: failed to update (${(error as Error).message})`);
         }
-      } catch {
-        result.failed++;
-        console.log(`  ✗ ${skillName}: failed to update`);
       }
-    }
 
-    for (const skillName of diff.added) {
-      try {
-        if (bundle.selectionMode === 'subset') {
-          result.addedSkipped++;
-          console.log(`  + ${skillName}: new in source (skipped, subset mode)`);
-          continue;
+      for (const skillName of diff.added) {
+        try {
+          if (bundle.selectionMode === 'subset') {
+            result.addedSkipped++;
+            console.log(`  + ${skillName}: new in source (skipped, subset mode)`);
+            continue;
+          }
+
+          this.applyAdded(remoteBundle, skillName, primarySourceKey, listing);
+          result.added++;
+          console.log(`  + ${skillName}: new in source (installed)`);
+        } catch (error) {
+          result.failed++;
+          console.log(`  ✗ ${skillName}: failed to install (${(error as Error).message})`);
         }
-
-        await this.applyAdded(remoteBundle, skillName, primarySourceKey);
-        result.added++;
-        console.log(`  + ${skillName}: new in source (installed)`);
-      } catch {
-        result.failed++;
-        console.log(`  ✗ ${skillName}: failed to update`);
       }
-    }
 
-    for (const skillName of diff.removed) {
-      try {
-        if (options.sync) {
-          this.applyRemoved(remoteBundle, skillName, primarySourceKey);
-          result.removedHard++;
-          console.log(`  - ${skillName}: removed`);
-          continue;
+      for (const skillName of diff.removed) {
+        try {
+          if (options.sync) {
+            this.applyRemoved(remoteBundle, skillName, primarySourceKey);
+            result.removedHard++;
+            console.log(`  - ${skillName}: removed`);
+            continue;
+          }
+
+          result.removedKept++;
+          console.log(`  - ${skillName}: removed from source (kept locally, use --sync to remove)`);
+        } catch {
+          result.failed++;
+          console.log(`  ✗ ${skillName}: failed to update`);
         }
-
-        result.removedKept++;
-        console.log(`  - ${skillName}: removed from source (kept locally, use --sync to remove)`);
-      } catch {
-        result.failed++;
-        console.log(`  ✗ ${skillName}: failed to update`);
       }
+
+      if (!options.verbose && result.upToDate > 0) {
+        console.log(`  ✓ ${result.upToDate} skills up to date`);
+      }
+
+      this.sourcesService.updateBundleTimestamp(bundleId);
+
+      return result;
+    } finally {
+      listing.cleanup();
     }
-
-    if (!options.verbose && result.upToDate > 0) {
-      console.log(`  ✓ ${result.upToDate} skills up to date`);
-    }
-
-    this.sourcesService.updateBundleTimestamp(bundleId);
-
-    return result;
   }
 
   async remove(bundleId: string): Promise<BundleRemoveResult> {
@@ -214,20 +241,30 @@ export class BundleManager {
   }
 
   async scanCurrentSourceSkills(bundle: RemoteBundleInfo): Promise<string[]> {
-    if (bundle.type === 'git') {
-      const parsed = this.githubService.parseGitHubUrl(bundle.url);
-      if (!parsed) {
-        throw new Error(`Invalid GitHub bundle URL: ${bundle.url}`);
-      }
-
-      const listing = await this.githubService.listSkillsWithFallbackPaths(
-        parsed.owner,
-        parsed.repo,
-      );
-      return listing.skills.map((skill) => skill.name).sort();
+    if (bundle.type !== 'git') return [];
+    const listing = await this.cloneAndScan(bundle);
+    try {
+      return [...listing.skills.keys()].sort();
+    } finally {
+      listing.cleanup();
     }
+  }
 
-    return [];
+  private async cloneAndScan(bundle: RemoteBundleInfo): Promise<BundleListing> {
+    const cloned = await this.cloneRepo(bundle.url);
+    try {
+      const skills = this.scanSkills(cloned.repoPath);
+      const skillMap = new Map<string, string>();
+      for (const skill of skills) {
+        if (!skillMap.has(skill.name)) {
+          skillMap.set(skill.name, skill.path);
+        }
+      }
+      return { skills: skillMap, cleanup: cloned.cleanup };
+    } catch (error) {
+      cloned.cleanup();
+      throw error;
+    }
   }
 
   computeDiff(currentSkills: string[], bundleMembers: string[]): {
@@ -245,75 +282,56 @@ export class BundleManager {
     return { added, existing, removed };
   }
 
-  private async applyExisting(bundle: RemoteBundleInfo, skillName: string): Promise<boolean> {
-    const parsed = this.githubService.parseGitHubUrl(bundle.url);
-    if (!parsed) {
-      throw new Error(`Invalid GitHub bundle URL: ${bundle.url}`);
+  private applyExisting(
+    bundle: RemoteBundleInfo,
+    skillName: string,
+    listing: BundleListing,
+  ): boolean {
+    const sourcePath = listing.skills.get(skillName);
+    if (!sourcePath) {
+      throw new Error(`skill not present in cloned repo`);
     }
 
-    const listing = await this.githubService.listSkillsWithFallbackPaths(parsed.owner, parsed.repo);
-    const defaultBranch = await this.githubService.getDefaultBranch(parsed.owner, parsed.repo);
     const targetDir = join(this.getGitTargetBase(bundle), skillName);
     const localSkillMd = join(targetDir, 'SKILL.md');
-    const remotePath = listing.skillsPath === '.'
-      ? skillName
-      : `${listing.skillsPath}/${skillName}`;
+    const sourceSkillMd = join(sourcePath, 'SKILL.md');
 
-    if (!this.fs.fileExists(localSkillMd)) {
-      await this.downloadGitSkill(parsed.owner, parsed.repo, listing.skillsPath, remotePath, targetDir);
-      this.updateGitSourceTimestamp(bundle);
-      return true;
+    if (!fileExists(sourceSkillMd)) {
+      throw new Error(`SKILL.md missing in cloned repo at ${sourcePath}`);
     }
 
-    const localContent = this.fs.readFileContent(localSkillMd);
-    let remoteContent: string | null = null;
-
-    if (listing.skillsPath === '.') {
-      remoteContent = await this.githubService.fetchRootFile(
-        parsed.owner,
-        parsed.repo,
-        defaultBranch,
-        'SKILL.md',
-      );
-    } else {
-      const response = await fetch(
-        `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${defaultBranch}/${remotePath}/SKILL.md`,
-      );
-      if (response.ok) {
-        remoteContent = await response.text();
+    if (this.fs.fileExists(localSkillMd)) {
+      const localContent = this.fs.readFileContent(localSkillMd);
+      const sourceContent = readFileContent(sourceSkillMd);
+      if (localContent === sourceContent) {
+        return false;
       }
     }
 
-    if (remoteContent !== null && remoteContent === localContent) {
-      return false;
-    }
-
     this.fs.removeDir(targetDir);
-    await this.downloadGitSkill(parsed.owner, parsed.repo, listing.skillsPath, remotePath, targetDir);
+    copyDir(sourcePath, targetDir);
+    warnScriptFiles(findScriptFiles(targetDir));
     this.updateGitSourceTimestamp(bundle);
     return true;
   }
 
-  private async applyAdded(
+  private applyAdded(
     bundle: RemoteBundleInfo,
     skillName: string,
-    primarySourceKey?: string,
-  ): Promise<void> {
-    if (bundle.type === 'git') {
-      const parsed = this.githubService.parseGitHubUrl(bundle.url);
-      if (!parsed) {
-        throw new Error(`Invalid GitHub bundle URL: ${bundle.url}`);
-      }
+    primarySourceKey: string | undefined,
+    listing: BundleListing,
+  ): void {
+    const sourcePath = listing.skills.get(skillName);
+    if (!sourcePath) {
+      throw new Error(`skill not present in cloned repo`);
+    }
 
-      const listing = await this.githubService.listSkillsWithFallbackPaths(parsed.owner, parsed.repo);
-      const targetDir = join(this.getGitTargetBase(bundle), skillName);
-      const remotePath = listing.skillsPath === '.'
-        ? skillName
-        : `${listing.skillsPath}/${skillName}`;
-      await this.downloadGitSkill(parsed.owner, parsed.repo, listing.skillsPath, remotePath, targetDir);
-      if (primarySourceKey) {
-        this.sourcesService.updateTimestamp(primarySourceKey);
-      }
+    const targetDir = join(this.getGitTargetBase(bundle), skillName);
+    this.fs.removeDir(targetDir);
+    copyDir(sourcePath, targetDir);
+    warnScriptFiles(findScriptFiles(targetDir));
+    if (primarySourceKey) {
+      this.sourcesService.updateTimestamp(primarySourceKey);
     }
   }
 
@@ -385,22 +403,4 @@ export class BundleManager {
     }
   }
 
-  private async downloadGitSkill(
-    owner: string,
-    repo: string,
-    skillsPath: string,
-    remotePath: string,
-    targetDir: string,
-  ): Promise<void> {
-    if (skillsPath === '.') {
-      this.fs.removeDir(targetDir);
-      await this.githubService.downloadRepoRoot(owner, repo, targetDir);
-      warnScriptFiles(findScriptFiles(targetDir));
-      return;
-    }
-
-    this.fs.removeDir(targetDir);
-    await this.githubService.downloadSkill(owner, repo, remotePath, targetDir);
-    warnScriptFiles(findScriptFiles(targetDir));
-  }
 }

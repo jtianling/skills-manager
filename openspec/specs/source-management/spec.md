@@ -417,27 +417,22 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
    - `'zip'`: 跳过 (zip 来源不支持更新)
    - 其他: 解析 GitHub URL, parseGitHubUrl 返回 null 时跳过
 2. 确定本地目标目录 (根据 type: official/community/custom)
-3. 对 git 来源获取 default branch
+3. 对 git 来源 `git clone --depth 1` 到临时目录, 后续基于本地文件系统对比 (无 GitHub HTTP API 调用)
 
 **更新 Skills**:
 1. 扫描本地已安装的 skill 目录 (`getDirectoriesInDir(targetBase)`)
 2. 跳过名为 `commands` 的目录 (避免误识别为 skill)
 3. 跳过没有 SKILL.md 的目录
-4. 探测远程 skill 目录位置: 依次尝试 `skills/`, `.`
-5. **如果远程无子目录 skill, 额外检查根目录 SKILL.md**:
-   - 获取 `raw.githubusercontent.com/{owner}/{repo}/{branch}/SKILL.md`
-   - 如果存在 (HTTP 200), 标记该仓库为根目录 skill 仓库
-   - 对本地 skill 使用根路径 `SKILL.md` 进行内容对比 (而非 `{skillsBasePath}/{skillName}/SKILL.md`)
-   - 内容不同时, 删除本地 skill 目录, 重新下载整个仓库根到该目录
-6. 如果远程也没有根目录 SKILL.md, 对本地 skill 显示 "not found in remote"
+4. **`git clone --depth 1` 拉取远端仓库到临时目录** (复用 `services/repo-clone.ts` 的 `cloneRepoToTemp`), clone 失败时抛错并清理临时目录
+5. **基于本地文件系统扫描发现远端 skill** (复用 `collectSkillsFromClone`), 与 install 流程和 BundleManager 共享同一份发现规则; 扫描覆盖 plugin manifest, 标准路径 (`skills/` 等), 根目录 SKILL.md 单 skill 仓库, 根目录子文件夹四种形态
+6. 已安装 skill 不在 clone 扫描结果中时显示 "not found in remote", 不删本地
 7. 对每个本地 skill:
-   - 通过 `raw.githubusercontent.com` 获取远程 SKILL.md
-   - 远程不存在 (HTTP 非 200) → 标记为 "not found in remote"
-   - 内容相同 → 标记为 "up to date"
-   - 内容不同 → `removeDir()` 删除本地, `downloadSkill()` 重新下载, 标记为 "updated"
-   - 获取失败 → 标记为 "failed to update"
+   - 读取 `<clonePath>/<skillPath>/SKILL.md` 与本地 SKILL.md 字节对比
+   - 字节相同 → 标记为 "up to date"
+   - 字节不同 → `removeDir()` 删除本地, `copyDir(<clonePath>/<skillPath>, <targetDir>)` 重新拷贝, 标记为 "updated"
+8. 在 `try { ... } finally { cleanup() }` 中保证临时目录回收, 无论成功或抛错
 
-4. 更新 source 的 `updatedAt` 时间戳
+9. 更新 source 的 `updatedAt` 时间戳
 
 #### Scenario: Update only updates skills
 - **WHEN** 执行 `update` 更新某个 source
@@ -466,6 +461,74 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 - **THEN** 物理 group 成员不被单独遍历 (它们的更新通过 `skillsmgr update <group-name>` 触发)
 - **THEN** 不尝试更新任何磁盘上的单 skill local-copy (见 local-update capability 的 "裸 update 跳过 local-copy skill" 需求)
 
+### Requirement: Git 来源 update 走 git clone, 不使用 GitHub HTTP API
+
+`SourceUpdater.updateSource` 对 `installMethod === 'git'` 的 source SHALL 通过 `git clone --depth 1` 拉取整个仓库到临时目录, 然后基于本地文件系统扫描和文件对比完成更新.  系统 SHALL NOT 调用任何 GitHub HTTP API (`api.github.com/...`) 或 raw.githubusercontent.com 来探测分支、列举 skill、对比 SKILL.md 或下载文件.
+
+clone+scan 过程 SHALL 复用 `services/repo-clone.ts` 提供的 `cloneRepoToTemp` 和 `collectSkillsFromClone`, 与 install 流程和 `BundleManager.sync` 共享同一份发现规则 — 三条路径下"什么算 skill"的判定结果 SHALL 一致.
+
+每次 update 调用 SHALL 在 try/finally 中清理临时目录, 无论成功还是抛错.
+
+#### Scenario: Git source update 不发起任何 GitHub API 请求
+- **GIVEN** 已安装 community/obra/superpowers (`installMethod: 'git'`), 本地有若干 skill
+- **WHEN** 用户执行 `skillsmgr update superpowers`
+- **THEN** 系统 SHALL 通过 `git clone --depth 1 https://github.com/obra/superpowers <tempDir>` 拉取仓库
+- **THEN** 系统 SHALL NOT 发起对 `api.github.com` 或 `raw.githubusercontent.com` 的 HTTP 请求
+- **THEN** SKILL.md 内容比对 SHALL 通过读 `<tempDir>/<skillPath>/SKILL.md` 完成
+
+#### Scenario: 已安装 skill 内容未变更
+- **WHEN** 已安装 skill `<localTarget>/<skillName>/SKILL.md` 与 clone 中对应位置 SKILL.md 字节相同
+- **THEN** 系统 SHALL 输出 "✓ <skillName>: up to date"
+- **THEN** 该 skill 目录 SHALL NOT 被删除或重新拷贝
+
+#### Scenario: 已安装 skill 内容有变化
+- **WHEN** 已安装 skill `<localTarget>/<skillName>/SKILL.md` 与 clone 中对应位置 SKILL.md 字节不同
+- **THEN** 系统 SHALL 删除 `<localTarget>/<skillName>/`
+- **THEN** 系统 SHALL 从 clone 中 `copyDir(<clonedSkillPath>, <localTarget>/<skillName>)` 重新拷贝整个 skill 目录
+- **THEN** 系统 SHALL 输出 "↑ <skillName>: updated"
+
+#### Scenario: 远端已删除已安装 skill
+- **WHEN** 已安装 skill 名 `<skillName>` 不在 clone 扫描结果中 (远端已删除)
+- **THEN** 系统 SHALL 输出 "⚠ <skillName>: not found in remote"
+- **THEN** 该 skill 目录 SHALL NOT 被删除 (与 BundleManager 默认 keep 行为一致)
+
+#### Scenario: clone 失败时清理临时目录并报错
+- **WHEN** `git clone` 命令失败 (网络异常、仓库不存在等)
+- **THEN** 系统 SHALL 清理任何已创建的临时目录
+- **THEN** 系统 SHALL 把错误向上抛出, update 命令以非 0 退出
+- **THEN** 已安装的本地 skill 目录 SHALL 保持不变 (无任何删除/拷贝)
+
+#### Scenario: scan 异常时仍清理临时目录
+- **WHEN** clone 成功但 `collectSkillsFromClone` 抛出异常
+- **THEN** 系统 SHALL 在 finally 块中调用 cleanup 删除临时目录, `$TMPDIR` 不留垃圾
+
+#### Scenario: SourceUpdater 与 BundleManager / install 共享 skill 发现规则
+- **GIVEN** 同一个仓库 (例如 garrytan/gstack)
+- **WHEN** 通过 `install`、`update <skill>` 和 `update <bundle>` 三条路径分别处理该仓库
+- **THEN** 三条路径扫描出的 skill 名集合 SHALL 完全一致 (差异仅来自 `selectedSkillNames` 等过滤参数, 不来自发现规则本身)
+
+### Requirement: GitHubService 退化为 URL 解析工具
+
+`GitHubService` SHALL 不再提供任何会发起 HTTP 请求的方法.  在该 capability 范围内 (即整个项目代码), `GitHubService` SHALL 只暴露纯字符串/路径工具:
+
+- `parseGitHubUrl(url)`: URL 解析, 返回 `{ owner, repo, branch?, path? }` 或 null
+- `getTargetDir(owner, repo, skillName, isCustom?)`: 计算目标安装目录
+
+下列方法 SHALL 被移除, 不再存在于代码中:
+
+- `getDefaultBranch`, `listSkills`, `listSkillsWithFallbackPaths`, `findRootSkillsByTree`
+- `fetchRootFile`, `downloadSkill`, `downloadRepoRoot`
+- 内部辅助 `downloadDirectory`, `downloadFile`, `getHeaders`, default-branch 缓存 Map
+
+#### Scenario: GitHubService 不含 HTTP 调用
+- **WHEN** 检视 `src/services/github.ts`
+- **THEN** 文件中 SHALL NOT 出现 `fetch(`, `api.github.com`, `raw.githubusercontent.com`, `process.env.GITHUB_TOKEN` 等字面量
+- **THEN** 类只包含 `parseGitHubUrl`, `getTargetDir` 这两个公开方法 (`isSpecificSkillUrl` 在 `GitService` 中, 不在 `GitHubService`)
+
+#### Scenario: 已删除方法不再被任何代码引用
+- **WHEN** 在 `src/` 下 grep `getDefaultBranch|listSkillsWithFallbackPaths|findRootSkillsByTree|fetchRootFile|downloadSkill|downloadRepoRoot`
+- **THEN** 除测试文件中清理痕迹外, src 代码 SHALL 没有任何匹配
+
 ### 更新结果统计
 
 | 状态 | 含义 |
@@ -478,27 +541,14 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 ### 局限性
 
-- 更新流程对 git 来源通过 GitHub API 检查远程变更, 对 local-copy 来源通过原始路径对比更新, zip 来源不支持更新 (跳过)
+- 更新流程对 git 来源通过 git clone 检查远程变更, 对 local-copy 来源通过原始路径对比更新, zip 来源不支持更新 (跳过)
 - 仅更新已安装的 skill, 不发现和安装新增内容
 - skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
 - 没有版本号或 hash 比较, 依赖文本内容全文对比
 
-## GitHub Service 详解 (仅用于 update 流程)
+## GitHub Service 详解 (URL 解析工具)
 
-### API 请求
-
-- Base URL: `https://api.github.com`
-- User-Agent: `skillsmgr`
-- Accept: `application/vnd.github.v3+json`
-- 认证: 如果 `process.env.GITHUB_TOKEN` 存在, 使用 `token {GITHUB_TOKEN}` 作为 Authorization header
-- 无 token 时使用匿名访问 (GitHub 限制: 60 requests/hour)
-
-### Default Branch 缓存
-
-`getDefaultBranch()`:
-- 使用 Map 按 `{owner}/{repo}` 缓存, 同一 GitHubService 实例内有效
-- API 调用失败时 (非 200) → fallback 返回 `"main"`, 不抛错
-- 正常返回 `data.default_branch`, 如果字段不存在也 fallback 到 `"main"`
+`GitHubService` 不再发起任何 HTTP 请求, 退化为纯粹的 URL / 路径工具类.  整个 codebase 的 git 来源安装与更新均通过 git clone 完成 (见下文 "Git Service 详解" 与 "更新流程").
 
 ### URL 解析
 
@@ -514,31 +564,12 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 
 **不匹配的 URL** → 返回 null
 
-### 目录列表
+### 目标目录计算
 
-`listSkills()`:
-- 调用 `/repos/{owner}/{repo}/contents/{path}` API
-- 过滤 `type === 'dir'` 的条目
-- API 失败时抛出 Error
-
-### 文件下载
-
-`downloadSkill()`:
-- 先 ensureDir 创建目标目录
-- 递归下载: 调用 contents API 获取目录内容, 对 file 类型使用 `download_url` 下载, 对 dir 类型递归处理
-- 文件内容通过 `response.text()` 获取, 使用 `writeFileSync(path, content, 'utf-8')` 写入
-
-### Requirement: GitHubService 支持检查根目录文件
-
-`GitHubService` SHALL 提供方法检查仓库根目录是否存在指定文件, 用于根目录 SKILL.md 检测.
-
-#### Scenario: Check root file exists
-- **WHEN** 调用检查方法且仓库根目录存在 SKILL.md
-- **THEN** 返回文件内容
-
-#### Scenario: Check root file not exists
-- **WHEN** 调用检查方法且仓库根目录不存在 SKILL.md
-- **THEN** 返回 null 或 undefined
+`getTargetDir(owner, repo, skillName, isCustom?)`:
+- official (owner 命中 OFFICIAL_PROVIDERS) → `~/.skills-manager/official/{providerKey}/{repo}/{skillName}`
+- isCustom → `~/.skills-manager/custom/{repo}/{skillName}`
+- 其它 → `~/.skills-manager/community/{owner}/{repo}/{skillName}`
 
 ## Git Service 详解
 

@@ -16,36 +16,51 @@ vi.mock('../services/github.js', () => {
         repo: match[2],
       };
     }
-
-    async getDefaultBranch() {
-      return 'main';
-    }
-
-    async listSkills() {
-      return [{ name: 'grouped-skill', path: 'skills/grouped-skill' }];
-    }
-
-    async listSkillsWithFallbackPaths() {
-      return {
-        skillsPath: 'skills',
-        skills: [{ name: 'grouped-skill', path: 'skills/grouped-skill' }],
-      };
-    }
-
-    async fetchRootFile() {
-      return null;
-    }
-
-    async downloadSkill() {
-      return;
-    }
-
-    async downloadRepoRoot() {
-      return;
-    }
   }
 
   return { GitHubService };
+});
+
+interface MockCloneState {
+  skillsByUrl: Map<string, string[]>;
+  defaultSkills: string[];
+  lastClonedSkills: string[];
+}
+
+const mockCloneState: MockCloneState = {
+  skillsByUrl: new Map(),
+  defaultSkills: ['grouped-skill'],
+  lastClonedSkills: [],
+};
+
+vi.mock('../services/repo-clone.js', async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import('fs');
+  const { tmpdir } = await import('os');
+  const { join } = await import('path');
+  return {
+    async cloneRepoToTemp(source: string) {
+      const tempDir = join(tmpdir(), `skillsmgr-test-clone-${Date.now()}-${Math.random()}`);
+      const repoPath = join(tempDir, 'repo');
+      const skills = mockCloneState.skillsByUrl.get(source) ?? mockCloneState.defaultSkills;
+      mockCloneState.lastClonedSkills = skills;
+      for (const name of skills) {
+        const skillDir = join(repoPath, 'skills', name);
+        mkdirSync(skillDir, { recursive: true });
+        writeFileSync(join(skillDir, 'SKILL.md'), `---\nname: ${name}\n---\n`);
+      }
+      return {
+        repoPath,
+        cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+      };
+    },
+    collectSkillsFromClone(repoPath: string) {
+      return mockCloneState.lastClonedSkills.map((name) => ({
+        name,
+        description: '',
+        path: join(repoPath, 'skills', name),
+      }));
+    },
+  };
 });
 
 vi.mock('../services/registry.js', () => {
@@ -100,6 +115,10 @@ describe('update command', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(promptConfirm).mockResolvedValue(true);
+
+    mockCloneState.skillsByUrl = new Map();
+    mockCloneState.defaultSkills = ['grouped-skill'];
+    mockCloneState.lastClonedSkills = [];
   });
 
   afterEach(() => {
@@ -431,6 +450,8 @@ describe('update command', () => {
       repoName: 'skills',
       installMethod: 'git',
     });
+
+    mockCloneState.skillsByUrl.set('https://github.com/anthropics/skills', ['commit']);
 
     vi.stubGlobal('fetch', vi.fn(async (input: string) => {
       if (String(input).includes('/skills/commit/SKILL.md')) {
