@@ -72,6 +72,8 @@ export interface InstallableSkill {
 }
 
 export interface InstallResult {
+  /** True when the install was a no-op because the package was already on disk. */
+  alreadyInstalled?: boolean;
   basePath: string;
   sourceKey: string;
   installedPaths?: string[];

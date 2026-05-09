@@ -457,12 +457,20 @@ async function handleRemoteInstallAndDeploy(
     process.exit(1);
   }
 
-  const rollback = () => rollbackInstall(
-    installResult.basePath,
-    installResult.sourceKey,
-    installResult.installedPaths,
-    installResult.sourceKeys,
-  );
+  const rollback = () => {
+    if (installResult.alreadyInstalled) {
+      // The package was already on disk before this command ran;
+      // there is nothing to roll back and removing it would destroy
+      // a previously valid install.
+      return;
+    }
+    rollbackInstall(
+      installResult.basePath,
+      installResult.sourceKey,
+      installResult.installedPaths,
+      installResult.sourceKeys,
+    );
+  };
 
   let selectedAgents: ToolName[];
   try {
@@ -530,7 +538,14 @@ async function handleRemoteInstallAndDeploy(
     : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
+    // Already deployed — make sure agent symlink bridges still exist
+    // so newcomers (e.g. .claude/skills) get linked even when no skill
+    // needs (re)deploying.
     rollback();
+    if (!options.json) {
+      ensureSymlinkBridges(selectedAgents, deployer);
+      console.log('All target skills are already deployed.');
+    }
     return;
   }
 

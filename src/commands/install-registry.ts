@@ -68,7 +68,14 @@ export async function installFromRegistry(
 
     if (existingVersion === version && !options.force) {
       console.log(`${packageName}@${version} is already installed.`);
-      return createInstallResult([], []);
+      // Return existing skill paths so callers (e.g. `add`) can still
+      // deploy to the current project even though no fresh install ran.
+      // Mark as alreadyInstalled so downstream code does not run rollback
+      // on the existing files.
+      const existingSkills = scanSkillDirectories(installDir);
+      const existingPaths = existingSkills.map((s) => s.path);
+      const existingKeys = existingSkills.map(() => `registry/${packageName}`);
+      return createInstallResult(existingPaths, existingKeys, { alreadyInstalled: true });
     }
 
     if (!options.force) {
