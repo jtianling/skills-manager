@@ -40,7 +40,7 @@ describe('TOOL_CONFIGS', () => {
 
   it('native tools have native=true and no symlinkDir', () => {
     const nativeTools = [
-      'codex', 'cursor', 'opencode', 'gemini-cli', 'github-copilot', 'cline',
+      'cursor', 'opencode', 'gemini-cli', 'github-copilot', 'cline',
       'amp', 'antigravity', 'warp', 'kimi-cli', 'replit', 'universal',
       'deepagents', 'firebender',
     ] as const;
@@ -54,6 +54,7 @@ describe('TOOL_CONFIGS', () => {
   it('non-native tools have native=false with symlinkDir', () => {
     const symlinkTools = [
       { name: 'claude-code', dir: '.claude/skills' },
+      { name: 'codex', dir: '.codex/skills' },
       { name: 'openclaw', dir: 'skills' },
       { name: 'kilo', dir: '.kilocode/skills' },
       { name: 'roo', dir: '.roo/skills' },

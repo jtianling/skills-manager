@@ -54,12 +54,23 @@ describe('DeploymentScanner', () => {
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
       const tools = scanner.getConfiguredTools();
 
-      expect(tools).toContain('codex');
       expect(tools).toContain('cursor');
       expect(tools).toContain('gemini-cli');
       expect(tools).toContain('opencode');
       expect(tools).toContain('antigravity');
       expect(tools).toContain('cline');
+    });
+
+    it('codex is configured when .codex/skills bridge exists', () => {
+      const bridgePath = join(projectDir, '.codex', 'skills');
+      const targetPath = join(projectDir, '.agents', 'skills');
+      mkdirSync(join(projectDir, '.codex'), { recursive: true });
+      symlinkSync(targetPath, bridgePath);
+
+      const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
+      const tools = scanner.getConfiguredTools();
+
+      expect(tools).toContain('codex');
     });
 
     it('native tools are not configured when no skills exist', () => {

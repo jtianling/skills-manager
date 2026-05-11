@@ -26,7 +26,8 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     skillsDir: AGENTS_SKILLS_DIR,
     globalSkillsDir: join(codexHome, 'skills'),
     supportsLink: true,
-    native: true,
+    native: false,
+    symlinkDir: '.codex/skills',
     showInList: true,
   },
   'cursor': {
