@@ -42,17 +42,49 @@ All skills deploy to `.agents/skills/`. Native tools read that directory directl
 
 ## Quick Start
 
-```bash
-# 1. Install skills from the official Anthropic repository
-npx skillsmgr install anthropics/skills
+Three steps to go from zero to a deployed skill:
 
-# 2. Deploy skills to the current project
+```bash
+# 1. Install a skill into the central repository at ~/.skills-manager/
+npx skillsmgr install code-review
+
+# 2. Deploy installed skills into the current project (interactive picker)
 cd your-project
 npx skillsmgr deploy
 
-# 3. Inspect deployed skills
+# 3. Verify what is deployed
 npx skillsmgr list --deployed
 ```
+
+### Other install sources
+
+```bash
+# all skills from a GitHub repo (shorthand or full URL)
+npx skillsmgr install anthropics/skills
+npx skillsmgr install https://github.com/user/skills-repo
+
+# a single skill from a repo
+npx skillsmgr install obra/superpowers:my-skill
+
+# a local directory or zip / .skill archive
+npx skillsmgr install ./my-skill
+npx skillsmgr install ./skills-archive.zip
+```
+
+### Non-interactive deploy
+
+```bash
+# deploy a specific skill to a specific agent
+npx skillsmgr add code-review -a claude-code
+
+# deploy globally to the agent's user-level skill directory
+npx skillsmgr add code-review -g -a claude-code
+
+# remove a deployed skill
+npx skillsmgr remove code-review
+```
+
+That's it.  Sections below cover the full command set, command flags, group management, the registry publishing flow, and the underlying deployment model.
 
 ## Deployment Model
 
@@ -152,24 +184,24 @@ project/
 | `--keep-local` | Keep orphaned members when updating a physical group |
 | `-v, --verbose` | Show per-skill status for physical group updates instead of collapsing up-to-date items |
 
-### Update / Uninstall 输入格式
+### Update / Uninstall input formats
 
-`update` 和 `uninstall` 现在共享同一套 source 解析规则, 支持下面这些输入:
+`update` and `uninstall` share a single source resolution ruleset and accept the following inputs:
 
-- `owner/repo`: 如 `anthropics/skills`, `obra/superpowers`
-- `owner/repo:skill`: 精确到单个 skill, 如 `obra/superpowers:my-skill`
-- Git URL: 支持 HTTPS, SSH, `.git` 后缀, 如 `https://github.com/obra/superpowers`, `git@github.com:obra/superpowers.git`
-- registry 包: 如 `code-review`, `code-review@1.2.0`, `@acme/skill-x`
-- 本地单 skill 路径: 如 `./my-skill`, `/abs/path/to/my-skill`, `~/skills/my-skill`
-- bareword fallback: 按 `registry -> source key 后缀 -> repoName -> skill name` 顺序尝试
+- `owner/repo`: e.g. `anthropics/skills`, `obra/superpowers`
+- `owner/repo:skill`: a single skill, e.g. `obra/superpowers:my-skill`
+- Git URL: HTTPS, SSH, or `.git` suffix, e.g. `https://github.com/obra/superpowers`, `git@github.com:obra/superpowers.git`
+- Registry package: e.g. `code-review`, `code-review@1.2.0`, `@acme/skill-x`
+- Local single-skill path: e.g. `./my-skill`, `/abs/path/to/my-skill`, `~/skills/my-skill`
+- Bareword fallback: tried in order `registry -> source key suffix -> repoName -> skill name`
 
-限制:
+Limitations:
 
-- zip source 仍然需要手动重新安装, `update` / `uninstall` 不直接处理
-- 本地 batch 目录现在会解析为 physical group, `update ./batch-dir` 会同步整个 group, `uninstall ./batch-dir` 会批量删除整个 group
-- physical group update 默认会删除源里已经不存在的本地成员。  使用 `--keep-local` 可以保留这些 orphaned members
-- `-v` / `--verbose` 会展开显示每个 physical group 成员的状态, 默认只显示变化项并折叠 up-to-date 计数
-- `update code-review@1.2.0` 的语义是切换到指定版本, 不是检查最新版本
+- Zip sources still require a manual reinstall; `update` / `uninstall` do not handle them directly
+- A local batch directory resolves to a physical group: `update ./batch-dir` syncs the whole group, `uninstall ./batch-dir` removes the whole group
+- Physical group `update` removes local members that no longer exist in the source by default. Pass `--keep-local` to preserve those orphaned members
+- `-v` / `--verbose` expands per-member status for physical group updates; the default collapses up-to-date items and only shows changes
+- `update code-review@1.2.0` switches to the specified version — it is not a "check for latest" command
 
 **group**
 
