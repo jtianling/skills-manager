@@ -168,6 +168,51 @@ function removeSkillNames(
   return removed;
 }
 
+async function removeAgentBridges(
+  skillNames: string[],
+  deployedSkills: ResolvedDeployedSkill[],
+  skillsService: SkillsService,
+  deployer: Deployer,
+  options: RemoveOptions,
+): Promise<void> {
+  const agents = await resolveTargetAgents(
+    { agent: options.agent, sameAgents: options.sameAgents },
+    () => [] as ToolName[],
+    false,
+  );
+
+  for (const agentName of agents) {
+    const config = TOOL_CONFIGS[agentName];
+    if (!config || config.native || !config.symlinkDir) {
+      console.log(`  · ${agentName} has no project bridge to remove`);
+      continue;
+    }
+
+    console.log(
+      `  ⚠ Removing ${config.symlinkDir} bridge: ${agentName} will lose access ` +
+        'to ALL skills via this bridge.',
+    );
+    const removed = deployer.removeSymlinkBridge(config);
+    if (removed) {
+      console.log(`  ✓ Removed ${config.symlinkDir} bridge for ${agentName}`);
+    } else {
+      console.log(`  · ${agentName} has no bridge configured`);
+    }
+  }
+
+  for (const skillName of skillNames) {
+    const deployed = deployedSkills.find((s) => s.name === skillName);
+    const skill = deployed?.skillKey
+      ? skillsService.getAllSkills().find(
+          (s) => skillKeyOf(s.source, s.name) === deployed.skillKey,
+        )
+      : undefined;
+    if (skill) {
+      deployer.removeCompanionsForAgents(skill, agents);
+    }
+  }
+}
+
 function removeSkillNamesGlobal(
   skillNames: string[],
   deployer: Deployer,
@@ -613,6 +658,17 @@ export async function executeRemove(
       console.log(`'${skillName}' not found in deployed skills`);
       process.exit(1);
     }
+  }
+
+  if (options.agent && options.agent.length > 0) {
+    await removeAgentBridges(
+      plainSkillNames,
+      deployedSkills,
+      skillsService,
+      deployer,
+      options,
+    );
+    return;
   }
 
   const removed = removeSkillNames(plainSkillNames, deployer, options.json);

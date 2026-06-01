@@ -224,6 +224,38 @@ function ensureSymlinkBridges(
   }
 }
 
+function skillHasCompanions(skill: SkillInfo): boolean {
+  const manifest = readManifest(skill.path);
+  return Boolean(manifest?.companions && manifest.companions.length > 0);
+}
+
+async function augmentDeployedSkillAgents(
+  skill: SkillInfo,
+  options: AddOptions,
+  scanner: DeploymentScanner,
+  deployer: Deployer,
+): Promise<void> {
+  const selectedAgents = await resolveTargetAgents(
+    options,
+    () => scanner.getConfiguredTools(),
+    false,
+    { lockConfigured: true },
+  );
+  const deployMode = options.copy ? 'copy' : 'link';
+
+  if (skillHasCompanions(skill)) {
+    deployer.deploySkill(skill, deployMode, selectedAgents);
+  }
+
+  ensureSymlinkBridges(selectedAgents, deployer);
+
+  if (options.json) {
+    jsonOutput({ deployed: [{ name: skill.name, agents: selectedAgents }] });
+  } else {
+    console.log(`  · ${skill.name} (already deployed; ensured agents)`);
+  }
+}
+
 async function handleSkillName(
   name: string,
   options: AddOptions,
@@ -261,7 +293,7 @@ async function handleSkillName(
   const alreadyExists = existingSkills.some((s) => s.name === skill.name);
 
   if (alreadyExists) {
-    if (!options.json) console.log(`  · ${skill.name} (already deployed)`);
+    await augmentDeployedSkillAgents(skill, options, scanner, deployer);
     return;
   }
 
@@ -359,19 +391,21 @@ async function handleRepoSkillSelection(
 ): Promise<void> {
   const deployedNames = scanner.getDeployedSkills().map((s) => s.name);
 
-  if (!(options.skill && options.skill.length > 0)) {
-    const allDeployed = repoSkills.every((s) => deployedNames.includes(s.name));
-    if (allDeployed && !options.global) {
-      if (!options.json) console.log('All skills from this source are already deployed.');
-      return;
-    }
-  }
+  const allDeployed = !(options.skill && options.skill.length > 0)
+    && repoSkills.every((s) => deployedNames.includes(s.name));
 
   const selectedAgents = await resolveTargetAgents(
     options,
     () => scanner.getConfiguredTools(),
     options.global,
+    allDeployed && !options.global ? { lockConfigured: true } : undefined,
   );
+
+  if (allDeployed && !options.global) {
+    ensureSymlinkBridges(selectedAgents, deployer);
+    if (!options.json) console.log('All skills from this source are already deployed.');
+    return;
+  }
 
   if (options.skill && options.skill.length > 0) {
     enforceTargetAgentsForExplicit(options.skill, repoSkills, selectedAgents, options.json);
@@ -392,6 +426,7 @@ async function handleRepoSkillSelection(
     : selectedNames.filter((n) => !deployedNames.includes(n));
 
   if (newSkills.length === 0) {
+    if (!options.global) ensureSymlinkBridges(selectedAgents, deployer);
     if (!options.json) console.log('No new skills selected.');
     return;
   }

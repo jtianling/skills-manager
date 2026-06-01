@@ -227,6 +227,58 @@ describe('remove command', () => {
     expect(console.log).toHaveBeenCalledWith('Cannot use --group with skill name argument.');
   });
 
+  describe('remove --agent in project mode (bridge teardown)', () => {
+    function makeBridge(symlinkDir: string): string {
+      const bridgePath = join(testProjectDir, symlinkDir);
+      mkdirSync(join(bridgePath, '..'), { recursive: true });
+      symlinkSync(join(testProjectDir, '.agents', 'skills'), bridgePath);
+      return bridgePath;
+    }
+
+    it('removes only the targeted agent bridge, leaving other bridge and skills intact', async () => {
+      const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
+      symlinkSync(skillSource, deployedPath);
+      const claudeBridge = makeBridge('.claude/skills');
+      const codexBridge = makeBridge('.codex/skills');
+
+      await executeRemove('code-review', { agent: ['claude-code'] });
+
+      expect(existsSync(claudeBridge)).toBe(false);
+      expect(existsSync(codexBridge)).toBe(true);
+      expect(existsSync(deployedPath)).toBe(true);
+    });
+
+    it('is a no-op with notice when the targeted agent has no bridge', async () => {
+      const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
+      symlinkSync(skillSource, deployedPath);
+      const codexBridge = makeBridge('.codex/skills');
+
+      const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
+      }) as never);
+
+      await executeRemove('code-review', { agent: ['claude-code'] });
+
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(existsSync(codexBridge)).toBe(true);
+      expect(existsSync(deployedPath)).toBe(true);
+    });
+
+    it('without --agent still removes the skill from .agents/skills', async () => {
+      const skillSource = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      const deployedPath = join(testProjectDir, '.agents', 'skills', 'code-review');
+      symlinkSync(skillSource, deployedPath);
+      const codexBridge = makeBridge('.codex/skills');
+
+      await executeRemove('code-review', {});
+
+      expect(existsSync(deployedPath)).toBe(false);
+      expect(existsSync(codexBridge)).toBe(true);
+    });
+  });
+
   it('shows virtual groups in interactive remove choices', async () => {
     const skillA = createSkill(testManagerDir, 'custom', 'skill-a');
     const skillB = createSkill(testManagerDir, 'custom', 'skill-b');

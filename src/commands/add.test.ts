@@ -176,7 +176,7 @@ describe('add command', () => {
       expect(existsSync(join(testProjectDir, '.agents', 'skills', 'openspec-archive'))).toBe(true);
     });
 
-    it('reports already deployed skill', async () => {
+    it('reports already deployed skill and ensures agents', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
       const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
       deploySkillAsLink('code-review', sourcePath);
@@ -186,7 +186,7 @@ describe('add command', () => {
       await executeAdd('code-review', {});
 
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('· code-review (already deployed)')
+        expect.stringContaining('· code-review (already deployed')
       );
     });
   });
@@ -248,6 +248,8 @@ describe('add command', () => {
       createSkill('community/user/repo', 'only-skill', 'Only skill');
       const sourcePath = join(testManagerDir, 'community', 'user', 'repo', 'only-skill');
       deploySkillAsLink('only-skill', sourcePath);
+
+      vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['agents-skills-standard']);
 
       await executeAdd('user/repo', {});
 
@@ -332,6 +334,8 @@ describe('add command', () => {
       createSkill('community/user/repo', 'skill-b', 'Skill B');
       const sourcePath = join(testManagerDir, 'community', 'user', 'repo', 'skill-a');
       deploySkillAsLink('skill-a', sourcePath);
+
+      vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['agents-skills-standard']);
 
       await executeAdd('user/repo', { skill: ['skill-a'] });
 
@@ -595,6 +599,96 @@ describe('add command', () => {
       // cleanup
       await executeRemove('skill-a', { global: true, agent: [agent] });
       expect(existsSync(join(globalDir, 'skill-a'))).toBe(false);
+    });
+  });
+
+  describe('add agent to already-deployed skill', () => {
+    function makeBridge(symlinkDir: string): void {
+      const bridgePath = join(testProjectDir, symlinkDir);
+      mkdirSync(join(testProjectDir, symlinkDir, '..'), { recursive: true });
+      symlinkSync(join(testProjectDir, '.agents', 'skills'), bridgePath);
+    }
+
+    it('adds claude-code bridge for already-deployed skill, leaving codex bridge and skill intact', async () => {
+      createSkill('official/anthropic/skills', 'code-review', 'Code review');
+      const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      deploySkillAsLink('code-review', sourcePath);
+      makeBridge('.codex/skills');
+
+      await executeAdd('code-review', { agent: ['claude-code'] });
+
+      const claudeBridge = join(testProjectDir, '.claude', 'skills');
+      const codexBridge = join(testProjectDir, '.codex', 'skills');
+      const deployedSkill = join(testProjectDir, '.agents', 'skills', 'code-review');
+      expect(existsSync(claudeBridge)).toBe(true);
+      expect(existsSync(codexBridge)).toBe(true);
+      expect(existsSync(deployedSkill)).toBe(true);
+    });
+
+    it('is idempotent when the agent bridge already exists', async () => {
+      createSkill('official/anthropic/skills', 'code-review', 'Code review');
+      const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      deploySkillAsLink('code-review', sourcePath);
+      makeBridge('.claude/skills');
+
+      await executeAdd('code-review', { agent: ['claude-code'] });
+
+      const claudeBridge = join(testProjectDir, '.claude', 'skills');
+      expect(existsSync(claudeBridge)).toBe(true);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it('writes companions for the added agent on an already-deployed skill', async () => {
+      const skillDir = join(testManagerDir, 'custom', 'with-companion');
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, 'SKILL.md'),
+        '---\nname: with-companion\ndescription: c\n---\n',
+      );
+      writeFileSync(join(skillDir, 'AGENTS.md'), 'companion body');
+      writeFileSync(
+        join(skillDir, 'skill.json'),
+        JSON.stringify({
+          name: 'with-companion',
+          version: '1.0.0',
+          description: 'c',
+          companions: [
+            {
+              source: 'AGENTS.md',
+              agentTargets: { 'claude-code': 'CLAUDE.md' },
+            },
+          ],
+        }),
+      );
+      deploySkillAsLink('with-companion', skillDir);
+
+      await executeAdd('with-companion', { agent: ['claude-code'] });
+
+      const companionPath = join(testProjectDir, 'CLAUDE.md');
+      expect(existsSync(companionPath)).toBe(true);
+    });
+  });
+
+  describe('add agent without -a enters interactive selection with locked configured agents', () => {
+    it('locks already-configured agents in the agent prompt for an already-deployed skill', async () => {
+      createSkill('official/anthropic/skills', 'code-review', 'Code review');
+      const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
+      deploySkillAsLink('code-review', sourcePath);
+      // configured codex bridge
+      mkdirSync(join(testProjectDir, '.codex'), { recursive: true });
+      symlinkSync(join(testProjectDir, '.agents', 'skills'), join(testProjectDir, '.codex', 'skills'));
+
+      vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['agents-skills-standard', 'codex', 'claude-code']);
+
+      await executeAdd('code-review', {});
+
+      const agentCall = vi.mocked(interactiveCheckbox).mock.calls[0];
+      expect(agentCall[0].message).toContain('agent');
+      const codexChoice = agentCall[0].choices.find((c: { value: string }) => c.value === 'codex');
+      expect(codexChoice?.locked).toBe(true);
+      expect(codexChoice?.checked).toBe(true);
+      // claude-code newly added → bridge created
+      expect(existsSync(join(testProjectDir, '.claude', 'skills'))).toBe(true);
     });
   });
 

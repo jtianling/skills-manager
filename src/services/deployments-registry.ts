@@ -248,6 +248,32 @@ export class DeploymentsRegistryService {
     this.writeRegistry(registry);
   }
 
+  removeCompanion(skill: string, projectPath: string, absPath: string): void {
+    const key = normalizePath(projectPath);
+    const registry = this.readRegistry();
+    const previous = registry.deployments[key];
+    const prevList = previous?.skillCompanions?.[skill]?.deployedCompanions;
+    if (!previous || !prevList) return;
+
+    const nextList = prevList.filter((p) => p !== absPath);
+    if (nextList.length === prevList.length) return;
+
+    if (nextList.length > 0) {
+      registry.deployments[key] = {
+        ...previous,
+        skillCompanions: {
+          ...previous.skillCompanions,
+          [skill]: { deployedCompanions: nextList },
+        },
+      };
+      this.writeRegistry(registry);
+      return;
+    }
+
+    this.writeRegistry(registry);
+    this.clearCompanions(skill, projectPath);
+  }
+
   clearCompanions(skill: string, projectPath: string): void {
     const key = normalizePath(projectPath);
     const registry = this.readRegistry();

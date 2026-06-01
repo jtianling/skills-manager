@@ -32,7 +32,10 @@ function getListedTools(): ToolName[] {
   return DISPLAY_ORDER.filter((t) => TOOL_CONFIGS[t].showInList);
 }
 
-export async function promptAgents(configuredTools?: string[]): Promise<string[]> {
+export async function promptAgents(
+  configuredTools?: string[],
+  lockConfigured = false,
+): Promise<string[]> {
   const listedTools = getListedTools();
   const nativeListedTools = listedTools.filter((t) => TOOL_CONFIGS[t].native);
   const symlinkListedTools = listedTools.filter((t) => !TOOL_CONFIGS[t].native);
@@ -40,12 +43,14 @@ export async function promptAgents(configuredTools?: string[]): Promise<string[]
   const nativeNames = nativeListedTools.map((t) => TOOL_CONFIGS[t].displayName).join(', ');
   const hasNativeConfigured = configuredTools?.some((t) => TOOL_CONFIGS[t as ToolName]?.native);
   const hasSymlinkConfigured = configuredTools?.some((t) => !TOOL_CONFIGS[t as ToolName]?.native);
+  const anyConfigured = (hasNativeConfigured || hasSymlinkConfigured) ?? false;
 
   const choices = [
     {
       name: `Agents Skills Standard → ${nativeNames}`,
       value: AGENTS_SKILLS_STANDARD_VALUE,
-      checked: (hasNativeConfigured || hasSymlinkConfigured) ?? false,
+      checked: anyConfigured,
+      locked: lockConfigured && anyConfigured ? true : undefined,
       suffix: hasNativeConfigured ? '[configured]' : undefined,
     },
     ...symlinkListedTools.map((tool) => {
@@ -55,6 +60,7 @@ export async function promptAgents(configuredTools?: string[]): Promise<string[]
         name: isConfigured ? `${config.displayName} [configured]` : config.displayName,
         value: tool,
         checked: isConfigured ?? false,
+        locked: lockConfigured && isConfigured ? true : undefined,
         suffix: isConfigured ? '[configured]' : undefined,
         selectedSuffix: '(Symlink to Agents Skills)',
       };
@@ -606,10 +612,15 @@ export interface ResolveAgentsOptions {
   sameAgents?: boolean;
 }
 
+export interface ResolveTargetAgentsExtra {
+  lockConfigured?: boolean;
+}
+
 export async function resolveTargetAgents(
   options: ResolveAgentsOptions,
   getConfiguredTools: () => ToolName[],
   global?: boolean,
+  extra?: ResolveTargetAgentsExtra,
 ): Promise<ToolName[]> {
   if (options.agent && options.agent.length > 0 && options.sameAgents) {
     console.log('Cannot use --agent and --same-agents together.');
@@ -639,5 +650,5 @@ export async function resolveTargetAgents(
     return promptAgentsGlobal() as Promise<ToolName[]>;
   }
 
-  return promptAgents(getConfiguredTools()) as Promise<ToolName[]>;
+  return promptAgents(getConfiguredTools(), extra?.lockConfigured) as Promise<ToolName[]>;
 }

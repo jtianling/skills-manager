@@ -148,6 +148,31 @@ export class Deployer {
     this.registry.clearCompanions(skillName, this.projectDir);
   }
 
+  removeCompanionsForAgents(skill: SkillInfo, agents: ToolName[]): void {
+    const recorded = new Set(
+      this.registry
+        .getCompanionsForSkill(skill.name, this.projectDir)
+        .map((abs) => normalizeAbs(abs)),
+    );
+    if (recorded.size === 0) return;
+
+    const plan = this.planCompanions(skill, agents);
+    if (!plan || plan.items.length === 0) return;
+
+    const others = this.collectOtherSkillCompanionPaths(skill.name);
+    for (const item of plan.items) {
+      const abs = normalizeAbs(item.target);
+      if (!recorded.has(abs)) continue;
+      if (others.has(abs)) continue;
+      try {
+        if (pathOrLinkExists(item.target)) unlinkSync(item.target);
+      } catch {
+        // idempotent: file may already be gone
+      }
+      this.registry.removeCompanion(skill.name, this.projectDir, item.target);
+    }
+  }
+
   createSymlinkBridge(config: ToolConfig): boolean {
     if (config.native || !config.symlinkDir) return false;
 
