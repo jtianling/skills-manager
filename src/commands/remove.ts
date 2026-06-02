@@ -188,16 +188,17 @@ async function removeAgentBridges(
       continue;
     }
 
+    if (!deployer.isSymlinkBridgeActive(config)) {
+      console.log(`  · ${agentName} has no bridge configured`);
+      continue;
+    }
+
     console.log(
       `  ⚠ Removing ${config.symlinkDir} bridge: ${agentName} will lose access ` +
         'to ALL skills via this bridge.',
     );
-    const removed = deployer.removeSymlinkBridge(config);
-    if (removed) {
-      console.log(`  ✓ Removed ${config.symlinkDir} bridge for ${agentName}`);
-    } else {
-      console.log(`  · ${agentName} has no bridge configured`);
-    }
+    deployer.removeSymlinkBridge(config);
+    console.log(`  ✓ Removed ${config.symlinkDir} bridge for ${agentName}`);
   }
 
   for (const skillName of skillNames) {

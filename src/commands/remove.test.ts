@@ -264,6 +264,12 @@ describe('remove command', () => {
       expect(mockExit).not.toHaveBeenCalled();
       expect(existsSync(codexBridge)).toBe(true);
       expect(existsSync(deployedPath)).toBe(true);
+      expect(console.log).not.toHaveBeenCalledWith(
+        expect.stringContaining('will lose access to ALL skills'),
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('has no bridge configured'),
+      );
     });
 
     it('without --agent still removes the skill from .agents/skills', async () => {
