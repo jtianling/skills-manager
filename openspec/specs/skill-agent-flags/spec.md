@@ -157,7 +157,7 @@ remove 命令 SHALL 将 positional arg `[name]` 和 `-s` 参数的值合并为�
 
 ### Requirement: remove 命令的 --agent 参数
 
-remove 命令 SHALL 支持 `-a, --agent <name>` 可重复参数.  在 **project 模式** (非 `--global`) 下, `-a` 的语义为撤除指定 agent 的**项目级 bridge** (并按 `deployments.json` 记录清理该 agent 该 skill 的 companions), 与 `add -a` 补 bridge 的语义对称.  由于项目级 bridge 是覆盖全部 skill 的目录级 symlink, 撤除会使该 agent 失去经该 bridge 对**全部** skill 的访问, 因此 `<skill>` 对 bridge 操作而言为挂名参数, 仅用于 scope companions; 撤除前 SHALL 打印警告说明该影响.  不指定 `-a` 时维持现有行为 —— 从 `.agents/skills/` 删除该 skill (对所有 agent 生效).
+remove 命令 SHALL 支持 `-a, --agent <name>` 可重复参数.  在 **project 模式** (非 `--global`) 下, `-a` 的语义为撤除指定 agent 的**项目级 bridge** (并按 `deployments.json` 记录清理该 agent 该 skill 的 companions), 与 `add -a` 补 bridge 的语义对称.  由于项目级 bridge 是覆盖全部 skill 的目录级 symlink, 撤除会使该 agent 失去经该 bridge 对**全部** skill 的访问, 因此 `<skill>` 对 bridge 操作而言为挂名参数, 仅用于 scope companions; **仅当目标 agent 确有项目级 bridge 时**, 撤除前 SHALL 打印警告说明该影响, 目标 agent 无 bridge 时 SHALL NOT 打印该警告.  不指定 `-a` 时维持现有行为 —— 从 `.agents/skills/` 删除该 skill (对所有 agent 生效).
 
 #### Scenario: remove 指定 agent 撤除其 bridge
 
@@ -170,6 +170,7 @@ remove 命令 SHALL 支持 `-a, --agent <name>` 可重复参数.  在 **project 
 
 - **WHEN** 用户执行 `skillsmgr remove my-skill -a claude-code` 但 claude-code 没有 bridge
 - **THEN** 为 no-op 并提示该 agent 未配置 bridge, 不报致命错误
+- **AND** SHALL NOT 打印 bridge 撤除警告 (该警告仅在确有 bridge 时出现)
 
 #### Scenario: remove 不指定 agent
 
