@@ -1,5 +1,6 @@
 # Unified Source Detection
 
+## Purpose
 统一的 source 类型识别逻辑.
 
 ## Requirements

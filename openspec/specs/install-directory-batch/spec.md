@@ -1,5 +1,6 @@
 # Install Directory Batch
 
+## Purpose
 本地目录批量安装: 当目标目录无 SKILL.md 但子目录含 skills 时, 批量安装并自动创建虚拟 group.
 
 ## Requirements

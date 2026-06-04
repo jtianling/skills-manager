@@ -1,5 +1,6 @@
 # Provider Alias
 
+## Purpose
 Official provider 别名映射, 支持简写安装.
 
 ## Requirements

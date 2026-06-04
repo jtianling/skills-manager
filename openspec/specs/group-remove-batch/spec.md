@@ -1,5 +1,6 @@
 # Group Remove Batch
 
+## Purpose
 `group remove` 支持 group name 和 owner/repo 批量标识符, 与 `group add` 对等.
 
 ## Requirements

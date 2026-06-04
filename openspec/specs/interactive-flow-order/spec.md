@@ -1,5 +1,6 @@
 # Interactive Flow Order
 
+## Purpose
 add/remove 命令的交互流程顺序定义: agent 选择先于 skill 选择, 以及 `-y/--yes` 智能推断标志.
 
 ## Requirements

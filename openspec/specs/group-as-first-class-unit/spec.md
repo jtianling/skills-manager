@@ -1,5 +1,6 @@
 # Group As First-Class Unit
 
+## Purpose
 把 group 提升为一等公民单元: 区分 `local-batch` 物理 group 和 `virtual` 逻辑 group, 承载原批量 bundle 的语义, 并统一命名空间、解析、CRUD 和迁移路径.
 
 ## Requirements

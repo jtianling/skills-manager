@@ -1,5 +1,6 @@
 # Virtual Group
 
+## Purpose
 虚拟 skill 分组管理: 基于 groups.json 的 CRUD 操作和 CLI 子命令.
 
 ## Requirements

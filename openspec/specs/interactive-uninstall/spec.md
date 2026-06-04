@@ -1,5 +1,6 @@
 # Interactive Uninstall
 
+## Purpose
 `skillsmgr uninstall` 无参数时的交互式批量卸载模式.
 
 ## Requirements

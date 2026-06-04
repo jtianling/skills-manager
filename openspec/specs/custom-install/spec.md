@@ -1,5 +1,6 @@
 # Custom Install
 
+## Purpose
 从当前工作目录安装本地 skill 到 `~/.skills-manager/custom/` 目录.
 
 ## Requirements

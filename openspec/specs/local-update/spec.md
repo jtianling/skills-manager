@@ -1,5 +1,6 @@
 # Local Update
 
+## Purpose
 从原始路径更新 installMethod 为 `'local-copy'` 的已安装 skill.
 
 ## Requirements

@@ -1,5 +1,6 @@
 # Smart Add
 
+## Purpose
 增强的 `add` 命令, 根据参数格式智能路由到不同处理分支, 整合远程安装与项目部署为一步操作.
 
 ## 参数路由
@@ -12,6 +13,24 @@
 | 完整 URL | arg 含 `://` | URL 安装流程 |
 | owner/repo | arg 含 `/` 且不含 `://` | provider/repo 流程 |
 | skill name | 其他 | 中央仓库搜索流程 |
+
+## Skill Name 流程
+
+## Provider/Repo 流程
+
+## URL 安装流程
+
+## Skill 过滤
+
+## Agent 选择
+
+## 回滚机制
+
+## Source 扫描
+
+## 已部署 skill 补 agent
+
+## Requirements
 
 ### Requirement: 无参数路由到 init
 
@@ -53,11 +72,9 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **WHEN** 用户执行 `skillsmgr add code-review`
 - **THEN** 在中央仓库中搜索名为 `code-review` 的 skill
 
-## Skill Name 流程
-
 ### Requirement: 中央仓库搜索 skill 名称
 
-按名称搜索中央仓库, 找到后让用户选择目标 agent 并部署.
+系统 SHALL 按名称搜索中央仓库, 找到后让用户选择目标 agent 并部署.
 
 #### Scenario: 找到单个匹配
 - **WHEN** 中央仓库中只有一个名为 `code-review` 的 skill
@@ -110,11 +127,9 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **AND** `groups.json` 中也存在名为 `foo` 的 group
 - **THEN** 走单 skill 部署流程 (skill 优先于 group)
 
-## Provider/Repo 流程
-
 ### Requirement: 中央仓库匹配 provider/repo
 
-先在中央仓库中查找匹配的 `owner/repo`, 匹配逻辑:
+系统 SHALL 先在中央仓库中查找匹配的 `owner/repo`, 匹配逻辑:
 - `official/{providerKey}/{repo}`: 通过 OFFICIAL_PROVIDERS 将 providerKey 映射到 owner, 与输入的 owner 比较
 - `community/{owner}/{repo}`: 直接匹配
 
@@ -135,7 +150,7 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 
 ### Requirement: 中央仓库匹配后的 skill 选择
 
-匹配成功时, 展示该 repo 下所有 skills 的选择列表:
+匹配成功时, 系统 SHALL 展示该 repo 下所有 skills 的选择列表:
 - 已部署到项目的 skill: `checked: true` 且锁定 (不可取消选中)
 - 未部署的 skill: `checked: false`, 可选择
 
@@ -187,7 +202,7 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 
 ### Requirement: 远程安装未匹配的 provider/repo
 
-中央仓库未匹配时:
+中央仓库未匹配时, 系统 SHALL 按以下流程处理:
 1. 检查是否匹配 official provider (复用 install 命令的逻辑)
 2. 不匹配则拼接 `https://github.com/{owner}/{repo}` 作为 GitHub URL
 3. 执行远程安装到中央仓库
@@ -207,11 +222,9 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **WHEN** 远程安装过程中发生错误 (网络失败, 仓库不存在等)
 - **THEN** 输出错误信息并以退出码 1 退出
 
-## URL 安装流程
-
 ### Requirement: URL 直接安装
 
-完整 URL 参数不查询中央仓库, 直接执行远程安装.
+完整 URL 参数 SHALL 不查询中央仓库, 直接执行远程安装.
 
 #### Scenario: GitHub URL 安装
 - **WHEN** 用户执行 `skillsmgr add https://github.com/owner/repo`
@@ -220,8 +233,6 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 #### Scenario: 安装成功后选择 skill
 - **WHEN** URL 安装成功, 安装了 3 个 skills
 - **THEN** 展示 skill 选择列表, 所有 skills 均为未选中状态
-
-## Skill 过滤
 
 ### Requirement: -s/--skill 标志指定安装和部署的 skill
 
@@ -253,8 +264,6 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 - **WHEN** 用户执行 `skillsmgr add openai/skills` (无 -s)
 - **THEN** 安装仓库中所有 skill 到中央仓库
 - **AND** 进入 skill 选择 UI 供用户选择要部署的 skill
-
-## Agent 选择
 
 ### Requirement: 默认交互选择 agent
 
@@ -349,7 +358,7 @@ arg 不含 `/` 且不含 `://` 时 SHALL 在中央仓库中按 skill 名称搜�
 
 ### Requirement: -a 和 --same-agents 互斥
 
-`-a` 和 `--same-agents` 不可同时使用.
+`-a` 和 `--same-agents` SHALL NOT 同时使用.
 
 #### Scenario: 同时指定 -a 和 --same-agents
 - **WHEN** 用户执行 `skillsmgr add code-review -a claude-code --same-agents`
@@ -374,8 +383,6 @@ add 命令 SHALL 支持 `-s, --skill <name>` 可重复参数. 指定时跳过 sk
 #### Scenario: add skill-name 带 --skill 无意义但不报错
 - **WHEN** 用户执行 `skillsmgr add code-review -s code-review`
 - **THEN** 正常执行, `-s` 在 skill-name 流程中被忽略 (arg 本身已经指定了 skill)
-
-## 回滚机制
 
 ### Requirement: 远程安装后失败时回滚
 
@@ -416,8 +423,6 @@ add 命令 SHALL 支持 `-s, --skill <name>` 可重复参数. 指定时跳过 sk
 - **THEN** 输出警告信息
 - **AND** 继续删除剩余项
 
-## Source 扫描
-
 ### Requirement: 嵌套 custom skill source 保留父目录
 
 `getSkillsFromSource` 扫描 `custom/` 目录时, 嵌套在子目录中的 skill SHALL 在 source 中保留父目录路径.
@@ -434,8 +439,6 @@ add 命令 SHALL 支持 `-s, --skill <name>` 可重复参数. 指定时跳过 sk
 #### Scenario: 嵌套 custom skill 与顶层同名时可区分
 - **WHEN** 存在 `custom/jt-release` (source: `"custom"`) 和 `custom/init-project/jt-release` (source: `"custom/init-project"`)
 - **THEN** 两个 skill 的 `{source}/{name}` 分别为 `"custom/jt-release"` 和 `"custom/init-project/jt-release"`, 互不相同
-
-## 已部署 skill 补 agent
 
 ### Requirement: 已部署 skill 不裸早退而进入 agent 补全
 

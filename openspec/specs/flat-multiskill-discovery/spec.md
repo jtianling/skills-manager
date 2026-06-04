@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+TBD - update after review.
+
+## Requirements
 
 ### Requirement: 根 SKILL.md 与子目录 skill 共存时发现所有子目录 skill
 当 repo 根目录存在 SKILL.md, 且子目录中也存在带 SKILL.md 的目录时, `collectGitCloneSkills` SHALL 返回所有子目录 skill, 不将根作为单个 skill 返回.

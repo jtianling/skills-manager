@@ -1,5 +1,6 @@
 # Inner Group Nesting
 
+## Purpose
 interactiveCheckbox 的 3 层嵌套结构: group-header → inner-group-header → choice, 包括 SelectChoice innerGroup 字段, inner-group-header DisplayItem, 缩进渲染, 批量选择和行号分配.
 
 ## Requirements

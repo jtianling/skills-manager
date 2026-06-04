@@ -1,5 +1,6 @@
 # Skill Disambiguation
 
+## Purpose
 当用户使用 bare name 引用 skill 且存在多个同名 skill 时, 提供消歧义机制.
 
 ## Requirements

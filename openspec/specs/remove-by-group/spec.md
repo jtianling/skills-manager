@@ -1,5 +1,6 @@
 # Remove by Group
 
+## Purpose
 remove 命令的 --group 支持, 交互列表分组显示, 以及移除后的 group 引用清理.
 
 ## Requirements

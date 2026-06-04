@@ -1,5 +1,6 @@
 # Batch Add by Group
 
+## Purpose
 按组从中央仓库批量部署 skills 到项目.
 
 ## Requirements

@@ -1,5 +1,6 @@
 # Group Fold
 
+## Purpose
 interactiveCheckbox 的 group-header 折叠/展开功能, 包含快捷键操作, 折叠状态管理, 以及与搜索/选中/行号等功能的交互.
 
 ## Requirements

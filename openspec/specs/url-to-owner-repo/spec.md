@@ -1,5 +1,6 @@
 # URL to Owner/Repo
 
+## Purpose
 从 Git URL 中提取 owner/repo 标识符的工具函数.
 
 ## Requirements

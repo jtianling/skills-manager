@@ -1,5 +1,10 @@
 # Skill & Agent Flags
 
+## Purpose
+install/uninstall/add/remove 四个命令的 `-s/--skill` 与 `-a/--agent` 可重复参数语义, 以及它们与交互选择、`-y/--yes` 推断之间的跳过与锁定规则.
+
+## Requirements
+
 ### Requirement: --skill 可重复参数
 
 install, uninstall, add, remove 四个命令 SHALL 支持 `-s, --skill <name>` 可重复参数, 用于精确指定操作目标 skill. 多次使用时累积为数组.
@@ -62,7 +67,7 @@ add, remove 两个命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 用�
 
 ### Requirement: 仅 --skill 时只跳过 skill 选择
 
-当只提供 `-s` 不提供 `-a`/`--same-agents` 时, 跳过 skill 选择但仍交互选择 agent (对于需要 agent 的命令).
+当只提供 `-s` 不提供 `-a`/`--same-agents` 时, 系统 SHALL 跳过 skill 选择但仍交互选择 agent (对于需要 agent 的命令).
 
 #### Scenario: uninstall 有 skill
 - **WHEN** 用户执行 `skillsmgr uninstall -s skill1 -s skill2`
@@ -74,7 +79,7 @@ add, remove 两个命令 SHALL 支持 `-a, --agent <name>` 可重复参数, 用�
 
 ### Requirement: 仅 --agent 时只跳过 agent 选择
 
-当只提供 `-a`/`--same-agents` 不提供 `-s`/`--all` 时, 跳过 agent 选择但仍交互选择 skill.
+当只提供 `-a`/`--same-agents` 不提供 `-s`/`--all` 时, 系统 SHALL 跳过 agent 选择但仍交互选择 skill.
 
 #### Scenario: add 有 agent 无 skill
 - **WHEN** 用户执行 `skillsmgr add owner/repo -a claude-code`

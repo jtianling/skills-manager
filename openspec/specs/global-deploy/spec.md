@@ -1,6 +1,7 @@
 # Global Deploy
 
-全局部署机制, 将 skill 部署到各 agent 的全局 skills 目录.
+## Purpose
+全局部署机制: 将 skill 以 symlink 或 copy 模式部署到各 agent 的全局 skills 目录, 并处理目标路径冲突与全局模式下的 agent 交互选择.
 
 ## Requirements
 
@@ -36,7 +37,7 @@ symlink 方向: `{agent.globalSkillsDir}/{skill.name}` → `{skill.path}` (中�
 
 ### Requirement: 全局部署目标路径冲突处理
 
-当目标路径已存在时:
+当目标路径已存在时, 系统 SHALL 按类型处理:
 - 若为 symlink: 删除旧 symlink, 创建新的
 - 若为真实目录: 输出警告, 跳过该 agent
 

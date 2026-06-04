@@ -1,3 +1,6 @@
+## Purpose
+TBD - update after review.
+
 ## Requirements
 
 ### Requirement: 独立的 E2E vitest 配置

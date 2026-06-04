@@ -1,5 +1,6 @@
 # Custom Skill Lookup
 
+## Purpose
 在 `~/.skills-manager/custom/` 目录中按 skill name 查找已安装的 custom skill.
 
 ## Requirements

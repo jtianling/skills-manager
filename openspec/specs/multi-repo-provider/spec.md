@@ -1,5 +1,6 @@
 # Multi-Repo Provider
 
+## Purpose
 单个 official provider 支持多个 GitHub 仓库, 合并展示和安装.
 
 ## Requirements

@@ -1,5 +1,6 @@
 # Multi Group Display
 
+## Purpose
 交互式 UI 支持 skill 同时出现在多个虚拟 group 和原始 source 分组, 按 skill key 联动 toggle.
 
 ## Requirements

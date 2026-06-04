@@ -1,5 +1,6 @@
 # Auto Setup
 
+## Purpose
 自动初始化守卫: 所有依赖 `~/.skills-manager/` 目录的 CLI 命令在执行前自动检查并创建目录结构.
 
 ## Requirements

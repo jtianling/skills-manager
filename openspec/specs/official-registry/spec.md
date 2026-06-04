@@ -1,5 +1,6 @@
 # Official Registry
 
+## Purpose
 Official 提供者注册表: 定义, 查询, 安装官方 skill 提供者.
 
 ## Requirements

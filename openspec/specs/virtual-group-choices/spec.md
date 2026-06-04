@@ -1,5 +1,6 @@
 # Virtual Group Choices
 
+## Purpose
 通用 helper: 按虚拟 group 构建交互选择列表.
 
 ## Requirements

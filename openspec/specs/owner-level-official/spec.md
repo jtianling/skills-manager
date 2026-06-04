@@ -1,5 +1,6 @@
 # Owner-Level Official
 
+## Purpose
 基于 GitHub owner 的 official 自动认定, 已注册 owner 下所有仓库均为 official.
 
 ## Requirements

@@ -1,3 +1,6 @@
+## Purpose
+TBD - update after review.
+
 ## Requirements
 
 ### Requirement: setup E2E 测试

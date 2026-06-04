@@ -1,5 +1,6 @@
 # Symlink Bridge
 
+## Purpose
 非原生工具通过 symlink 桥接访问统一的 `.agents/skills/` 目录.  全局部署时通过 per-skill symlink 部署到各 agent 的全局 skills 目录.
 
 ## Requirements

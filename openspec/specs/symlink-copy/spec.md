@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+TBD - update after review.
+
+## Requirements
 
 ### Requirement: copyDir 保留 symlink
 `copyDir` 遇到 symlink 条目时, SHALL 用 `symlinkSync(readlinkSync(src), dest)` 在目标路径创建相同指向的 symlink, 而非调用 `copyFileSync`.

@@ -1,5 +1,6 @@
 # Source Management
 
+## Purpose
 管理 skill 的远程来源: 下载, 安装, 元数据追踪, 更新.
 
 ## 来源分类
@@ -101,13 +102,6 @@ key 格式:
 - **WHEN** 安装 `obra/superpowers` 的 skills
 - **THEN** source key SHALL 为 `"community/obra/superpowers"`
 
-### Requirement: install --group 不影响 source key
-`install --group` 时, source key SHALL 不包含 group 信息.  source key 格式与不带 `--group` 时一致.
-
-#### Scenario: 带 --group 安装的 custom skill source key
-- **WHEN** 用户执行 `skillsmgr install ./my-linter --group python`
-- **THEN** source key SHALL 为 `"custom/my-linter"`, 不含 group 信息
-
 ## 安装流程
 
 ### 输入解析
@@ -140,30 +134,6 @@ official/community 分类在 git clone 完成后由 `findOfficialProvider(owner)
 #### Scenario: 裸词报错
 - **WHEN** 用户执行 `skillsmgr install local-skill` (无路径前缀)
 - **THEN** 报错 "Unknown source format"
-
-### Requirement: zip 包来源识别 (.zip / .skill)
-
-源类型检测 SHALL 将 `.zip` 和 `.skill` 扩展名视为 zip 包, 但仅当输入带有明确路径前缀 (`./`, `/`, `~/`, `../`) 或 URL 前缀 (`http://`, `https://`) 时.  裸文件名 (如 `foo.zip`, `foo.skill`) SHALL 不被识别为 zip 包来源, 返回 `unknown`.
-
-#### Scenario: 本地带前缀的 zip 包识别为 local-zip
-- **WHEN** 用户运行 `skillsmgr install ./foo.zip` 或 `skillsmgr install ./foo.skill`
-- **THEN** 源类型检测 SHALL 返回 `local-zip`, 走 `installFromZip` 流程
-
-#### Scenario: 远程 URL zip 包识别为 remote-zip
-- **WHEN** 用户运行 `skillsmgr install https://example.com/foo.zip` 或 `https://example.com/foo.skill`
-- **THEN** 源类型检测 SHALL 返回 `remote-zip`, 走 `installFromRemoteZip` 流程
-
-#### Scenario: 裸 zip 包文件名不识别为 local-zip
-- **WHEN** 用户运行 `skillsmgr install foo.zip` 或 `skillsmgr install foo.skill` (无路径前缀)
-- **THEN** 源类型检测 SHALL 返回 `unknown`, 不走 zip 安装流程
-
-#### Scenario: 绝对路径 zip 包识别为 local-zip
-- **WHEN** 用户运行 `skillsmgr install /path/to/foo.zip` 或 `/path/to/foo.skill`
-- **THEN** 源类型检测 SHALL 返回 `local-zip`
-
-#### Scenario: .skill 文件安装结果与 .zip 一致
-- **WHEN** 安装一个 `.skill` 文件, 其内部包含有效的 skill 目录 (含 `SKILL.md`)
-- **THEN** 安装行为 SHALL 与安装同内容的 `.zip` 文件完全一致, 包括目标路径、sources.json 记录和 installMethod
 
 ### 选项
 
@@ -321,6 +291,226 @@ official/community 分类在 git clone 完成后由 `findOfficialProvider(owner)
 - **WHEN** 用户执行 `skillsmgr update openai`
 - **THEN** 系统 SHALL 匹配 key `official/openai` (以 `/openai` 结尾)
 
+### 更新流程
+
+对每个 source:
+
+1. 检查 source 的 installMethod:
+   - `'local-copy'`: 从 sources.json 中记录的 `url` (原始路径) 读取最新内容并对比, 执行路径对比更新 (详见 local-update spec)
+   - `'zip'`: 跳过 (zip 来源不支持更新)
+   - 其他: 解析 GitHub URL, parseGitHubUrl 返回 null 时跳过
+2. 确定本地目标目录 (根据 type: official/community/custom)
+3. 对 git 来源 `git clone --depth 1` 到临时目录, 后续基于本地文件系统对比 (无 GitHub HTTP API 调用)
+
+**更新 Skills**:
+1. 扫描本地已安装的 skill 目录 (`getDirectoriesInDir(targetBase)`)
+2. 跳过名为 `commands` 的目录 (避免误识别为 skill)
+3. 跳过没有 SKILL.md 的目录
+4. **`git clone --depth 1` 拉取远端仓库到临时目录** (复用 `services/repo-clone.ts` 的 `cloneRepoToTemp`), clone 失败时抛错并清理临时目录
+5. **基于本地文件系统扫描发现远端 skill** (复用 `collectSkillsFromClone`), 与 install 流程和 BundleManager 共享同一份发现规则; 扫描覆盖 plugin manifest, 标准路径 (`skills/` 等), 根目录 SKILL.md 单 skill 仓库, 根目录子文件夹四种形态
+6. 已安装 skill 不在 clone 扫描结果中时显示 "not found in remote", 不删本地
+7. 对每个本地 skill:
+   - 读取 `<clonePath>/<skillPath>/SKILL.md` 与本地 SKILL.md 字节对比
+   - 字节相同 → 标记为 "up to date"
+   - 字节不同 → `removeDir()` 删除本地, `copyDir(<clonePath>/<skillPath>, <targetDir>)` 重新拷贝, 标记为 "updated"
+8. 在 `try { ... } finally { cleanup() }` 中保证临时目录回收, 无论成功或抛错
+
+9. 更新 source 的 `updatedAt` 时间戳
+
+#### Scenario: Update only updates skills
+- **WHEN** 执行 `update` 更新某个 source
+- **THEN** 只比较和更新 skill, 不处理 `{targetBase}/commands/` 下的文件
+
+#### Scenario: Update output
+- **WHEN** 更新完成
+- **THEN** 统计只包含 skill 的更新结果, 不计入 command
+
+#### Scenario: Update root-skill repo with changed content
+- **WHEN** 更新已安装的根目录 skill 仓库, 远程 SKILL.md 内容已变更
+- **THEN** 系统删除本地 skill 目录, 重新下载整个仓库根目录内容到该目录, 显示 "updated"
+
+#### Scenario: Update root-skill repo with no changes
+- **WHEN** 更新已安装的根目录 skill 仓库, 远程 SKILL.md 内容未变更
+- **THEN** 显示 "up to date", 不做任何修改
+
+#### Scenario: Update detects root-skill pattern
+- **WHEN** 本地有 skill "deep-research" 安装于 `community/repo/deep-research/`, 远程仓库无 `skills/`, `.`, `src/skills/` 下的子目录, 但根目录有 SKILL.md
+- **THEN** 系统使用根目录路径 `SKILL.md` (而非 `skills/deep-research/SKILL.md`) 进行远程比对
+
+#### Scenario: 全量更新只遍历 git / registry
+- **GIVEN** `sources.json` 含 1 个 git source 和 5 个物理 group 成员 (三段 key)
+- **WHEN** 用户执行 `skillsmgr update` (无参数)
+- **THEN** git source 走其 update 路径
+- **THEN** 物理 group 成员不被单独遍历 (它们的更新通过 `skillsmgr update <group-name>` 触发)
+- **THEN** 不尝试更新任何磁盘上的单 skill local-copy (见 local-update capability 的 "裸 update 跳过 local-copy skill" 需求)
+
+### 更新结果统计
+
+| 状态 | 含义 |
+|------|------|
+| updated | 内容变更, 已删除旧版并下载新版 |
+| upToDate | 内容一致, 无需更新 |
+| failed | 获取或下载失败 (网络错误) |
+
+输出格式: "Done! X updated, Y up to date, Z failed"
+
+### 局限性
+
+- 更新流程对 git 来源通过 git clone 检查远程变更, 对 local-copy 来源通过原始路径对比更新, zip 来源不支持更新 (跳过)
+- 仅更新已安装的 skill, 不发现和安装新增内容
+- skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
+- 没有版本号或 hash 比较, 依赖文本内容全文对比
+
+## GitHub Service 详解 (URL 解析工具)
+
+`GitHubService` 不再发起任何 HTTP 请求, 退化为纯粹的 URL / 路径工具类.  整个 codebase 的 git 来源安装与更新均通过 git clone 完成 (见下文 "Git Service 详解" 与 "更新流程").
+
+### URL 解析
+
+`parseGitHubUrl()` 支持两种格式:
+
+**Tree URL**: `https://github.com/owner/repo/tree/branch/path/to/content`
+- 正则: `/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?/`
+- 返回: `{ owner, repo, branch, path }` (path 可能为 undefined, 如 `/tree/main`)
+
+**Basic URL**: `https://github.com/owner/repo` 或 `https://github.com/owner/repo.git`
+- 正则: `/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/`
+- 返回: `{ owner, repo }` (无 branch 和 path)
+
+**不匹配的 URL** → 返回 null
+
+### 目标目录计算
+
+`getTargetDir(owner, repo, skillName, isCustom?)`:
+- official (owner 命中 OFFICIAL_PROVIDERS) → `~/.skills-manager/official/{providerKey}/{repo}/{skillName}`
+- isCustom → `~/.skills-manager/custom/{repo}/{skillName}`
+- 其它 → `~/.skills-manager/community/{owner}/{repo}/{skillName}`
+
+## Git Service 详解
+
+### clone()
+
+- official 快捷名 → 从 `OFFICIAL_PROVIDERS` 获取 URL
+- 目标目录已存在 → `git pull` (在已有目录中执行, 使用 `stdio: 'inherit'`)
+- 不存在 → `git clone --depth 1` (浅克隆, 使用 `stdio: 'inherit'`)
+- 仓库名提取: 从 URL 末尾匹配 `/([^/]+?)(\.git)?$/`, 匹配失败返回 "unknown"
+
+### cloneSpecificSkill()
+
+Sparse checkout 流程:
+1. 解析 URL 提取 owner, repo, branch, skillPath
+2. 创建目标目录
+3. 如果没有 `.git` 目录 → `git init` + `git remote add origin`
+4. 启用 sparse checkout: `git config core.sparseCheckout true`
+5. 追加路径到 `.git/info/sparse-checkout` (使用 `>>` 追加, 不覆盖)
+6. `git pull --depth 1 origin {branch}`
+7. 返回 skill 目标路径
+
+**注意**: sparse checkout 配置使用追加模式, 多次安装不同 skill 时会累积路径.
+
+### isSpecificSkillUrl()
+
+判断逻辑: `url.includes('/tree/')` — 简单的字符串包含检查.
+
+## 测试用例
+
+### 输入解析
+
+- test_install_ownerRepoShorthand_resolvesToGitClone: "user/repo" 格式构建 GitHub URL 后走 git clone
+- test_install_ownerRepoWithTrailingSlash_trimmed: "user/repo/" 末尾斜杠被去掉
+- test_install_remoteUrl_usesGitClone: 远程 URL (包括 GitHub URL) 统一走 git clone
+- test_install_bareWord_throwsUnknownFormat: 裸单词抛出 "Unknown source format" 错误
+
+### Git Clone 安装
+
+- test_gitClone_specificSkillUrl_usesSparseCheckout: tree URL 使用 sparse checkout
+- test_gitClone_shallowClone_depthOne: 新 clone 使用 --depth 1
+
+### Skill 发现 (collectGitCloneSkills)
+
+- test_collectSkills_manifestPlugins_discoversFromManifest: 从 marketplace.json 发现 skills
+- test_collectSkills_mergesManifestAndStandardPaths: manifest 和标准路径结果合并去重
+- test_collectSkills_deduplicatesByName: 同名 skill 只保留先发现的
+- test_collectSkills_standardPathsOnly_discoversSkills: 无 manifest 时从标准路径发现 skills
+- test_collectSkills_rootSkillMd_singleSkillRepo: 根目录 SKILL.md 识别为单 skill 仓库
+- test_collectSkills_rootSubdirScan_discoversSkillsAtRoot: 根目录子文件夹包含 SKILL.md 时发现 skills
+- test_collectSkills_standardPathsPriority_overRootScan: 标准路径有结果时不扫描根目录
+- test_collectSkills_curatedExperimentalSystem_discovered: skills/.curated, .experimental, .system 下的 skill 被发现
+
+### Source 元数据
+
+- test_sourcesService_addSource_newKey_setsInstalledAt: 新 source 的 installedAt 设为当前时间
+- test_sourcesService_addSource_existingKey_preservesInstalledAt: 重复安装时 installedAt 不变
+- test_sourcesService_addSource_existingKey_updatesUpdatedAt: 重复安装时 updatedAt 更新为当前时间
+- test_sourcesService_getSource_notExists_returnsUndefined: 不存在的 key 返回 undefined
+- test_sourcesService_removeSource_deletesEntry: 删除 source 后 getSource 返回 undefined
+- test_sourcesService_updateTimestamp_existingKey_updatesTime: 更新已有 source 的 updatedAt
+- test_sourcesService_updateTimestamp_nonExistingKey_noOp: 不存在的 key 不做任何操作
+- test_sourcesService_load_fileNotExists_returnsEmptyData: sources.json 不存在时返回空数据
+- test_sourcesService_save_createsFormattedJson: 保存时 JSON 使用 2 空格缩进
+
+### GitHub URL 解析
+
+- test_parseGitHubUrl_basicUrl_returnsOwnerRepo: `https://github.com/owner/repo` 返回 owner 和 repo
+- test_parseGitHubUrl_gitSuffix_stripsGit: `https://github.com/owner/repo.git` 去掉 .git
+- test_parseGitHubUrl_treeUrl_returnsAllFields: tree URL 返回 owner, repo, branch, path
+- test_parseGitHubUrl_treeUrlNoPath_branchOnly: `/tree/main` 无 path 时 path 为 undefined
+- test_parseGitHubUrl_invalidUrl_returnsNull: 非 GitHub URL 返回 null
+
+### Default Branch
+
+- test_getDefaultBranch_success_returnsBranch: API 成功时返回实际 default_branch
+- test_getDefaultBranch_apiFails_fallbackToMain: API 失败时返回 "main"
+- test_getDefaultBranch_cached_noSecondApiCall: 第二次调用同一仓库不发起 API 请求
+
+### 更新流程
+
+- test_update_noSources_showsMessage: 无已安装 source 时提示安装
+- test_update_specificSource_matchesByKey: 指定 source 精确匹配 key
+- test_update_specificSource_matchesBySuffix: "anthropic" 匹配 "official/anthropic"
+- test_update_specificSource_matchesByRepoName: 通过 repoName 匹配
+- test_update_specificSource_notFound_showsInstalled: 找不到时显示已安装列表
+- test_update_skillUnchanged_showsUpToDate: 内容一致时显示 up to date
+- test_update_skillChanged_deletesAndRedownloads: 内容变更时先删除再下载
+- test_update_skillNotFoundRemote_showsWarning: 远程不存在时显示警告
+- test_update_skipsCommandsDirectory: 名为 "commands" 的目录被跳过不作为 skill 更新
+- test_update_skipsNoSkillMd: 无 SKILL.md 的目录被跳过
+- test_update_updatesTimestamp: 更新完成后调用 updateTimestamp
+- test_update_nonGithubSource_showsWarning: 无法解析的 URL 显示警告并跳过
+
+## Requirements
+
+### Requirement: install --group 不影响 source key
+`install --group` 时, source key SHALL 不包含 group 信息.  source key 格式与不带 `--group` 时一致.
+
+#### Scenario: 带 --group 安装的 custom skill source key
+- **WHEN** 用户执行 `skillsmgr install ./my-linter --group python`
+- **THEN** source key SHALL 为 `"custom/my-linter"`, 不含 group 信息
+
+### Requirement: zip 包来源识别 (.zip / .skill)
+
+源类型检测 SHALL 将 `.zip` 和 `.skill` 扩展名视为 zip 包, 但仅当输入带有明确路径前缀 (`./`, `/`, `~/`, `../`) 或 URL 前缀 (`http://`, `https://`) 时.  裸文件名 (如 `foo.zip`, `foo.skill`) SHALL 不被识别为 zip 包来源, 返回 `unknown`.
+
+#### Scenario: 本地带前缀的 zip 包识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install ./foo.zip` 或 `skillsmgr install ./foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `local-zip`, 走 `installFromZip` 流程
+
+#### Scenario: 远程 URL zip 包识别为 remote-zip
+- **WHEN** 用户运行 `skillsmgr install https://example.com/foo.zip` 或 `https://example.com/foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `remote-zip`, 走 `installFromRemoteZip` 流程
+
+#### Scenario: 裸 zip 包文件名不识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install foo.zip` 或 `skillsmgr install foo.skill` (无路径前缀)
+- **THEN** 源类型检测 SHALL 返回 `unknown`, 不走 zip 安装流程
+
+#### Scenario: 绝对路径 zip 包识别为 local-zip
+- **WHEN** 用户运行 `skillsmgr install /path/to/foo.zip` 或 `/path/to/foo.skill`
+- **THEN** 源类型检测 SHALL 返回 `local-zip`
+
+#### Scenario: .skill 文件安装结果与 .zip 一致
+- **WHEN** 安装一个 `.skill` 文件, 其内部包含有效的 skill 目录 (含 `SKILL.md`)
+- **THEN** 安装行为 SHALL 与安装同内容的 `.zip` 文件完全一致, 包括目标路径、sources.json 记录和 installMethod
+
 ### Requirement: 通过本地路径参数指定更新
 update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/skill`, `~/skill`).  系统 SHALL 从路径中提取 skill name (basename), 通过 `findInstalledCustomSkill(name)` 在磁盘上 `~/.skills-manager/custom/` 中按 name 查找已安装 skill, 找到后对比 SKILL.md 内容, 有变化则重新拷贝.  系统 SHALL NOT 依赖 `sources.json` 的 url 字段做匹配, 也 SHALL NOT 在 update 成功后向 `sources.json` 写入或刷新 local-copy 条目.
 
@@ -408,59 +598,6 @@ update 命令 SHALL 接受本地路径参数 (`./skill`, `../x/skill`, `/abs/ski
 - **WHEN** 用户执行某条 git source 的 update, 触发 `sourcesService.updateTimestamp('community/obra/superpowers')`
 - **THEN** 写回后的磁盘 `sources.json` SHALL NOT 再包含 `custom/jt-share` 条目
 
-### 更新流程
-
-对每个 source:
-
-1. 检查 source 的 installMethod:
-   - `'local-copy'`: 从 sources.json 中记录的 `url` (原始路径) 读取最新内容并对比, 执行路径对比更新 (详见 local-update spec)
-   - `'zip'`: 跳过 (zip 来源不支持更新)
-   - 其他: 解析 GitHub URL, parseGitHubUrl 返回 null 时跳过
-2. 确定本地目标目录 (根据 type: official/community/custom)
-3. 对 git 来源 `git clone --depth 1` 到临时目录, 后续基于本地文件系统对比 (无 GitHub HTTP API 调用)
-
-**更新 Skills**:
-1. 扫描本地已安装的 skill 目录 (`getDirectoriesInDir(targetBase)`)
-2. 跳过名为 `commands` 的目录 (避免误识别为 skill)
-3. 跳过没有 SKILL.md 的目录
-4. **`git clone --depth 1` 拉取远端仓库到临时目录** (复用 `services/repo-clone.ts` 的 `cloneRepoToTemp`), clone 失败时抛错并清理临时目录
-5. **基于本地文件系统扫描发现远端 skill** (复用 `collectSkillsFromClone`), 与 install 流程和 BundleManager 共享同一份发现规则; 扫描覆盖 plugin manifest, 标准路径 (`skills/` 等), 根目录 SKILL.md 单 skill 仓库, 根目录子文件夹四种形态
-6. 已安装 skill 不在 clone 扫描结果中时显示 "not found in remote", 不删本地
-7. 对每个本地 skill:
-   - 读取 `<clonePath>/<skillPath>/SKILL.md` 与本地 SKILL.md 字节对比
-   - 字节相同 → 标记为 "up to date"
-   - 字节不同 → `removeDir()` 删除本地, `copyDir(<clonePath>/<skillPath>, <targetDir>)` 重新拷贝, 标记为 "updated"
-8. 在 `try { ... } finally { cleanup() }` 中保证临时目录回收, 无论成功或抛错
-
-9. 更新 source 的 `updatedAt` 时间戳
-
-#### Scenario: Update only updates skills
-- **WHEN** 执行 `update` 更新某个 source
-- **THEN** 只比较和更新 skill, 不处理 `{targetBase}/commands/` 下的文件
-
-#### Scenario: Update output
-- **WHEN** 更新完成
-- **THEN** 统计只包含 skill 的更新结果, 不计入 command
-
-#### Scenario: Update root-skill repo with changed content
-- **WHEN** 更新已安装的根目录 skill 仓库, 远程 SKILL.md 内容已变更
-- **THEN** 系统删除本地 skill 目录, 重新下载整个仓库根目录内容到该目录, 显示 "updated"
-
-#### Scenario: Update root-skill repo with no changes
-- **WHEN** 更新已安装的根目录 skill 仓库, 远程 SKILL.md 内容未变更
-- **THEN** 显示 "up to date", 不做任何修改
-
-#### Scenario: Update detects root-skill pattern
-- **WHEN** 本地有 skill "deep-research" 安装于 `community/repo/deep-research/`, 远程仓库无 `skills/`, `.`, `src/skills/` 下的子目录, 但根目录有 SKILL.md
-- **THEN** 系统使用根目录路径 `SKILL.md` (而非 `skills/deep-research/SKILL.md`) 进行远程比对
-
-#### Scenario: 全量更新只遍历 git / registry
-- **GIVEN** `sources.json` 含 1 个 git source 和 5 个物理 group 成员 (三段 key)
-- **WHEN** 用户执行 `skillsmgr update` (无参数)
-- **THEN** git source 走其 update 路径
-- **THEN** 物理 group 成员不被单独遍历 (它们的更新通过 `skillsmgr update <group-name>` 触发)
-- **THEN** 不尝试更新任何磁盘上的单 skill local-copy (见 local-update capability 的 "裸 update 跳过 local-copy skill" 需求)
-
 ### Requirement: Git 来源 update 走 git clone, 不使用 GitHub HTTP API
 
 `SourceUpdater.updateSource` 对 `installMethod === 'git'` 的 source SHALL 通过 `git clone --depth 1` 拉取整个仓库到临时目录, 然后基于本地文件系统扫描和文件对比完成更新.  系统 SHALL NOT 调用任何 GitHub HTTP API (`api.github.com/...`) 或 raw.githubusercontent.com 来探测分支、列举 skill、对比 SKILL.md 或下载文件.
@@ -528,74 +665,6 @@ clone+scan 过程 SHALL 复用 `services/repo-clone.ts` 提供的 `cloneRepoToTe
 #### Scenario: 已删除方法不再被任何代码引用
 - **WHEN** 在 `src/` 下 grep `getDefaultBranch|listSkillsWithFallbackPaths|findRootSkillsByTree|fetchRootFile|downloadSkill|downloadRepoRoot`
 - **THEN** 除测试文件中清理痕迹外, src 代码 SHALL 没有任何匹配
-
-### 更新结果统计
-
-| 状态 | 含义 |
-|------|------|
-| updated | 内容变更, 已删除旧版并下载新版 |
-| upToDate | 内容一致, 无需更新 |
-| failed | 获取或下载失败 (网络错误) |
-
-输出格式: "Done! X updated, Y up to date, Z failed"
-
-### 局限性
-
-- 更新流程对 git 来源通过 git clone 检查远程变更, 对 local-copy 来源通过原始路径对比更新, zip 来源不支持更新 (跳过)
-- 仅更新已安装的 skill, 不发现和安装新增内容
-- skill 更新仅对比 SKILL.md, 但删除和重新下载是整个目录 (所以其他文件也会被更新)
-- 没有版本号或 hash 比较, 依赖文本内容全文对比
-
-## GitHub Service 详解 (URL 解析工具)
-
-`GitHubService` 不再发起任何 HTTP 请求, 退化为纯粹的 URL / 路径工具类.  整个 codebase 的 git 来源安装与更新均通过 git clone 完成 (见下文 "Git Service 详解" 与 "更新流程").
-
-### URL 解析
-
-`parseGitHubUrl()` 支持两种格式:
-
-**Tree URL**: `https://github.com/owner/repo/tree/branch/path/to/content`
-- 正则: `/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?/`
-- 返回: `{ owner, repo, branch, path }` (path 可能为 undefined, 如 `/tree/main`)
-
-**Basic URL**: `https://github.com/owner/repo` 或 `https://github.com/owner/repo.git`
-- 正则: `/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/`
-- 返回: `{ owner, repo }` (无 branch 和 path)
-
-**不匹配的 URL** → 返回 null
-
-### 目标目录计算
-
-`getTargetDir(owner, repo, skillName, isCustom?)`:
-- official (owner 命中 OFFICIAL_PROVIDERS) → `~/.skills-manager/official/{providerKey}/{repo}/{skillName}`
-- isCustom → `~/.skills-manager/custom/{repo}/{skillName}`
-- 其它 → `~/.skills-manager/community/{owner}/{repo}/{skillName}`
-
-## Git Service 详解
-
-### clone()
-
-- official 快捷名 → 从 `OFFICIAL_PROVIDERS` 获取 URL
-- 目标目录已存在 → `git pull` (在已有目录中执行, 使用 `stdio: 'inherit'`)
-- 不存在 → `git clone --depth 1` (浅克隆, 使用 `stdio: 'inherit'`)
-- 仓库名提取: 从 URL 末尾匹配 `/([^/]+?)(\.git)?$/`, 匹配失败返回 "unknown"
-
-### cloneSpecificSkill()
-
-Sparse checkout 流程:
-1. 解析 URL 提取 owner, repo, branch, skillPath
-2. 创建目标目录
-3. 如果没有 `.git` 目录 → `git init` + `git remote add origin`
-4. 启用 sparse checkout: `git config core.sparseCheckout true`
-5. 追加路径到 `.git/info/sparse-checkout` (使用 `>>` 追加, 不覆盖)
-6. `git pull --depth 1 origin {branch}`
-7. 返回 skill 目标路径
-
-**注意**: sparse checkout 配置使用追加模式, 多次安装不同 skill 时会累积路径.
-
-### isSpecificSkillUrl()
-
-判断逻辑: `url.includes('/tree/')` — 简单的字符串包含检查.
 
 ### Requirement: remove 命令支持 URL 格式
 `remove` 命令 SHALL 支持通过 Git URL 格式(HTTPS/SSH)移除已部署的 skills.  系统 SHALL 从 URL 中提取 owner/repo, 然后按已有的 owner/repo 移除流程执行.
@@ -677,69 +746,3 @@ V3 示例:
 - **GIVEN** sources.json `version === '3.0'`
 - **WHEN** 系统 load
 - **THEN** 不执行迁移逻辑, 不写 backup
-
-## 测试用例
-
-### 输入解析
-
-- test_install_ownerRepoShorthand_resolvesToGitClone: "user/repo" 格式构建 GitHub URL 后走 git clone
-- test_install_ownerRepoWithTrailingSlash_trimmed: "user/repo/" 末尾斜杠被去掉
-- test_install_remoteUrl_usesGitClone: 远程 URL (包括 GitHub URL) 统一走 git clone
-- test_install_bareWord_throwsUnknownFormat: 裸单词抛出 "Unknown source format" 错误
-
-### Git Clone 安装
-
-- test_gitClone_specificSkillUrl_usesSparseCheckout: tree URL 使用 sparse checkout
-- test_gitClone_shallowClone_depthOne: 新 clone 使用 --depth 1
-
-### Skill 发现 (collectGitCloneSkills)
-
-- test_collectSkills_manifestPlugins_discoversFromManifest: 从 marketplace.json 发现 skills
-- test_collectSkills_mergesManifestAndStandardPaths: manifest 和标准路径结果合并去重
-- test_collectSkills_deduplicatesByName: 同名 skill 只保留先发现的
-- test_collectSkills_standardPathsOnly_discoversSkills: 无 manifest 时从标准路径发现 skills
-- test_collectSkills_rootSkillMd_singleSkillRepo: 根目录 SKILL.md 识别为单 skill 仓库
-- test_collectSkills_rootSubdirScan_discoversSkillsAtRoot: 根目录子文件夹包含 SKILL.md 时发现 skills
-- test_collectSkills_standardPathsPriority_overRootScan: 标准路径有结果时不扫描根目录
-- test_collectSkills_curatedExperimentalSystem_discovered: skills/.curated, .experimental, .system 下的 skill 被发现
-
-### Source 元数据
-
-- test_sourcesService_addSource_newKey_setsInstalledAt: 新 source 的 installedAt 设为当前时间
-- test_sourcesService_addSource_existingKey_preservesInstalledAt: 重复安装时 installedAt 不变
-- test_sourcesService_addSource_existingKey_updatesUpdatedAt: 重复安装时 updatedAt 更新为当前时间
-- test_sourcesService_getSource_notExists_returnsUndefined: 不存在的 key 返回 undefined
-- test_sourcesService_removeSource_deletesEntry: 删除 source 后 getSource 返回 undefined
-- test_sourcesService_updateTimestamp_existingKey_updatesTime: 更新已有 source 的 updatedAt
-- test_sourcesService_updateTimestamp_nonExistingKey_noOp: 不存在的 key 不做任何操作
-- test_sourcesService_load_fileNotExists_returnsEmptyData: sources.json 不存在时返回空数据
-- test_sourcesService_save_createsFormattedJson: 保存时 JSON 使用 2 空格缩进
-
-### GitHub URL 解析
-
-- test_parseGitHubUrl_basicUrl_returnsOwnerRepo: `https://github.com/owner/repo` 返回 owner 和 repo
-- test_parseGitHubUrl_gitSuffix_stripsGit: `https://github.com/owner/repo.git` 去掉 .git
-- test_parseGitHubUrl_treeUrl_returnsAllFields: tree URL 返回 owner, repo, branch, path
-- test_parseGitHubUrl_treeUrlNoPath_branchOnly: `/tree/main` 无 path 时 path 为 undefined
-- test_parseGitHubUrl_invalidUrl_returnsNull: 非 GitHub URL 返回 null
-
-### Default Branch
-
-- test_getDefaultBranch_success_returnsBranch: API 成功时返回实际 default_branch
-- test_getDefaultBranch_apiFails_fallbackToMain: API 失败时返回 "main"
-- test_getDefaultBranch_cached_noSecondApiCall: 第二次调用同一仓库不发起 API 请求
-
-### 更新流程
-
-- test_update_noSources_showsMessage: 无已安装 source 时提示安装
-- test_update_specificSource_matchesByKey: 指定 source 精确匹配 key
-- test_update_specificSource_matchesBySuffix: "anthropic" 匹配 "official/anthropic"
-- test_update_specificSource_matchesByRepoName: 通过 repoName 匹配
-- test_update_specificSource_notFound_showsInstalled: 找不到时显示已安装列表
-- test_update_skillUnchanged_showsUpToDate: 内容一致时显示 up to date
-- test_update_skillChanged_deletesAndRedownloads: 内容变更时先删除再下载
-- test_update_skillNotFoundRemote_showsWarning: 远程不存在时显示警告
-- test_update_skipsCommandsDirectory: 名为 "commands" 的目录被跳过不作为 skill 更新
-- test_update_skipsNoSkillMd: 无 SKILL.md 的目录被跳过
-- test_update_updatesTimestamp: 更新完成后调用 updateTimestamp
-- test_update_nonGithubSource_showsWarning: 无法解析的 URL 显示警告并跳过

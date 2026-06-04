@@ -1,5 +1,6 @@
 # Tool Integration
 
+## Purpose
 skillsmgr 支持 45 种 AI 编程工具, 所有工具统一使用 `.agents/skills/` 目录部署 skills.  非原生工具通过 symlink 桥接访问该目录.
 
 ## 支持的工具
@@ -214,14 +215,6 @@ Native 工具直接读取 `.agents/skills/`, non-native 工具通过 symlink 桥
 - **WHEN** 用户选择 Claude Code (non-native tool)
 - **THEN** skills 部署到 `.agents/skills/` 且 `.claude/skills -> .agents/skills` symlink 被创建
 
-### Requirement: list --deployed 输出中的术语
-
-`list --deployed` 输出中的 "Configured tools:" SHALL 改为 "Configured agents:".
-
-#### Scenario: list deployed 使用 agents 术语
-- **WHEN** 执行 `list --deployed`
-- **THEN** 输出中显示 "Configured agents:" 而非 "Configured tools:"
-
 ### 3. Symlink 支持
 
 当前所有工具的 `supportsLink` 均为 true.  这意味着:
@@ -365,3 +358,13 @@ Native 工具直接读取 `.agents/skills/`, non-native 工具通过 symlink 桥
 - test_setup_alreadyExists_skipsExampleSkill: 再次运行时跳过已存在的 example-skill
 - test_setup_idempotent_noErrors: 多次运行不报错
 - test_setup_exampleSkill_hasValidFrontmatter: example-skill 的 SKILL.md 有有效的 name 和 description frontmatter
+
+## Requirements
+
+### Requirement: list --deployed 输出中的术语
+
+`list --deployed` 输出中的 "Configured tools:" SHALL 改为 "Configured agents:".
+
+#### Scenario: list deployed 使用 agents 术语
+- **WHEN** 执行 `list --deployed`
+- **THEN** 输出中显示 "Configured agents:" 而非 "Configured tools:"

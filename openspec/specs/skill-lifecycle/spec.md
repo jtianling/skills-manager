@@ -1,5 +1,6 @@
 # Skill Lifecycle
 
+## Purpose
 Skills 是 AI 编程工具理解项目上下文和行为规范的 markdown 文件集合.  每个 skill 是一个包含 `SKILL.md` 的目录.
 
 ## 数据模型
@@ -180,6 +181,159 @@ skill 目录中除了 `SKILL.md` 外, 还可包含任意文件和子目录 (如 
 - **WHEN** name 不匹配任何已部署 skill
 - **THEN** 输出 "'name' not found in deployed skills"
 
+### 4. 更新
+
+`update` 命令从远程拉取最新版本 (详细流程参见 source-management spec):
+- 仅更新本地已安装的 skill, 不安装新 skill
+- 跳过名为 `commands` 的目录 (避免将残留 commands 子目录误识别为 skill)
+- 比较本地和远程的 SKILL.md 内容 (全文对比, 不截断)
+- 内容不同时, 先 `removeDir()` 删除整个本地 skill 目录, 再重新下载
+
+#### Scenario: update only updates skills
+- **WHEN** 用户执行 `update` 命令
+- **THEN** 只比较和更新本地已安装的 skill, 不处理 commands
+
+#### Scenario: update skips residual commands directory
+- **WHEN** `~/.skills-manager/official/anthropic/` 下存在残留的 `commands/` 目录
+- **THEN** 该目录被跳过, 不报错
+
+### 5. 安装时预选已安装 skill
+
+`install` 命令进入交互式选择时, 系统 SHALL 检测目标安装目录中已存在的 skill, 在 checkbox 列表中将其预选 (`checked: true`) 并显示 `(installed)` 后缀.
+
+**检测逻辑**:
+1. 在显示选择列表前, 计算目标安装路径 (`computeRepoTargetBase`)
+2. 扫描目标路径下的子目录, 过滤出包含 `SKILL.md` 的目录
+3. 将目录名收集为 `installedNames` Set
+4. 传递给 `promptSkillsToInstall(skills, installedNames)`
+
+**UI 表现**:
+- 已安装 skill: 显示为 `◉ skill-name (installed)` (预选中, 黄色 suffix)
+- 未安装 skill: 显示为 `◯ skill-name` (未选中)
+
+**不影响的场景**:
+- `--all` 选项: 不触发交互式选择, 不涉及预选
+- `--skill` 选项: 直接过滤, 不触发交互式选择
+- `uninstall` 命令: 默认全部不勾选, 不使用预选
+
+#### Scenario: 全部 skill 已安装时跳过交互式选择
+
+- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库中所有 skill 均已安装
+- **THEN** 系统 SHALL 输出 "All N skills already installed.", 不显示交互式选择列表, 直接返回
+
+#### Scenario: 部分 skill 已安装时的交互式选择
+
+- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库有 skill-a, skill-b, skill-c, 其中 skill-a 已安装
+- **THEN** 选择列表中 skill-a 显示为 `◉ skill-a (installed)`, skill-b 和 skill-c 显示为 `◯`
+
+#### Scenario: 首次安装时无预选
+
+- **WHEN** 用户首次执行 `install owner/repo` (无 `--all`), 目标目录不存在
+- **THEN** 所有 skill 显示为 `◯`, 无预选
+
+## 冲突处理
+
+当多个 source 包含同名 skill 时:
+
+**检测时机**:
+- `DeploymentScanner.scanCopiedSkill()`: 调用 `findSourceByName()`, 如果 `findSkillsByName()` 返回多于 1 个结果, 设置 `conflict: true`, `source: null`
+- 注意: link 模式不会触发冲突, 因为 symlink target 路径可以精确定位 source
+
+**影响**:
+- `add` 命令: 遇到多个匹配时, 提示用户通过编号选择具体的 source
+- `list --deployed`: 显示 "⚠ name (copy) ← conflict"
+- `init` 命令: 不受影响, 因为 skill 选择是基于 name 而非 source
+
+## 操作精确性
+
+所有生命周期操作 SHALL 精确作用于目标 skill, 不得对非目标 skill 产生副作用.
+
+## 前置条件
+
+- 大部分 skill 操作 (除 `setup`, `deploy`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
+- `deploy` 和 `add` 检查 `~/.skills-manager/` 目录是否存在, 不存在时自动执行 `executeSetup()` 完成初始化, 然后继续原命令流程
+- `deploy` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropics/skills"
+- `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr deploy"
+
+#### Scenario: deploy precondition check
+- **WHEN** 无可用 skill 时执行 `deploy`
+- **THEN** 输出 "No skills found. Run: skillsmgr install anthropics/skills" 并 exit(1)
+
+#### Scenario: add precondition check
+- **WHEN** name 不匹配任何 skill 时执行 `add`
+- **THEN** 输出 "'name' not found" 并 exit(1)
+
+## 测试用例
+
+### SkillsService
+
+#### 发现与加载
+
+- test_getAllSkills_emptyDir_returnsEmpty: `~/.skills-manager/` 各来源目录为空时, 返回空数组
+- test_getAllSkills_customSkill_loadsCorrectly: custom 目录下有 `my-skill/SKILL.md`, 返回 SkillInfo 且 source 为 "custom"
+- test_getAllSkills_officialSkill_loadsCorrectly: `official/anthropic/code-review/SKILL.md` 存在时, source 为 "official/anthropic"
+- test_getAllSkills_officialWithSkillsSubdir_loadsCorrectly: `official/anthropic/skills/code-review/SKILL.md` 结构时 (仓库有 skills/ 子目录), 仍能正确加载
+- test_getAllSkills_noSkillMd_skipsDir: 目录存在但没有 SKILL.md 时, 不返回该目录
+- test_getAllSkills_multipleSourcesSameName_returnsAll: official 和 community 都有名为 "code-review" 的 skill 时, `getAllSkills()` 返回两个
+- test_getAllSkills_sortedByName: 同一来源下的 skill 按名称字母序排列
+
+#### Frontmatter 解析
+
+- test_parseSkillMd_validFrontmatter_parsesNameAndDesc: 标准 frontmatter 返回正确 name 和 description
+- test_parseSkillMd_noFrontmatter_returnsEmpty: 没有 `---` 分隔符时, name 和 description 都为空字符串
+- test_parseSkillMd_missingName_usesDirectoryName: frontmatter 中没有 name 字段, 使用目录名作为 name
+- test_parseSkillMd_missingDescription_returnsEmptyDesc: frontmatter 中没有 description 字段, description 为空字符串
+- test_parseSkillMd_extraWhitespace_trimmed: name 和 description 值前后有空格时被 trim
+
+#### 查找
+
+- test_getSkillByName_exists_returnsFirst: 多个同名 skill 时返回第一个 (official 优先)
+- test_getSkillByName_notExists_returnsUndefined: 不存在的 name 返回 undefined
+- test_findSkillsByName_multipleMatches_returnsAll: 返回所有同名 skill
+- test_getSkillsByNames_partialMatch_filtersUndefined: 部分 name 不存在时, 返回数组不含 undefined
+
+### Deployer
+
+#### 部署
+
+- test_deploySkill_linkMode_createsSymlink: link 模式创建符号链接, 指向源 skill 目录
+- test_deploySkill_copyMode_copiesFiles: copy 模式复制所有文件, 与源内容一致
+- test_deploySkill_linkMode_existingTarget_replacesLink: 目标已存在 symlink 时, 先删除再创建新 link
+- test_deploySkill_targetDirNotExist_createsDir: 目标目录不存在时自动创建 (包括中间目录)
+- test_deploySkill_withMode_usesCorrectDir: mode="code" 时部署到 mode-specific 目录
+
+#### 移除
+
+- test_removeSkill_exists_deletesRecursively: 已部署 skill 被递归删除
+- test_removeSkill_notExists_noError: 目标不存在时不报错 (rmSync with force: true)
+
+### 增量部署 (init)
+
+- test_init_newSkills_deploysAll: 全新项目, 选择 3 个 skill, 全部被部署
+- test_init_existingSkills_keepsUnchanged: 已部署的 skill 被选中时不重新部署
+- test_init_deselectSkill_removes: 之前部署的 skill 未被选中时被移除
+- test_init_mixedOperations_correctOutput: 同时有 add/keep/remove 时输出正确
+
+### 冲突处理
+
+- test_conflict_copiedSkillMultipleSources_detectedAsConflict: copy 模式, 同名 skill 存在于多个 source, 扫描结果 conflict 为 true
+- test_conflict_linkedSkill_noConflict: link 模式, 即使多个 source 有同名 skill, 通过 symlink target 精确定位, 不标记冲突
+- test_conflict_addSkill_promptsSelection: `add` 遇到多个匹配时提示选择
+
+### DeploymentScanner
+
+- test_scanner_emptyProject_returnsEmpty: 项目中没有任何工具目录时返回空数组
+- test_scanner_linkedSkill_detectsModeAndSource: 检测到 symlink, 正确返回 deployMode="link" 和 source
+- test_scanner_copiedSkill_detectsMode: 非 symlink 且有 SKILL.md, 返回 deployMode="copy"
+- test_scanner_noSkillMd_ignored: 工具目录下的子目录没有 SKILL.md 时不被视为 skill
+- test_scanner_modeSpecificDirs_scannedSeparately: Roo Code 的 .roo/skills/ 和 .roo/skills-code/ 分别扫描
+- test_scanner_sourceExtraction_officialPath: symlink 指向 `~/.skills-manager/official/anthropic/skill-name`, source 提取为 "official/anthropic"
+- test_scanner_sourceExtraction_customPath: symlink 指向 `~/.skills-manager/custom/skill-name`, source 提取为 "custom"
+- test_scanner_sourceExtraction_invalidPath: symlink 指向不包含 `.skills-manager/` 的路径, source 为 "unknown"
+- test_scanner_getConfiguredTools_returnsToolsWithDeployments: 只返回有部署的工具列表
+
+## Requirements
+
 ### Requirement: remove 命令从必填参数改为可选
 
 remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可选). 支持通过 `-s/--skill` 指定多个 skill, 也支持 `-a/--agent` 指定目标 agent.
@@ -263,69 +417,6 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 **通过 `init` 命令的增量逻辑**:
 - 取消选择的 skill 会被移除, 使用 `deployer.removeSkill()` 处理
 
-### 4. 更新
-
-`update` 命令从远程拉取最新版本 (详细流程参见 source-management spec):
-- 仅更新本地已安装的 skill, 不安装新 skill
-- 跳过名为 `commands` 的目录 (避免将残留 commands 子目录误识别为 skill)
-- 比较本地和远程的 SKILL.md 内容 (全文对比, 不截断)
-- 内容不同时, 先 `removeDir()` 删除整个本地 skill 目录, 再重新下载
-
-#### Scenario: update only updates skills
-- **WHEN** 用户执行 `update` 命令
-- **THEN** 只比较和更新本地已安装的 skill, 不处理 commands
-
-#### Scenario: update skips residual commands directory
-- **WHEN** `~/.skills-manager/official/anthropic/` 下存在残留的 `commands/` 目录
-- **THEN** 该目录被跳过, 不报错
-
-### 5. 安装时预选已安装 skill
-
-`install` 命令进入交互式选择时, 系统 SHALL 检测目标安装目录中已存在的 skill, 在 checkbox 列表中将其预选 (`checked: true`) 并显示 `(installed)` 后缀.
-
-**检测逻辑**:
-1. 在显示选择列表前, 计算目标安装路径 (`computeRepoTargetBase`)
-2. 扫描目标路径下的子目录, 过滤出包含 `SKILL.md` 的目录
-3. 将目录名收集为 `installedNames` Set
-4. 传递给 `promptSkillsToInstall(skills, installedNames)`
-
-**UI 表现**:
-- 已安装 skill: 显示为 `◉ skill-name (installed)` (预选中, 黄色 suffix)
-- 未安装 skill: 显示为 `◯ skill-name` (未选中)
-
-**不影响的场景**:
-- `--all` 选项: 不触发交互式选择, 不涉及预选
-- `--skill` 选项: 直接过滤, 不触发交互式选择
-- `uninstall` 命令: 默认全部不勾选, 不使用预选
-
-#### Scenario: 全部 skill 已安装时跳过交互式选择
-
-- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库中所有 skill 均已安装
-- **THEN** 系统 SHALL 输出 "All N skills already installed.", 不显示交互式选择列表, 直接返回
-
-#### Scenario: 部分 skill 已安装时的交互式选择
-
-- **WHEN** 用户执行 `install owner/repo` (无 `--all`), 仓库有 skill-a, skill-b, skill-c, 其中 skill-a 已安装
-- **THEN** 选择列表中 skill-a 显示为 `◉ skill-a (installed)`, skill-b 和 skill-c 显示为 `◯`
-
-#### Scenario: 首次安装时无预选
-
-- **WHEN** 用户首次执行 `install owner/repo` (无 `--all`), 目标目录不存在
-- **THEN** 所有 skill 显示为 `◯`, 无预选
-
-## 冲突处理
-
-当多个 source 包含同名 skill 时:
-
-**检测时机**:
-- `DeploymentScanner.scanCopiedSkill()`: 调用 `findSourceByName()`, 如果 `findSkillsByName()` 返回多于 1 个结果, 设置 `conflict: true`, `source: null`
-- 注意: link 模式不会触发冲突, 因为 symlink target 路径可以精确定位 source
-
-**影响**:
-- `add` 命令: 遇到多个匹配时, 提示用户通过编号选择具体的 source
-- `list --deployed`: 显示 "⚠ name (copy) ← conflict"
-- `init` 命令: 不受影响, 因为 skill 选择是基于 name 而非 source
-
 ### Requirement: Root-level SKILL.md recognition
 
 当仓库根目录存在 SKILL.md 且仓库内不存在子目录形式的 skill 时, 系统 SHALL 将整个仓库视为单个 skill.  安装后的存储结构 SHALL 为 `~/.skills-manager/{source}/{repo}/{skill-name}/SKILL.md`, 其中 `skill-name` 优先取 SKILL.md frontmatter 中的 `name` 字段, 无 name 时 fallback 为仓库名.
@@ -354,13 +445,9 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 - **WHEN** 用户安装根目录 skill 仓库且未使用 `--all` 选项
 - **THEN** 系统直接安装该 skill, 不显示选择提示 (因为只有一个 skill)
 
-## 操作精确性
-
-所有生命周期操作 SHALL 精确作用于目标 skill, 不得对非目标 skill 产生副作用.
-
 ### Requirement: install 仅安装指定 skill
 
-使用 `--skill` 过滤时, 仅目标 skill 被安装到中央仓库, 其他 skill 不受影响.
+使用 `--skill` 过滤时, 系统 SHALL 仅安装目标 skill 到中央仓库, 其他 skill 不受影响.
 
 #### Scenario: install -s 不安装其他 skill
 - **WHEN** 仓库包含 skill-a, skill-b, skill-c
@@ -370,7 +457,7 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 
 ### Requirement: add 仅部署指定 skill
 
-`add` 操作仅在目标位置创建指定 skill 的部署, 不额外部署其他 skill.
+`add` 操作 SHALL 仅在目标位置创建指定 skill 的部署, 不额外部署其他 skill.
 
 #### Scenario: add -s 不部署其他 skill
 - **WHEN** 中央仓库包含 skill-a, skill-b, skill-c
@@ -380,7 +467,7 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 
 ### Requirement: remove 仅移除指定 skill
 
-`remove` 操作仅删除指定 skill 的部署, 其他已部署 skill 不受影响.
+`remove` 操作 SHALL 仅删除指定 skill 的部署, 其他已部署 skill 不受影响.
 
 #### Scenario: remove 不影响其他已部署 skill
 - **WHEN** 项目中已部署 skill-a 和 skill-b
@@ -390,7 +477,7 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 
 ### Requirement: uninstall 仅卸载指定 skill
 
-`uninstall` 操作仅删除指定 skill, 同仓库的其他 skill 不受影响.
+`uninstall` 操作 SHALL 仅删除指定 skill, 同仓库的其他 skill 不受影响.
 
 #### Scenario: uninstall 不影响同仓库其他 skill
 - **WHEN** 中央仓库中 official/openai/skills/ 下有 skill-a 和 skill-b
@@ -425,21 +512,6 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 - **WHEN** 用户执行 `skillsmgr uninstall anthropics/skills -y --all -f`
 - **THEN** 行为与单独使用 `-y` 完全相同, 不报错
 
-## 前置条件
-
-- 大部分 skill 操作 (除 `setup`, `deploy`, `add`) 检查 `~/.skills-manager/` 目录是否存在, 不存在时 `process.exit(1)` 并提示 "Run: skillsmgr setup"
-- `deploy` 和 `add` 检查 `~/.skills-manager/` 目录是否存在, 不存在时自动执行 `executeSetup()` 完成初始化, 然后继续原命令流程
-- `deploy` 额外要求至少有一个可用 skill, 否则提示 "No skills found. Run: skillsmgr install anthropics/skills"
-- `add` 不指定 `--tool` 时, 要求至少有一个已配置工具, 否则提示 "Run: skillsmgr deploy"
-
-#### Scenario: deploy precondition check
-- **WHEN** 无可用 skill 时执行 `deploy`
-- **THEN** 输出 "No skills found. Run: skillsmgr install anthropics/skills" 并 exit(1)
-
-#### Scenario: add precondition check
-- **WHEN** name 不匹配任何 skill 时执行 `add`
-- **THEN** 输出 "'name' not found" 并 exit(1)
-
 ### Requirement: Skill addition via add
 
 `add` 命令 SHALL 只查找和部署 skill, 不再 fallback 到 command.
@@ -451,72 +523,3 @@ remove 命令的 positional arg SHALL 从 `<name>` (必填) 改为 `[name]` (可
 #### Scenario: add name not found
 - **WHEN** name 不匹配任何可用 skill
 - **THEN** 输出 "'name' not found" 并 exit(1)
-
-## 测试用例
-
-### SkillsService
-
-#### 发现与加载
-
-- test_getAllSkills_emptyDir_returnsEmpty: `~/.skills-manager/` 各来源目录为空时, 返回空数组
-- test_getAllSkills_customSkill_loadsCorrectly: custom 目录下有 `my-skill/SKILL.md`, 返回 SkillInfo 且 source 为 "custom"
-- test_getAllSkills_officialSkill_loadsCorrectly: `official/anthropic/code-review/SKILL.md` 存在时, source 为 "official/anthropic"
-- test_getAllSkills_officialWithSkillsSubdir_loadsCorrectly: `official/anthropic/skills/code-review/SKILL.md` 结构时 (仓库有 skills/ 子目录), 仍能正确加载
-- test_getAllSkills_noSkillMd_skipsDir: 目录存在但没有 SKILL.md 时, 不返回该目录
-- test_getAllSkills_multipleSourcesSameName_returnsAll: official 和 community 都有名为 "code-review" 的 skill 时, `getAllSkills()` 返回两个
-- test_getAllSkills_sortedByName: 同一来源下的 skill 按名称字母序排列
-
-#### Frontmatter 解析
-
-- test_parseSkillMd_validFrontmatter_parsesNameAndDesc: 标准 frontmatter 返回正确 name 和 description
-- test_parseSkillMd_noFrontmatter_returnsEmpty: 没有 `---` 分隔符时, name 和 description 都为空字符串
-- test_parseSkillMd_missingName_usesDirectoryName: frontmatter 中没有 name 字段, 使用目录名作为 name
-- test_parseSkillMd_missingDescription_returnsEmptyDesc: frontmatter 中没有 description 字段, description 为空字符串
-- test_parseSkillMd_extraWhitespace_trimmed: name 和 description 值前后有空格时被 trim
-
-#### 查找
-
-- test_getSkillByName_exists_returnsFirst: 多个同名 skill 时返回第一个 (official 优先)
-- test_getSkillByName_notExists_returnsUndefined: 不存在的 name 返回 undefined
-- test_findSkillsByName_multipleMatches_returnsAll: 返回所有同名 skill
-- test_getSkillsByNames_partialMatch_filtersUndefined: 部分 name 不存在时, 返回数组不含 undefined
-
-### Deployer
-
-#### 部署
-
-- test_deploySkill_linkMode_createsSymlink: link 模式创建符号链接, 指向源 skill 目录
-- test_deploySkill_copyMode_copiesFiles: copy 模式复制所有文件, 与源内容一致
-- test_deploySkill_linkMode_existingTarget_replacesLink: 目标已存在 symlink 时, 先删除再创建新 link
-- test_deploySkill_targetDirNotExist_createsDir: 目标目录不存在时自动创建 (包括中间目录)
-- test_deploySkill_withMode_usesCorrectDir: mode="code" 时部署到 mode-specific 目录
-
-#### 移除
-
-- test_removeSkill_exists_deletesRecursively: 已部署 skill 被递归删除
-- test_removeSkill_notExists_noError: 目标不存在时不报错 (rmSync with force: true)
-
-### 增量部署 (init)
-
-- test_init_newSkills_deploysAll: 全新项目, 选择 3 个 skill, 全部被部署
-- test_init_existingSkills_keepsUnchanged: 已部署的 skill 被选中时不重新部署
-- test_init_deselectSkill_removes: 之前部署的 skill 未被选中时被移除
-- test_init_mixedOperations_correctOutput: 同时有 add/keep/remove 时输出正确
-
-### 冲突处理
-
-- test_conflict_copiedSkillMultipleSources_detectedAsConflict: copy 模式, 同名 skill 存在于多个 source, 扫描结果 conflict 为 true
-- test_conflict_linkedSkill_noConflict: link 模式, 即使多个 source 有同名 skill, 通过 symlink target 精确定位, 不标记冲突
-- test_conflict_addSkill_promptsSelection: `add` 遇到多个匹配时提示选择
-
-### DeploymentScanner
-
-- test_scanner_emptyProject_returnsEmpty: 项目中没有任何工具目录时返回空数组
-- test_scanner_linkedSkill_detectsModeAndSource: 检测到 symlink, 正确返回 deployMode="link" 和 source
-- test_scanner_copiedSkill_detectsMode: 非 symlink 且有 SKILL.md, 返回 deployMode="copy"
-- test_scanner_noSkillMd_ignored: 工具目录下的子目录没有 SKILL.md 时不被视为 skill
-- test_scanner_modeSpecificDirs_scannedSeparately: Roo Code 的 .roo/skills/ 和 .roo/skills-code/ 分别扫描
-- test_scanner_sourceExtraction_officialPath: symlink 指向 `~/.skills-manager/official/anthropic/skill-name`, source 提取为 "official/anthropic"
-- test_scanner_sourceExtraction_customPath: symlink 指向 `~/.skills-manager/custom/skill-name`, source 提取为 "custom"
-- test_scanner_sourceExtraction_invalidPath: symlink 指向不包含 `.skills-manager/` 的路径, source 为 "unknown"
-- test_scanner_getConfiguredTools_returnsToolsWithDeployments: 只返回有部署的工具列表

@@ -1,5 +1,6 @@
 # Skill Grouping
 
+## Purpose
 interactiveCheckbox 的 group-header 三态显示、批量切换, 以及 promptSkills/list 的二级分组.
 
 ## Requirements
