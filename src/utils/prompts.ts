@@ -120,68 +120,6 @@ function parseSource(source: string): { category: string; groupId?: string } {
   return { category, groupId: parts.slice(1).join('/') };
 }
 
-function buildSkillChoices(
-  skills: SkillInfo[],
-  mapChoice: (
-    skill: SkillInfo,
-    category: string,
-    groupId?: string
-  ) => {
-    name: string;
-    description: string;
-    value: string;
-    checked?: boolean;
-    group?: string;
-    subGroup?: string;
-    suffix?: string;
-  }
-): Array<{
-  name: string;
-  description: string;
-  value: string;
-  checked?: boolean;
-  group?: string;
-  subGroup?: string;
-  suffix?: string;
-}> {
-  const grouped: Record<string, SkillInfo[]> = {};
-  for (const skill of skills) {
-    if (!grouped[skill.source]) {
-      grouped[skill.source] = [];
-    }
-    grouped[skill.source].push(skill);
-  }
-
-  const choices: Array<{
-    name: string;
-    description: string;
-    value: string;
-    checked?: boolean;
-    group?: string;
-    subGroup?: string;
-    suffix?: string;
-  }> = [];
-
-  const entries = Object.entries(grouped).sort(([a], [b]) => {
-    const { category: catA, groupId: gidA } = parseSource(a);
-    const { category: catB, groupId: gidB } = parseSource(b);
-    if (catA !== catB) return catA.localeCompare(catB);
-    if (!gidA && gidB) return 1;
-    if (gidA && !gidB) return -1;
-    return a.localeCompare(b);
-  });
-
-  for (const [source, sourceSkills] of entries) {
-    const { category, groupId } = parseSource(source);
-    const effectiveGroupId = groupId;
-    for (const skill of sourceSkills) {
-      choices.push(mapChoice(skill, category, effectiveGroupId));
-    }
-  }
-
-  return choices;
-}
-
 export type VirtualGroupsData = Record<string, string[]>;
 
 export interface BuildVirtualGroupChoicesOptions<

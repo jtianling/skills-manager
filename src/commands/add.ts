@@ -641,8 +641,7 @@ async function handleGroupBatchDeploy(
     } else {
       console.log(`No skills found in group '${groupName}'.`);
     }
-    process.exit(1);
-    return;
+    return process.exit(1);
   }
 
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
@@ -664,7 +663,7 @@ async function handleGroupBatchDeploy(
     } else {
       console.log(`No valid skills found in group '${groupName}'.`);
     }
-    process.exit(1);
+    return process.exit(1);
   }
 
   const selectedAgents = await resolveTargetAgents(
