@@ -5,7 +5,7 @@ import { SourcesService } from '../services/sources.js';
 import { GroupsService } from '../services/groups.js';
 import { DeploymentScanner } from '../services/scanner.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
-import { ListOptions } from '../types.js';
+import { ListOptions, SkillInfo } from '../types.js';
 import { ensureSetup } from './setup.js';
 import { jsonOutput } from '../utils/json-output.js';
 
@@ -22,6 +22,136 @@ function buildSkillKeyToCollections(): Map<string, string[]> {
     }
   }
   return map;
+}
+
+function buildSkillKeyToVirtualGroups(): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const groupsService = new GroupsService();
+  for (const name of groupsService.listGroups()) {
+    if (groupsService.getGroupKind(name) !== 'virtual') continue;
+    for (const memberKey of groupsService.getGroupMembers(name)) {
+      const list = map.get(memberKey) ?? [];
+      list.push(name);
+      map.set(memberKey, list);
+    }
+  }
+  return map;
+}
+
+export function renderAvailableBody(
+  skills: SkillInfo[],
+  skillToCollections: Map<string, string[]>,
+  skillToVirtualGroups: Map<string, string[]>,
+): string[] {
+  const byCategory: Record<string, Record<string, string[]>> = {};
+  const flatByCategory: Record<string, string[]> = {};
+  const virtualByCategory: Record<string, Record<string, string[]>> = {};
+
+  for (const skill of skills) {
+    const parts = skill.source.split('/');
+    const category = parts[0];
+    const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
+
+    if (groupId) {
+      (byCategory[category] ??= {})[groupId] ??= [];
+      byCategory[category][groupId].push(skill.name);
+      continue;
+    }
+
+    const skillKey = `${skill.source}/${skill.name}`;
+    const virtualGroups = skillToVirtualGroups.get(skillKey) ?? [];
+    if (virtualGroups.length > 0) {
+      for (const groupName of virtualGroups) {
+        (virtualByCategory[category] ??= {})[groupName] ??= [];
+        virtualByCategory[category][groupName].push(skill.name);
+      }
+      continue;
+    }
+
+    (flatByCategory[category] ??= []).push(skill.name);
+  }
+
+  return renderCategories(
+    byCategory,
+    virtualByCategory,
+    flatByCategory,
+    skillToCollections,
+  );
+}
+
+function distinctCategoryCount(
+  physical: Record<string, string[]>,
+  virtual: Record<string, string[]>,
+  flat: string[],
+): number {
+  const names = new Set<string>(flat);
+  for (const skillNames of Object.values(physical)) {
+    for (const name of skillNames) names.add(name);
+  }
+  for (const skillNames of Object.values(virtual)) {
+    for (const name of skillNames) names.add(name);
+  }
+  return names.size;
+}
+
+function renderNameLine(
+  name: string,
+  sourcePrefix: string,
+  skillToCollections: Map<string, string[]>,
+): string {
+  const collections =
+    skillToCollections.get(sourcePrefix) ??
+    skillToCollections.get(`${sourcePrefix}/${name}`);
+  if (!collections || collections.length === 0) return name;
+  return `${name}  ← ${collections.join(', ')}`;
+}
+
+function renderCategories(
+  byCategory: Record<string, Record<string, string[]>>,
+  virtualByCategory: Record<string, Record<string, string[]>>,
+  flatByCategory: Record<string, string[]>,
+  skillToCollections: Map<string, string[]>,
+): string[] {
+  const allCategories = new Set([
+    ...Object.keys(byCategory),
+    ...Object.keys(virtualByCategory),
+    ...Object.keys(flatByCategory),
+  ]);
+
+  const lines: string[] = [];
+  for (const category of allCategories) {
+    const physical = byCategory[category] || {};
+    const virtual = virtualByCategory[category] || {};
+    const flat = flatByCategory[category] || [];
+    const total = distinctCategoryCount(physical, virtual, flat);
+
+    lines.push(`── ${category} (${total} skill${total > 1 ? 's' : ''}) ──`);
+
+    for (const groupId of Object.keys(physical).sort((a, b) => a.localeCompare(b))) {
+      const skillNames = physical[groupId];
+      lines.push(`  ${groupId} (${skillNames.length})`);
+      const sourcePrefix = `${category}/${groupId}`;
+      for (const name of skillNames) {
+        lines.push(`    ${renderNameLine(name, sourcePrefix, skillToCollections)}`);
+      }
+    }
+
+    for (const groupName of Object.keys(virtual).sort((a, b) => a.localeCompare(b))) {
+      const skillNames = virtual[groupName];
+      lines.push(`  ${groupName} (${skillNames.length})`);
+      for (const name of skillNames) {
+        lines.push(`    ${renderNameLine(name, category, skillToCollections)}`);
+      }
+    }
+
+    for (const name of flat) {
+      lines.push(`  ${renderNameLine(name, category, skillToCollections)}`);
+    }
+
+    lines.push('');
+  }
+
+  return lines;
 }
 
 export async function executeList(options: ListOptions): Promise<void> {
@@ -74,59 +204,14 @@ async function listAvailable(options: ListOptions = {}): Promise<void> {
 
   console.log('Available in ~/.skills-manager/:\n');
 
-  const byCategory: Record<string, Record<string, string[]>> = {};
-  const ungroupedByCategory: Record<string, string[]> = {};
-
-  for (const skill of skills) {
-    const parts = skill.source.split('/');
-    const category = parts[0];
-    const groupId = parts.length > 1 ? parts.slice(1).join('/') : undefined;
-
-    if (groupId) {
-      if (!byCategory[category]) byCategory[category] = {};
-      if (!byCategory[category][groupId]) byCategory[category][groupId] = [];
-      byCategory[category][groupId].push(skill.name);
-    } else {
-      if (!ungroupedByCategory[category]) ungroupedByCategory[category] = [];
-      ungroupedByCategory[category].push(skill.name);
-    }
-  }
-
-  const allCategories = new Set([...Object.keys(byCategory), ...Object.keys(ungroupedByCategory)]);
-
-  for (const category of allCategories) {
-    const groups = byCategory[category] || {};
-    const ungrouped = ungroupedByCategory[category] || [];
-    const totalCount = Object.values(groups).reduce((sum, g) => sum + g.length, 0) + ungrouped.length;
-
-    console.log(`── ${category} (${totalCount} skill${totalCount > 1 ? 's' : ''}) ──`);
-
-    const renderName = (name: string, sourcePrefix: string): string => {
-      // Try both source path and skillKey forms — collection groups store
-      // sourceKeys returned by installFromRegistry which usually equal the
-      // skill's source path, while virtual groups use full source/name keys.
-      const collections =
-        skillToCollections.get(sourcePrefix) ??
-        skillToCollections.get(`${sourcePrefix}/${name}`);
-      if (!collections || collections.length === 0) return name;
-      return `${name}  ← ${collections.join(', ')}`;
-    };
-
-    for (const [groupId, skillNames] of Object.entries(groups)) {
-      console.log(`  ${groupId} (${skillNames.length})`);
-      const sourcePrefix = `${category}/${groupId}`;
-      for (const name of skillNames) {
-        console.log(`    ${renderName(name, sourcePrefix)}`);
-      }
-    }
-
-    if (ungrouped.length > 0) {
-      for (const name of ungrouped) {
-        console.log(`  ${renderName(name, category)}`);
-      }
-    }
-
-    console.log();
+  const skillToVirtualGroups = buildSkillKeyToVirtualGroups();
+  const bodyLines = renderAvailableBody(
+    skills,
+    skillToCollections,
+    skillToVirtualGroups,
+  );
+  for (const line of bodyLines) {
+    console.log(line);
   }
 
   // Show explicit collection summary at the end

@@ -3,6 +3,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { SkillsService } from '../services/skills.js';
+import { renderAvailableBody } from './list.js';
+import { SkillInfo } from '../types.js';
 
 describe('list command two-level grouping', () => {
   let testDir: string;
@@ -209,5 +211,157 @@ describe('list command two-level grouping', () => {
 
     expect(byCategory['official']['vercel-labs/agent-skills']).toEqual(['deploy']);
     expect(byCategory['official']['vercel-labs/agent-browser']).toEqual(['browser']);
+  });
+});
+
+describe('renderAvailableBody virtual groups', () => {
+  const skill = (source: string, name: string): SkillInfo => ({
+    name,
+    description: '',
+    path: `/skills/${source}/${name}`,
+    source,
+  });
+
+  const noCollections = new Map<string, string[]>();
+
+  const subgroupHeader = (lines: string[], label: string): number =>
+    lines.findIndex((l) => l === `  ${label}`);
+
+  it('renders virtual group as a subheading with members indented under it', () => {
+    const skills = [
+      skill('custom', 'jt-code-reviewer'),
+      skill('custom', 'jt-share'),
+    ];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-code-reviewer', ['develop']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    const headerIdx = lines.findIndex((l) => l === '  develop (1)');
+    expect(headerIdx).toBeGreaterThanOrEqual(0);
+    expect(lines[headerIdx + 1]).toBe('    jt-code-reviewer');
+  });
+
+  it('removes virtual group members from the flat custom list', () => {
+    const skills = [
+      skill('custom', 'jt-code-reviewer'),
+      skill('custom', 'jt-share'),
+    ];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-code-reviewer', ['develop']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    expect(lines).toContain('    jt-code-reviewer');
+    expect(lines).not.toContain('  jt-code-reviewer');
+    expect(lines).toContain('  jt-share');
+  });
+
+  it('orders physical subgroup before virtual group subgroup', () => {
+    const skills = [
+      skill('custom/openspec', 'apply'),
+      skill('custom', 'jt-code-reviewer'),
+    ];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-code-reviewer', ['develop']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    expect(subgroupHeader(lines, 'openspec (1)')).toBeLessThan(
+      subgroupHeader(lines, 'develop (1)'),
+    );
+  });
+
+  it('lists a skill once under each virtual group it belongs to', () => {
+    const skills = [skill('custom', 'jt-codex')];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-codex', ['develop', 'tools']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    const developIdx = lines.findIndex((l) => l === '  develop (1)');
+    const toolsIdx = lines.findIndex((l) => l === '  tools (1)');
+    expect(developIdx).toBeGreaterThanOrEqual(0);
+    expect(toolsIdx).toBeGreaterThanOrEqual(0);
+    expect(lines[developIdx + 1]).toBe('    jt-codex');
+    expect(lines[toolsIdx + 1]).toBe('    jt-codex');
+    expect(lines.filter((l) => l.trim() === 'jt-codex')).toHaveLength(2);
+  });
+
+  it('groups cross-category virtual members within their own category block', () => {
+    const skills = [
+      skill('custom', 'jt-codex'),
+      skill('registry', 'pkg-skill'),
+    ];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-codex', ['shared']],
+      ['registry/pkg-skill', ['shared']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    const customHeaderIdx = lines.findIndex((l) => l.startsWith('── custom'));
+    const registryHeaderIdx = lines.findIndex((l) => l.startsWith('── registry'));
+    const sharedIndices = lines
+      .map((l, i) => (l === '  shared (1)' ? i : -1))
+      .filter((i) => i >= 0);
+
+    expect(sharedIndices).toHaveLength(2);
+    const customShared = sharedIndices.find((i) => i > customHeaderIdx && i < registryHeaderIdx);
+    const registryShared = sharedIndices.find((i) => i > registryHeaderIdx);
+    expect(customShared).toBeDefined();
+    expect(registryShared).toBeDefined();
+    expect(lines[(customShared as number) + 1]).toBe('    jt-codex');
+    expect(lines[(registryShared as number) + 1]).toBe('    pkg-skill');
+  });
+
+  it('skips dangling members and counts only resolved members', () => {
+    const skills = [skill('custom', 'jt-code-reviewer')];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-code-reviewer', ['develop']],
+      ['custom/not-installed', ['develop']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    expect(lines).toContain('  develop (1)');
+    expect(lines).not.toContain('    not-installed');
+    expect(lines).not.toContain('  not-installed');
+  });
+
+  it('produces identical output to source-path grouping when no virtual groups exist', () => {
+    const skills = [
+      skill('official/anthropic/skills', 'code-review'),
+      skill('custom/openspec', 'apply'),
+      skill('custom', 'jt-share'),
+    ];
+
+    const lines = renderAvailableBody(skills, noCollections, new Map());
+
+    expect(lines).toContain('── official (1 skill) ──');
+    expect(lines).toContain('  anthropic/skills (1)');
+    expect(lines).toContain('    code-review');
+    expect(lines).toContain('── custom (2 skills) ──');
+    expect(lines).toContain('  openspec (1)');
+    expect(lines).toContain('    apply');
+    expect(lines).toContain('  jt-share');
+    expect(lines.some((l) => l.includes('develop'))).toBe(false);
+  });
+
+  it('keeps category header count as distinct skills while subgroup count is shown members', () => {
+    const skills = [skill('custom', 'jt-codex')];
+    const virtual = new Map<string, string[]>([
+      ['custom/jt-codex', ['develop', 'tools']],
+    ]);
+
+    const lines = renderAvailableBody(skills, noCollections, virtual);
+
+    expect(lines).toContain('── custom (1 skill) ──');
+    expect(lines).toContain('  develop (1)');
+    expect(lines).toContain('  tools (1)');
   });
 });
