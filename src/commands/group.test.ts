@@ -19,6 +19,7 @@ vi.mock('../utils/prompts.js', () => ({
 import {
   checkNameConflict,
   executeGroupAdd,
+  executeGroupList,
   executeGroupRemove,
   executeGroupRename,
   resolveGroupAddIdentifier,
@@ -419,6 +420,140 @@ describe('group command integration', () => {
       expect(console.log).toHaveBeenCalledWith(
         'New name is the same as the current name.',
       );
+    });
+  });
+
+  describe('group add --group (dynamic reference)', () => {
+    it('adds a group reference', async () => {
+      service.createGroup('develop');
+      service.addSkill('develop', 'custom/my-linter');
+
+      await executeGroupAdd('vercel-develop', undefined, { group: 'develop' });
+
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: ['group:develop'],
+      });
+      expect(console.log).toHaveBeenCalledWith(
+        "Added reference to group 'develop' to group 'vercel-develop'.",
+      );
+    });
+
+    it('auto-creates the target group', async () => {
+      service.createGroup('develop');
+
+      await executeGroupAdd('vercel-develop', undefined, { group: 'develop' });
+
+      expect(service.getGroupKind('vercel-develop')).toBe('virtual');
+    });
+
+    it('is idempotent on repeated reference', async () => {
+      service.createGroup('develop');
+      service.addGroupRef('vercel-develop', 'develop');
+
+      await executeGroupAdd('vercel-develop', undefined, { group: 'develop' });
+
+      expect(console.log).toHaveBeenCalledWith(
+        "Reference to group 'develop' is already in group 'vercel-develop'.",
+      );
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: ['group:develop'],
+      });
+    });
+
+    it('warns when referenced group does not exist', async () => {
+      await expect(
+        executeGroupAdd('vercel-develop', undefined, { group: 'nosuch' }),
+      ).rejects.toThrow('process.exit');
+      expect(console.log).toHaveBeenCalledWith("Group 'nosuch' not found.");
+      expect(service.getGroup('vercel-develop')).toBeNull();
+    });
+
+    it('blocks self-reference', async () => {
+      service.createGroup('develop');
+
+      await expect(
+        executeGroupAdd('develop', undefined, { group: 'develop' }),
+      ).rejects.toThrow('process.exit');
+      expect(console.log).toHaveBeenCalledWith('Cannot reference a group from itself.');
+    });
+
+    it('rejects passing both positional and --group', async () => {
+      service.createGroup('develop');
+
+      await expect(
+        executeGroupAdd('vercel-develop', 'commit', { group: 'develop' }),
+      ).rejects.toThrow('process.exit');
+      expect(console.log).toHaveBeenCalledWith(
+        'Provide either an identifier or --group <name>, not both.',
+      );
+    });
+
+    it('rejects when neither positional nor --group given', async () => {
+      await expect(
+        executeGroupAdd('vercel-develop', undefined, {}),
+      ).rejects.toThrow('process.exit');
+      expect(console.log).toHaveBeenCalledWith('Provide an identifier or --group <name>.');
+    });
+  });
+
+  describe('group remove --group (dynamic reference)', () => {
+    it('removes a group reference', async () => {
+      service.addGroupRef('vercel-develop', 'develop');
+
+      await executeGroupRemove('vercel-develop', undefined, { group: 'develop' });
+
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: [],
+      });
+      expect(console.log).toHaveBeenCalledWith(
+        "Removed reference to group 'develop' from group 'vercel-develop'.",
+      );
+    });
+
+    it('reports gracefully when reference absent', async () => {
+      service.createGroup('vercel-develop');
+
+      await executeGroupRemove('vercel-develop', undefined, { group: 'develop' });
+
+      expect(console.log).toHaveBeenCalledWith(
+        "Reference to group 'develop' is not in group 'vercel-develop'.",
+      );
+    });
+
+    it('rejects passing both positional and --group', async () => {
+      service.addGroupRef('vercel-develop', 'develop');
+
+      await expect(
+        executeGroupRemove('vercel-develop', 'commit', { group: 'develop' }),
+      ).rejects.toThrow('process.exit');
+      expect(console.log).toHaveBeenCalledWith(
+        'Provide either an identifier or --group <name>, not both.',
+      );
+    });
+  });
+
+  describe('group list reference annotation', () => {
+    it('annotates a referenced group and skill members', async () => {
+      service.createGroup('develop');
+      service.addSkill('develop', 'custom/my-linter');
+      service.addGroupRef('vercel-develop', 'develop');
+      service.addSkill('vercel-develop', 'custom/jt-role-vercel-logger');
+
+      await executeGroupList('vercel-develop');
+
+      expect(console.log).toHaveBeenCalledWith('  → group: develop');
+      expect(console.log).toHaveBeenCalledWith('  jt-role-vercel-logger  custom');
+    });
+
+    it('marks a dangling reference', async () => {
+      service.addGroupRef('vercel-develop', 'gone');
+
+      await executeGroupList('vercel-develop');
+
+      expect(console.log).toHaveBeenCalledWith('  → group: gone (dangling)');
     });
   });
 });

@@ -16,9 +16,10 @@ import {
 } from './groups.js';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 
-vi.mock('../constants.js', async () => {
+vi.mock('../constants.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../constants.js')>();
   const testDir = join(tmpdir(), `skillsmgr-groups-test-${process.pid}-${Date.now()}`);
-  return { SKILLS_MANAGER_DIR: testDir };
+  return { ...actual, SKILLS_MANAGER_DIR: testDir };
 });
 
 function createPhysicalSkill(groupName: string, skillName: string): void {
@@ -382,5 +383,163 @@ describe('GroupsService collection groups', () => {
     expect(after.members).toEqual(['registry/@alice/x', 'registry/@alice/y']);
     expect(after.installedAt).toBe(before.installedAt);
     expect(after.updatedAt).not.toBe(before.updatedAt);
+  });
+
+  describe('group references', () => {
+    it('addSkill rejects group: prefixed keys', () => {
+      service.createGroup('python');
+      expect(() => service.addSkill('python', 'group:develop')).toThrow(
+        /group reference operation/,
+      );
+    });
+
+    it('addSkill still accepts normal skill keys', () => {
+      service.createGroup('python');
+      expect(service.addSkill('python', 'custom/foo')).toBe(true);
+      expect(service.getGroup('python')).toEqual({
+        kind: 'virtual',
+        members: ['custom/foo'],
+      });
+    });
+
+    it('addGroupRef writes a group: reference and auto-creates target', () => {
+      expect(service.addGroupRef('vercel-develop', 'develop')).toBe(true);
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: ['group:develop'],
+      });
+    });
+
+    it('addGroupRef is idempotent', () => {
+      service.addGroupRef('vercel-develop', 'develop');
+      expect(service.addGroupRef('vercel-develop', 'develop')).toBe(false);
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: ['group:develop'],
+      });
+    });
+
+    it('addGroupRef rejects self-reference', () => {
+      expect(() => service.addGroupRef('develop', 'develop')).toThrow(
+        'Cannot reference a group from itself.',
+      );
+    });
+
+    it('addGroupRef rejects local-batch target', () => {
+      createPhysicalSkill('tdd-spec', 'ts-apply');
+      service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+      expect(() => service.addGroupRef('tdd-spec', 'develop')).toThrow(
+        /Only virtual groups can hold group references/,
+      );
+    });
+
+    it('addGroupRef rejects collection target', () => {
+      service.upsertCollectionGroup('@alice/kit', ['registry/@alice/a']);
+      expect(() => service.addGroupRef('@alice/kit', 'develop')).toThrow();
+    });
+
+    it('addGroupRef preserves existing members immutably', () => {
+      service.createGroup('vercel-develop');
+      service.addSkill('vercel-develop', 'custom/logger');
+      service.addGroupRef('vercel-develop', 'develop');
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: ['custom/logger', 'group:develop'],
+      });
+    });
+
+    it('removeGroupRef removes a reference', () => {
+      service.addGroupRef('vercel-develop', 'develop');
+      expect(service.removeGroupRef('vercel-develop', 'develop')).toBe(true);
+      expect(service.getGroup('vercel-develop')).toEqual({
+        kind: 'virtual',
+        members: [],
+      });
+    });
+
+    it('removeGroupRef returns false when reference absent', () => {
+      service.createGroup('vercel-develop');
+      expect(service.removeGroupRef('vercel-develop', 'develop')).toBe(false);
+    });
+
+    it('removeGroupRef returns false when target missing', () => {
+      expect(service.removeGroupRef('nosuch', 'develop')).toBe(false);
+    });
+  });
+
+  describe('getGroupMembers recursive expansion', () => {
+    it('expands a single-level reference and preserves order', () => {
+      service.createGroup('develop');
+      service.addSkill('develop', 'custom/a');
+      service.addSkill('develop', 'custom/b');
+      service.addGroupRef('vercel-develop', 'develop');
+      service.addSkill('vercel-develop', 'custom/c');
+
+      expect(service.getGroupMembers('vercel-develop')).toEqual([
+        'custom/a',
+        'custom/b',
+        'custom/c',
+      ]);
+    });
+
+    it('dynamically follows changes in the referenced group', () => {
+      service.createGroup('develop');
+      service.addSkill('develop', 'custom/a');
+      service.addGroupRef('vercel-develop', 'develop');
+
+      service.addSkill('develop', 'custom/x');
+      expect(service.getGroupMembers('vercel-develop')).toContain('custom/x');
+    });
+
+    it('expands multi-level nested references', () => {
+      service.createGroup('a');
+      service.addSkill('a', 'custom/a');
+      service.addGroupRef('b', 'a');
+      service.addGroupRef('c', 'b');
+
+      expect(service.getGroupMembers('c')).toEqual(['custom/a']);
+    });
+
+    it('terminates safely on cyclic references', () => {
+      service.createGroup('a');
+      service.addSkill('a', 'custom/a');
+      service.addGroupRef('a', 'b');
+      service.createGroup('b');
+      service.addSkill('b', 'custom/b');
+      service.addGroupRef('b', 'a');
+
+      expect(service.getGroupMembers('a')).toEqual(['custom/a', 'custom/b']);
+    });
+
+    it('dedups skills reachable via multiple paths (first-seen order)', () => {
+      service.createGroup('a');
+      service.addSkill('a', 'custom/shared');
+      service.createGroup('b');
+      service.addSkill('b', 'custom/shared');
+      service.addGroupRef('x', 'a');
+      service.addGroupRef('x', 'b');
+
+      expect(service.getGroupMembers('x')).toEqual(['custom/shared']);
+    });
+
+    it('silently skips dangling references', () => {
+      service.createGroup('x');
+      service.addGroupRef('x', 'gone');
+      service.addSkill('x', 'custom/a');
+
+      expect(service.getGroupMembers('x')).toEqual(['custom/a']);
+    });
+
+    it('expands a referenced physical group to its derived members', () => {
+      createPhysicalSkill('tdd-spec', 'ts-apply');
+      createPhysicalSkill('tdd-spec', 'ts-verify');
+      service.createLocalBatchGroup('tdd-spec', '/dev/tdd-spec');
+      service.addGroupRef('x', 'tdd-spec');
+
+      expect(service.getGroupMembers('x')).toEqual([
+        'custom/tdd-spec/ts-apply',
+        'custom/tdd-spec/ts-verify',
+      ]);
+    });
   });
 });

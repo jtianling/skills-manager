@@ -1,7 +1,13 @@
 import { Command } from 'commander';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { GroupManager } from '../services/group-manager.js';
-import { GroupsService, isCollectionGroupKey, validateGroupName } from '../services/groups.js';
+import {
+  GroupsService,
+  groupRefName,
+  isCollectionGroupKey,
+  isGroupRef,
+  validateGroupName,
+} from '../services/groups.js';
 import { SkillsService } from '../services/skills.js';
 import { collect, type InstallOptions, type SkillInfo } from '../types.js';
 import {
@@ -347,7 +353,21 @@ function removeRepoSkills(
   }
 }
 
-async function executeGroupList(name?: string): Promise<void> {
+function renderGroupListEntry(entry: string, service: GroupsService): string {
+  if (isGroupRef(entry)) {
+    const refName = groupRefName(entry);
+    const dangling = service.getGroup(refName) ? '' : ' (dangling)';
+    return `  → group: ${refName}${dangling}`;
+  }
+
+  const lastSlash = entry.lastIndexOf('/');
+  const skillName = lastSlash >= 0 ? entry.slice(lastSlash + 1) : entry;
+  const source = lastSlash >= 0 ? entry.slice(0, lastSlash) : '';
+  const suffix = getSourceSuffix(source);
+  return suffix ? `  ${skillName}  ${suffix}` : `  ${skillName}`;
+}
+
+export async function executeGroupList(name?: string): Promise<void> {
   await ensureSetup();
   const service = new GroupsService();
 
@@ -357,18 +377,14 @@ async function executeGroupList(name?: string): Promise<void> {
       console.log(`Group '${name}' not found.`);
       process.exit(1);
     }
-    const skills = service.getGroupMembers(name);
-    if (skills.length === 0) {
+    const entries = group.kind === 'virtual' ? group.members : service.getGroupMembers(name);
+    if (entries.length === 0) {
       console.log(`Group '${name}' is empty.`);
       return;
     }
     console.log(`${name} [${group.kind}]:`);
-    for (const key of skills) {
-      const lastSlash = key.lastIndexOf('/');
-      const skillName = lastSlash >= 0 ? key.slice(lastSlash + 1) : key;
-      const source = lastSlash >= 0 ? key.slice(0, lastSlash) : '';
-      const suffix = getSourceSuffix(source);
-      console.log(suffix ? `  ${skillName}  ${suffix}` : `  ${skillName}`);
+    for (const entry of entries) {
+      console.log(renderGroupListEntry(entry, service));
     }
     return;
   }
@@ -502,7 +518,55 @@ async function executeGroupUpdate(
   );
 }
 
-export async function executeGroupAdd(group: string, identifier: string): Promise<void> {
+function assertSingleGroupTarget(
+  identifier: string | undefined,
+  refName: string | undefined,
+): void {
+  if (identifier !== undefined && refName !== undefined) {
+    console.log('Provide either an identifier or --group <name>, not both.');
+    process.exit(1);
+  }
+  if (identifier === undefined && refName === undefined) {
+    console.log('Provide an identifier or --group <name>.');
+    process.exit(1);
+  }
+}
+
+async function executeGroupAddRef(
+  group: string,
+  src: string,
+  service: GroupsService,
+): Promise<void> {
+  if (src === group) {
+    console.log('Cannot reference a group from itself.');
+    process.exit(1);
+  }
+
+  if (!service.getGroup(src)) {
+    console.log(`Group '${src}' not found.`);
+    process.exit(1);
+  }
+
+  let added: boolean;
+  try {
+    added = service.addGroupRef(group, src);
+  } catch (e) {
+    console.log((e as Error).message);
+    process.exit(1);
+  }
+
+  if (!added) {
+    console.log(`Reference to group '${src}' is already in group '${group}'.`);
+    return;
+  }
+  console.log(`Added reference to group '${src}' to group '${group}'.`);
+}
+
+export async function executeGroupAdd(
+  group: string,
+  identifier?: string,
+  options: { group?: string } = {},
+): Promise<void> {
   await ensureSetup();
   if (isCollectionGroupKey(group)) {
     console.log(`Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`);
@@ -515,13 +579,20 @@ export async function executeGroupAdd(group: string, identifier: string): Promis
     process.exit(1);
   }
 
+  assertSingleGroupTarget(identifier, options.group);
+
   const service = new GroupsService();
+
+  if (options.group !== undefined) {
+    await executeGroupAddRef(group, options.group, service);
+    return;
+  }
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const allSkills = skillsService.getAllSkills();
 
   let candidate: GroupAddCandidate;
   try {
-    candidate = await resolveGroupAddIdentifier(identifier, group, allSkills, service);
+    candidate = await resolveGroupAddIdentifier(identifier!, group, allSkills, service);
   } catch (e) {
     console.log((e as Error).message);
     process.exit(1);
@@ -545,7 +616,20 @@ export async function executeGroupAdd(group: string, identifier: string): Promis
   await addRepoSkills(group, candidate.ownerRepo, candidate.skills, service);
 }
 
-export async function executeGroupRemove(group: string, identifier: string): Promise<void> {
+function executeGroupRemoveRef(group: string, src: string, service: GroupsService): void {
+  const removed = service.removeGroupRef(group, src);
+  if (!removed) {
+    console.log(`Reference to group '${src}' is not in group '${group}'.`);
+    return;
+  }
+  console.log(`Removed reference to group '${src}' from group '${group}'.`);
+}
+
+export async function executeGroupRemove(
+  group: string,
+  identifier?: string,
+  options: { group?: string } = {},
+): Promise<void> {
   await ensureSetup();
   if (isCollectionGroupKey(group)) {
     console.log(`Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`);
@@ -559,12 +643,19 @@ export async function executeGroupRemove(group: string, identifier: string): Pro
     process.exit(1);
   }
 
+  assertSingleGroupTarget(identifier, options.group);
+
+  if (options.group !== undefined) {
+    executeGroupRemoveRef(group, options.group, service);
+    return;
+  }
+
   const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
   const allSkills = skillsService.getAllSkills();
 
   let candidate: GroupAddCandidate;
   try {
-    candidate = await resolveGroupAddIdentifier(identifier, group, allSkills, service);
+    candidate = await resolveGroupAddIdentifier(identifier!, group, allSkills, service);
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === 'Cannot add a group to itself.') {
@@ -682,19 +773,21 @@ groupCommand
 groupCommand
   .command('add')
   .argument('<group>', 'Group name')
-  .argument('<identifier>', 'Skill name, full source key, group name, or owner/repo')
+  .argument('[identifier]', 'Skill name, full source key, group name, or owner/repo')
+  .option('--group <name>', 'Add a dynamic reference to another group')
   .description('Add a skill, group, or repo to a group')
-  .action(async (group: string, identifier: string) => {
-    await executeGroupAdd(group, identifier);
+  .action(async (group: string, identifier: string | undefined, options: { group?: string }) => {
+    await executeGroupAdd(group, identifier, options);
   });
 
 groupCommand
   .command('remove')
   .argument('<group>', 'Group name')
-  .argument('<identifier>', 'Skill name, full source key, group name, or owner/repo')
+  .argument('[identifier]', 'Skill name, full source key, group name, or owner/repo')
+  .option('--group <name>', 'Remove a dynamic reference to another group')
   .description('Remove skills from a group')
-  .action(async (group: string, identifier: string) => {
-    await executeGroupRemove(group, identifier);
+  .action(async (group: string, identifier: string | undefined, options: { group?: string }) => {
+    await executeGroupRemove(group, identifier, options);
   });
 
 groupCommand

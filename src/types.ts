@@ -85,6 +85,9 @@ export type GroupKind = 'virtual' | 'local-batch' | 'collection';
 
 export interface VirtualGroupEntry {
   kind: 'virtual';
+  // Skill keys ("<source>/<name>") mixed with group references
+  // ("group:<name>", see GROUP_REF_PREFIX). References are expanded
+  // recursively by GroupsService.getGroupMembers.
   members: string[];
 }
 

@@ -1,6 +1,6 @@
 import { renameSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
-import { SKILLS_MANAGER_DIR } from '../constants.js';
+import { GROUP_REF_PREFIX, SKILLS_MANAGER_DIR } from '../constants.js';
 import type { Bundle, GroupEntry, GroupKind, GroupsDataV2 } from '../types.js';
 import { logMigrationLines } from './migration-logger.js';
 import {
@@ -43,6 +43,14 @@ function atomicWrite(path: string, content: string): void {
     }
     throw error;
   }
+}
+
+export function isGroupRef(member: string): boolean {
+  return member.startsWith(GROUP_REF_PREFIX);
+}
+
+export function groupRefName(member: string): string {
+  return member.slice(GROUP_REF_PREFIX.length);
 }
 
 export function validateGroupName(name: string): void {
@@ -176,18 +184,61 @@ export class GroupsService {
   }
 
   getGroupMembers(name: string): string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+    this.expandGroupMembers(name, new Set<string>(), result, seen);
+    return result;
+  }
+
+  private expandGroupMembers(
+    name: string,
+    visited: Set<string>,
+    result: string[],
+    seen: Set<string>,
+  ): void {
+    if (visited.has(name)) {
+      return;
+    }
+    visited.add(name);
+
     const group = this.getGroup(name);
     if (!group) {
-      return [];
+      return;
     }
 
-    if (group.kind === 'virtual' || group.kind === 'collection') {
-      return [...group.members];
+    if (group.kind === 'local-batch') {
+      this.collectPhysicalGroupMembers(name, result, seen);
+      return;
     }
 
-    return getDirectoriesInDir(getPhysicalGroupDir(name))
+    for (const member of group.members) {
+      if (isGroupRef(member)) {
+        this.expandGroupMembers(groupRefName(member), visited, result, seen);
+        continue;
+      }
+      this.collectSkillKey(member, result, seen);
+    }
+  }
+
+  private collectPhysicalGroupMembers(
+    name: string,
+    result: string[],
+    seen: Set<string>,
+  ): void {
+    const keys = getDirectoriesInDir(getPhysicalGroupDir(name))
       .filter((entry) => fileExists(join(entry.path, 'SKILL.md')))
       .map((entry) => `custom/${name}/${entry.name}`);
+    for (const key of keys) {
+      this.collectSkillKey(key, result, seen);
+    }
+  }
+
+  private collectSkillKey(key: string, result: string[], seen: Set<string>): void {
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    result.push(key);
   }
 
   createGroup(name: string): void {
@@ -388,6 +439,12 @@ export class GroupsService {
   }
 
   addSkill(group: string, skillKey: string): boolean {
+    if (isGroupRef(skillKey)) {
+      throw new Error(
+        `Cannot add '${skillKey}' as a skill. Use a group reference operation ` +
+          `(e.g. 'group add ${group} --group ${groupRefName(skillKey)}') instead.`,
+      );
+    }
     if (isCollectionGroupKey(group)) {
       throw new Error(
         `Cannot manually modify collection group '${group}'. Use 'skillsmgr update ${group}' to re-sync.`,
@@ -453,6 +510,66 @@ export class GroupsService {
       groups: {
         ...data.groups,
         [group]: {
+          kind: 'virtual',
+          members: nextMembers,
+        },
+      },
+    });
+    return true;
+  }
+
+  addGroupRef(target: string, src: string): boolean {
+    if (src === target) {
+      throw new Error('Cannot reference a group from itself.');
+    }
+    validateGroupName(target);
+    const data = this.load();
+    const existing = data.groups[target];
+
+    if (existing && existing.kind !== 'virtual') {
+      throw new Error(
+        `Cannot add a group reference to '${existing.kind}' group '${target}'. ` +
+          'Only virtual groups can hold group references.',
+      );
+    }
+
+    const members = existing ? existing.members : [];
+    const ref = `${GROUP_REF_PREFIX}${src}`;
+    if (members.includes(ref)) {
+      return false;
+    }
+
+    this.save({
+      ...data,
+      groups: {
+        ...data.groups,
+        [target]: {
+          kind: 'virtual',
+          members: [...members, ref],
+        },
+      },
+    });
+    return true;
+  }
+
+  removeGroupRef(target: string, src: string): boolean {
+    const data = this.load();
+    const existing = data.groups[target];
+    if (!existing || existing.kind !== 'virtual') {
+      return false;
+    }
+
+    const ref = `${GROUP_REF_PREFIX}${src}`;
+    const nextMembers = existing.members.filter((member) => member !== ref);
+    if (nextMembers.length === existing.members.length) {
+      return false;
+    }
+
+    this.save({
+      ...data,
+      groups: {
+        ...data.groups,
+        [target]: {
           kind: 'virtual',
           members: nextMembers,
         },

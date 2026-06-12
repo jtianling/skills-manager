@@ -8,6 +8,11 @@ export const REGISTRY_URL = process.env.SKILLSMGR_REGISTRY || 'https://skillsmgr
 export const SKILL_SOURCES = ['official', 'community', 'custom', 'registry'] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
 
+// Prefix marking a virtual group member as a dynamic reference to another
+// group (e.g. "group:develop"). Distinguishes references from skill keys,
+// which are always "<source>/<name>" and never start with this prefix.
+export const GROUP_REF_PREFIX = 'group:';
+
 export const SUPPORTED_TOOLS = [
   'claude-code',
   'codex',

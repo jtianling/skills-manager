@@ -9,7 +9,7 @@ import {
   formatBatchConflictList,
   formatReinstallConflictMessage,
 } from './group-conflict-messages.js';
-import { GroupsService, validateGroupName } from './groups.js';
+import { GroupsService, isGroupRef, validateGroupName } from './groups.js';
 import { RegistryService } from './registry.js';
 import { SourceInfo, SourcesService } from './sources.js';
 import { SourceUpdater, UpdateResult } from './source-updater.js';
@@ -404,6 +404,10 @@ export class GroupManager {
     };
 
     for (const member of group.members) {
+      if (isGroupRef(member)) {
+        continue;
+      }
+
       const direct = this.sourcesService.getSource(member);
       if (direct) {
         grouped.set(member, { info: direct });
