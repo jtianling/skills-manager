@@ -21,6 +21,7 @@ export interface UpdateSourceOptions {
 
 export type CloneFetcher = (url: string) => Promise<{
   repoPath: string;
+  commitSha?: string;
   cleanup(): void;
 }>;
 
@@ -282,7 +283,11 @@ export class SourceUpdater {
         }
       }
 
-      this.sourcesService.updateTimestamp(key);
+      if (cloned.commitSha) {
+        this.sourcesService.updateVersion(key, cloned.commitSha);
+      } else {
+        this.sourcesService.updateTimestamp(key);
+      }
       return result;
     } finally {
       cloned.cleanup();

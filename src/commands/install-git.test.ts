@@ -4,19 +4,24 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 const gitCloneState = vi.hoisted(() => ({ repoPath: '' }));
 
-vi.mock('child_process', async () => {
-  const { cpSync } = await import('fs');
+vi.mock('../services/repo-clone.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/repo-clone.js')>();
+  const { cpSync, mkdtempSync, rmSync } = await import('fs');
+  const { tmpdir } = await import('os');
+  const { join } = await import('path');
 
   return {
-    execFileSync: vi.fn((command: string, args: string[]) => {
-      if (command === 'git' && args[0] === 'clone') {
-        const repoDir = args[args.length - 1];
-        cpSync(gitCloneState.repoPath, repoDir, { recursive: true });
-        return Buffer.from('');
-      }
-
-      throw new Error(`Unexpected execFileSync call: ${command} ${args.join(' ')}`);
-    }),
+    ...actual,
+    async cloneRepoToTemp() {
+      const tempDir = mkdtempSync(join(tmpdir(), 'skillsmgr-git-test-'));
+      const repoPath = join(tempDir, 'repo');
+      cpSync(gitCloneState.repoPath, repoPath, { recursive: true });
+      return {
+        repoPath,
+        commitSha: 'b'.repeat(40),
+        cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+      };
+    },
   };
 });
 

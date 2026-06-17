@@ -38,11 +38,13 @@ export interface BundleSyncOptions {
 interface BundleListing {
   /** Map of skill name → absolute path inside the cloned repo. */
   skills: Map<string, string>;
+  commitSha?: string;
   cleanup(): void;
 }
 
 export type CloneFetcher = (url: string) => Promise<{
   repoPath: string;
+  commitSha?: string;
   cleanup(): void;
 }>;
 
@@ -177,6 +179,10 @@ export class BundleManager {
         console.log(`  ✓ ${result.upToDate} skills up to date`);
       }
 
+      if (listing.commitSha && primarySourceKey) {
+        this.sourcesService.updateVersion(primarySourceKey, listing.commitSha);
+      }
+
       this.sourcesService.updateBundleTimestamp(bundleId);
 
       return result;
@@ -260,7 +266,7 @@ export class BundleManager {
           skillMap.set(skill.name, skill.path);
         }
       }
-      return { skills: skillMap, cleanup: cloned.cleanup };
+      return { skills: skillMap, commitSha: cloned.commitSha, cleanup: cloned.cleanup };
     } catch (error) {
       cloned.cleanup();
       throw error;

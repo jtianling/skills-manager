@@ -1,12 +1,9 @@
-import { execFileSync } from 'child_process';
 import { basename, join } from 'path';
-import { mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
 import { SKILLS_MANAGER_DIR, findOfficialProvider } from '../constants.js';
 import { SourcesService } from '../services/sources.js';
 import type { InstallOptions } from '../types.js';
-import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, removeDir, warnScriptFiles } from '../utils/fs.js';
-import { collectSkillsFromClone } from '../services/repo-clone.js';
+import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, warnScriptFiles } from '../utils/fs.js';
+import { cloneRepoToTemp, collectSkillsFromClone } from '../services/repo-clone.js';
 import { makeBundleId, normalizeGitUrl } from '../utils/url-normalize.js';
 import {
   createInstallResult,
@@ -46,13 +43,6 @@ function parseGitHubIdentity(source: string): { owner?: string; repo?: string } 
   };
 }
 
-export async function cloneToTemp(source: string): Promise<string> {
-  const tempDir = mkdtempSync(join(tmpdir(), 'skillsmgr-git-'));
-  const repoDir = join(tempDir, 'repo');
-  execFileSync('git', ['clone', '--depth', '1', source, repoDir], { stdio: 'pipe' });
-  return tempDir;
-}
-
 export const collectGitCloneSkills = collectSkillsFromClone;
 
 export function saveGitCloneSource(
@@ -61,6 +51,7 @@ export function saveGitCloneSource(
   options: InstallOptions,
   resolvedOwner?: string,
   resolvedRepo?: string,
+  commitSha?: string,
 ): string {
   const repoName = basename(repoPath) || source;
 
@@ -90,6 +81,7 @@ export function saveGitCloneSource(
     type,
     repoName: resolvedRepo || repoName,
     installMethod: 'git',
+    ...(commitSha ? { version: commitSha } : {}),
   });
 
   return sourceKey;
@@ -129,13 +121,13 @@ async function installSpecificSkillFromGit(
   const skillName = basename(skillPath);
   const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}`;
 
-  const tempDir = await cloneToTemp(repoUrl);
-  const repoPath = join(tempDir, 'repo');
+  const cloned = await cloneRepoToTemp(context.source);
+  const { repoPath } = cloned;
 
   try {
     let sourceSkillDir = join(repoPath, skillPath);
     if (!fileExists(sourceSkillDir)) {
-      // Fallback: search by skill name in the cloned repo
+      // Fallback: search by skill name in the downloaded repo
       const skills = collectGitCloneSkills(repoPath);
       const match = skills.find((s) => s.name === skillName);
       if (!match) {
@@ -160,11 +152,12 @@ async function installSpecificSkillFromGit(
       context.options,
       context.resolvedOwner,
       context.resolvedRepo,
+      cloned.commitSha,
     );
 
     return createInstallResult([targetDir], [sourceKey]);
   } finally {
-    removeDir(tempDir);
+    cloned.cleanup();
   }
 }
 
@@ -207,8 +200,8 @@ function createGitBundleInfo(
 }
 
 async function installRepoWithSelection(context: GitCloneContext): Promise<InstallResult> {
-  const tempDir = await cloneToTemp(context.source);
-  const repoPath = join(tempDir, 'repo');
+  const cloned = await cloneRepoToTemp(context.source);
+  const { repoPath } = cloned;
 
   try {
     const skills = collectGitCloneSkills(repoPath);
@@ -267,6 +260,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       context.options,
       context.resolvedOwner,
       context.resolvedRepo,
+      cloned.commitSha,
     );
 
     console.log(`\n✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} to ${targetBase}`);
@@ -274,7 +268,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
       bundleInfo: createGitBundleInfo(context, [sourceKey], isAll),
     });
   } finally {
-    removeDir(tempDir);
+    cloned.cleanup();
   }
 }
 

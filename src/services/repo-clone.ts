@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { STANDARD_SKILL_PATHS } from '../constants.js';
@@ -14,26 +14,118 @@ import {
   type InstallableSkill,
 } from '../commands/install-utils.js';
 import { getPluginSkillPaths } from './plugin-manifest.js';
+import {
+  ArchiveAuthError,
+  buildArchiveUrl,
+  downloadAndExtractArchive,
+  isGitAvailable,
+} from './github-archive.js';
 
 export interface ClonedRepo {
   repoPath: string;
+  commitSha?: string;
   cleanup(): void;
 }
 
-export async function cloneRepoToTemp(source: string): Promise<ClonedRepo> {
+interface GitHubRef {
+  owner: string;
+  repo: string;
+  ref?: string;
+}
+
+/** Parse a GitHub source string into owner/repo/ref for codeload download. */
+function parseGitHubRef(source: string): GitHubRef | null {
+  const treeMatch = source.match(
+    /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/tree\/([^/]+)(?:\/.*)?$/,
+  );
+  if (treeMatch) {
+    return { owner: treeMatch[1], repo: treeMatch[2], ref: treeMatch[3] };
+  }
+
+  const repoMatch = source.match(
+    /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/,
+  );
+  if (repoMatch) {
+    return { owner: repoMatch[1], repo: repoMatch[2] };
+  }
+
+  const shorthand = source.match(/^([^/]+)\/([^/]+?)\/?$/);
+  if (shorthand) {
+    return { owner: shorthand[1], repo: shorthand[2] };
+  }
+
+  return null;
+}
+
+function makeTempRepoDir(): { tempDir: string; repoPath: string } {
   const tempDir = mkdtempSync(join(tmpdir(), 'skillsmgr-git-'));
   const repoPath = join(tempDir, 'repo');
+  mkdirSync(repoPath, { recursive: true });
+  return { tempDir, repoPath };
+}
+
+function cloneViaGit(source: string, tempDir: string, repoPath: string): ClonedRepo {
+  if (!isGitAvailable()) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw new Error(
+      'Installing this repository requires git, but no usable `git` binary ' +
+      'was found on PATH. Public repos install without git via codeload; ' +
+      'private or inaccessible repos need local git or access credentials.',
+    );
+  }
+
   try {
+    rmSync(repoPath, { recursive: true, force: true });
     execFileSync('git', ['clone', '--depth', '1', source, repoPath], { stdio: 'pipe' });
   } catch (error) {
     rmSync(tempDir, { recursive: true, force: true });
     throw error;
   }
 
+  let commitSha: string | undefined;
+  try {
+    commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repoPath,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim() || undefined;
+  } catch {
+    commitSha = undefined;
+  }
+
   return {
     repoPath,
+    commitSha,
     cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
   };
+}
+
+export async function cloneRepoToTemp(source: string): Promise<ClonedRepo> {
+  const parsed = parseGitHubRef(source);
+  const { tempDir, repoPath } = makeTempRepoDir();
+
+  if (!parsed) {
+    return cloneViaGit(source, tempDir, repoPath);
+  }
+
+  const archiveUrl = buildArchiveUrl(parsed.owner, parsed.repo, parsed.ref);
+  try {
+    // Default HEAD path always yields an immutable sha (fail-closed); an
+    // explicit branch ref resolves to refs/heads/<branch> with no sha.
+    const { commitSha } = await downloadAndExtractArchive(archiveUrl, repoPath, {
+      requireSha: !parsed.ref,
+    });
+    return {
+      repoPath,
+      commitSha,
+      cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    if (error instanceof ArchiveAuthError) {
+      return cloneViaGit(source, tempDir, repoPath);
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function discoverManifestSkills(repoPath: string): InstallableSkill[] {

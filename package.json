@@ -46,7 +46,8 @@
   },
   "dependencies": {
     "commander": "^14.0.0",
-    "inquirer": "^13.2.0"
+    "inquirer": "^13.2.0",
+    "tar": "^7.5.16"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.9",

@@ -368,6 +368,21 @@ export class SourcesService {
     }
   }
 
+  updateVersion(key: string, version: string): void {
+    const data = this.load();
+    const existing = data.sources[key];
+    if (!existing) {
+      return;
+    }
+
+    data.sources[key] = {
+      ...existing,
+      version,
+      updatedAt: new Date().toISOString(),
+    };
+    this.save(data);
+  }
+
   addBundle(
     id: string,
     info: Omit<BundleInfo, 'installedAt' | 'updatedAt'>,
