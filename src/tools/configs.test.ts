@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { TOOL_CONFIGS, AGENTS_SKILLS_DIR, getTargetDir, getToolConfig } from './configs.js';
+import {
+  TOOL_CONFIGS,
+  AGENTS_SKILLS_DIR,
+  getTargetDir,
+  getToolConfig,
+  normalizeProjectAgents,
+} from './configs.js';
 import { SUPPORTED_TOOLS } from '../constants.js';
 
 describe('TOOL_CONFIGS', () => {
@@ -40,7 +46,7 @@ describe('TOOL_CONFIGS', () => {
 
   it('native tools have native=true and no symlinkDir', () => {
     const nativeTools = [
-      'cursor', 'opencode', 'gemini-cli', 'github-copilot', 'cline',
+      'codex', 'cursor', 'opencode', 'gemini-cli', 'github-copilot', 'cline',
       'amp', 'antigravity', 'warp', 'kimi-cli', 'replit', 'universal',
       'deepagents', 'firebender',
     ] as const;
@@ -54,7 +60,6 @@ describe('TOOL_CONFIGS', () => {
   it('non-native tools have native=false with symlinkDir', () => {
     const symlinkTools = [
       { name: 'claude-code', dir: '.claude/skills' },
-      { name: 'codex', dir: '.codex/skills' },
       { name: 'openclaw', dir: 'skills' },
       { name: 'kilo', dir: '.kilocode/skills' },
       { name: 'roo', dir: '.roo/skills' },
@@ -94,6 +99,28 @@ describe('TOOL_CONFIGS', () => {
     for (const tool of listedInConfig) {
       expect(DISPLAY_ORDER, `${tool} missing from DISPLAY_ORDER`).toContain(tool);
     }
+  });
+});
+
+describe('normalizeProjectAgents', () => {
+  it('expands the standard selection to listed native agents', () => {
+    const result = normalizeProjectAgents(['agents-skills-standard']);
+
+    expect(result).toContain('codex');
+    expect(result).toContain('cursor');
+    expect(result).not.toContain('agents-skills-standard');
+    expect(result).not.toContain('claude-code');
+  });
+
+  it('keeps explicit agents and removes duplicates', () => {
+    const result = normalizeProjectAgents([
+      'agents-skills-standard',
+      'codex',
+      'claude-code',
+    ]);
+
+    expect(result.filter((agent) => agent === 'codex')).toHaveLength(1);
+    expect(result).toContain('claude-code');
   });
 });
 

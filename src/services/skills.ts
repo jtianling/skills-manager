@@ -3,6 +3,7 @@ import { SkillInfo, SkillSource } from '../types.js';
 import { SKILL_SOURCES } from '../constants.js';
 import { getDirectoriesInDir, fileExists, readFileContent } from '../utils/fs.js';
 import { readManifest } from './manifest.js';
+import { normalizeProjectAgents } from '../tools/configs.js';
 
 export class SkillsService {
   constructor(private skillsDir: string) {}
@@ -223,7 +224,7 @@ export function filterByTargetAgents(
 ): SkillInfo[] {
   const agents = selectedAgents ?? [];
   if (agents.length === 0) return skills;
-  const selected = new Set(agents);
+  const selected = new Set(normalizeProjectAgents(agents));
   return skills.filter((skill) => {
     const target = readSkillTargetAgents(skill.path);
     if (!target || target.length === 0) return true;
@@ -239,6 +240,6 @@ export function skillMatchesAgents(
   if (agents.length === 0) return true;
   const target = readSkillTargetAgents(skill.path);
   if (!target || target.length === 0) return true;
-  const selected = new Set(agents);
+  const selected = new Set(normalizeProjectAgents(agents));
   return target.some((a) => selected.has(a));
 }

@@ -330,6 +330,33 @@ describe('Deployer companions', () => {
     expect(regStr).toContain('runner.md');
   });
 
+  it('standard selection deploys Codex companion but skips non-native companion', () => {
+    const skill = makeSkill(
+      'native-companion',
+      {
+        companions: [
+          {
+            source: 'agents/codex.md',
+            agentTargets: {
+              codex: 'CODEX.md',
+              'claude-code': 'CLAUDE.md',
+            },
+          },
+        ],
+      },
+      { 'agents/codex.md': '# companion\n' },
+    );
+
+    new Deployer(projectDir).deploySkill(
+      skill,
+      'link',
+      ['agents-skills-standard' as ToolName],
+    );
+
+    expect(existsSync(join(projectDir, 'CODEX.md'))).toBe(true);
+    expect(existsSync(join(projectDir, 'CLAUDE.md'))).toBe(false);
+  });
+
   it('deploys companion as real file in copy mode', () => {
     const skill = makeSkill(
       'copy-skill',
@@ -566,4 +593,3 @@ describe('Deployer companions', () => {
     expect(existsSync(realFile)).toBe(true);
   });
 });
-

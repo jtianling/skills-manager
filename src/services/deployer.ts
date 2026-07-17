@@ -9,7 +9,11 @@ import {
   linkFile,
   copyFile,
 } from '../utils/fs.js';
-import { AGENTS_SKILLS_DIR, TOOL_CONFIGS } from '../tools/configs.js';
+import {
+  AGENTS_SKILLS_DIR,
+  TOOL_CONFIGS,
+  normalizeProjectAgents,
+} from '../tools/configs.js';
 import { readManifest, resolveCompanionSource, resolveCompanionTarget } from './manifest.js';
 import { DeploymentsRegistryService } from './deployments-registry.js';
 import type { Companion } from '../types.js';
@@ -298,7 +302,7 @@ export class Deployer {
       return { items: [] };
     }
 
-    const selected = new Set(selectedAgents as string[]);
+    const selected = new Set(normalizeProjectAgents(selectedAgents));
     const items: CompanionPlanItem[] = [];
 
     for (const comp of manifest.companions) {

@@ -26,8 +26,7 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     skillsDir: AGENTS_SKILLS_DIR,
     globalSkillsDir: join(codexHome, 'skills'),
     supportsLink: true,
-    native: false,
-    symlinkDir: '.codex/skills',
+    native: true,
     showInList: true,
   },
   'cursor': {
@@ -438,6 +437,28 @@ export const TOOL_CONFIGS: Record<ToolName, ToolConfig> = {
     showInList: false,
   },
 };
+
+const AGENTS_SKILLS_STANDARD_VALUE = 'agents-skills-standard';
+
+export function normalizeProjectAgents(selectedAgents: readonly string[]): ToolName[] {
+  const normalized = new Set<ToolName>();
+
+  if (selectedAgents.includes(AGENTS_SKILLS_STANDARD_VALUE)) {
+    for (const [name, config] of Object.entries(TOOL_CONFIGS)) {
+      if (config.native && config.showInList) {
+        normalized.add(name as ToolName);
+      }
+    }
+  }
+
+  for (const name of selectedAgents) {
+    if (name !== AGENTS_SKILLS_STANDARD_VALUE && name in TOOL_CONFIGS) {
+      normalized.add(name as ToolName);
+    }
+  }
+
+  return [...normalized];
+}
 
 export function getToolConfig(name: string): ToolConfig | undefined {
   return TOOL_CONFIGS[name as ToolName];

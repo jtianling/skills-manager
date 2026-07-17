@@ -72,6 +72,52 @@ describe('deploy command', () => {
     expect(lstatSync(deployedPath).isSymbolicLink()).toBe(true);
   });
 
+  it('includes Codex-targeted skills for the standard selection', async () => {
+    writeFileSync(
+      join(
+        testManagerDir,
+        'official',
+        'anthropic',
+        'skills',
+        'code-review',
+        'skill.json',
+      ),
+      JSON.stringify({
+        name: 'code-review',
+        version: '1.0.0',
+        description: 'Reviews code',
+        targetAgents: ['codex'],
+      }),
+    );
+    vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
+    vi.mocked(promptSkills).mockResolvedValue(['code-review']);
+
+    await executeDeploy({});
+
+    expect(promptSkills).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'code-review' }),
+      ]),
+      [],
+      undefined,
+    );
+    expect(existsSync(join(testProjectDir, '.codex', 'skills'))).toBe(false);
+  });
+
+  it('explicit Codex selection deploys skills without a bridge', async () => {
+    vi.mocked(promptSkills).mockResolvedValue(['code-review']);
+
+    await executeDeploy({ agent: ['codex'] });
+
+    expect(existsSync(join(
+      testProjectDir,
+      '.agents',
+      'skills',
+      'code-review',
+    ))).toBe(true);
+    expect(existsSync(join(testProjectDir, '.codex', 'skills'))).toBe(false);
+  });
+
   it('deploys as copy when --copy option is set', async () => {
     vi.mocked(promptAgents).mockResolvedValue(['agents-skills-standard']);
     vi.mocked(promptSkills).mockResolvedValue(['code-review']);

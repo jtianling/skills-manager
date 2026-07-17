@@ -9,6 +9,7 @@ import {
   buildSourceGroupedChoices,
   getSourceSuffix,
   loadGroupsData,
+  promptAgents,
   promptSkills,
   promptSkillsToInstall,
   promptSkillsToUninstall,
@@ -21,6 +22,15 @@ describe('prompts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(interactiveCheckbox).mockResolvedValue([]);
+  });
+
+  it('groups Codex under Agents Skills Standard', async () => {
+    await promptAgents(['codex']);
+
+    const choices = vi.mocked(interactiveCheckbox).mock.calls[0][0].choices;
+    expect(choices[0].name).toContain('Codex');
+    expect(choices[0].value).toBe('agents-skills-standard');
+    expect(choices.some((choice) => choice.value === 'codex')).toBe(false);
   });
 
   it('builds grouped uninstall choices with unchecked defaults', async () => {

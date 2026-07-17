@@ -407,6 +407,31 @@ describe('add command', () => {
       expect(interactiveCheckbox).not.toHaveBeenCalled();
     });
 
+    it('deploys Codex through the standard without creating a Codex bridge', async () => {
+      createSkill('custom', 'codex-skill', 'Codex skill');
+      writeFileSync(
+        join(testManagerDir, 'custom', 'codex-skill', 'skill.json'),
+        JSON.stringify({
+          name: 'codex-skill',
+          version: '1.0.0',
+          description: 'Codex skill',
+          targetAgents: ['codex'],
+        }),
+      );
+
+      await executeAdd('codex-skill', {
+        agent: ['agents-skills-standard'],
+      });
+
+      expect(existsSync(join(
+        testProjectDir,
+        '.agents',
+        'skills',
+        'codex-skill',
+      ))).toBe(true);
+      expect(existsSync(join(testProjectDir, '.codex', 'skills'))).toBe(false);
+    });
+
     it('uses configured agents from -s flag', async () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
 
@@ -674,19 +699,24 @@ describe('add command', () => {
       createSkill('official/anthropic/skills', 'code-review', 'Code review');
       const sourcePath = join(testManagerDir, 'official', 'anthropic', 'skills', 'code-review');
       deploySkillAsLink('code-review', sourcePath);
-      // configured codex bridge
-      mkdirSync(join(testProjectDir, '.codex'), { recursive: true });
-      symlinkSync(join(testProjectDir, '.agents', 'skills'), join(testProjectDir, '.codex', 'skills'));
-
-      vi.mocked(interactiveCheckbox).mockResolvedValueOnce(['agents-skills-standard', 'codex', 'claude-code']);
+      vi.mocked(interactiveCheckbox).mockResolvedValueOnce([
+        'agents-skills-standard',
+        'claude-code',
+      ]);
 
       await executeAdd('code-review', {});
 
       const agentCall = vi.mocked(interactiveCheckbox).mock.calls[0];
       expect(agentCall[0].message).toContain('agent');
-      const codexChoice = agentCall[0].choices.find((c: { value: string }) => c.value === 'codex');
-      expect(codexChoice?.locked).toBe(true);
-      expect(codexChoice?.checked).toBe(true);
+      const standardChoice = agentCall[0].choices.find(
+        (c: { value: string }) => c.value === 'agents-skills-standard',
+      );
+      expect(standardChoice?.name).toContain('Codex');
+      expect(standardChoice?.locked).toBe(true);
+      expect(standardChoice?.checked).toBe(true);
+      expect(agentCall[0].choices.some(
+        (c: { value: string }) => c.value === 'codex',
+      )).toBe(false);
       // claude-code newly added → bridge created
       expect(existsSync(join(testProjectDir, '.claude', 'skills'))).toBe(true);
     });

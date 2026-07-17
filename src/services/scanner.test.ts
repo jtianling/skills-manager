@@ -61,16 +61,16 @@ describe('DeploymentScanner', () => {
       expect(tools).toContain('cline');
     });
 
-    it('codex is configured when .codex/skills bridge exists', () => {
-      const bridgePath = join(projectDir, '.codex', 'skills');
-      const targetPath = join(projectDir, '.agents', 'skills');
-      mkdirSync(join(projectDir, '.codex'), { recursive: true });
-      symlinkSync(targetPath, bridgePath);
+    it('codex is configured from deployed skills without a bridge', () => {
+      const sourcePath = join(skillsManagerDir, 'official', 'anthropic', 'test-skill');
+      const targetPath = join(projectDir, '.agents', 'skills', 'test-skill');
+      symlinkSync(sourcePath, targetPath);
 
       const scanner = new DeploymentScanner(projectDir, skillsManagerDir);
       const tools = scanner.getConfiguredTools();
 
       expect(tools).toContain('codex');
+      expect(scanner.isToolConfigured('codex')).toBe(true);
     });
 
     it('native tools are not configured when no skills exist', () => {

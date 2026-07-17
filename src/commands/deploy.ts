@@ -138,8 +138,12 @@ export async function executeDeploy(options: DeployOptions): Promise<void> {
       ? options.agent as ToolName[]
       : await promptAgents(configuredTools);
 
-  const agentsSelected = selectedTools.includes('agents-skills-standard');
-  const selectedNonNativeTools = selectedTools.filter((t) => t !== 'agents-skills-standard');
+  const agentsSelected = selectedTools.some((tool) =>
+    tool === 'agents-skills-standard' || TOOL_CONFIGS[tool]?.native,
+  );
+  const selectedNonNativeTools = selectedTools.filter((tool) =>
+    tool !== 'agents-skills-standard' && !TOOL_CONFIGS[tool]?.native,
+  );
 
   if (!agentsSelected) {
     console.log('\nAgents Skills Standard not selected — skipping skills deployment.');

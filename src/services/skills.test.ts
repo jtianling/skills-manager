@@ -221,6 +221,17 @@ describe('filterByTargetAgents', () => {
     expect(filterByTargetAgents([a], ['codex'])).toEqual([a]);
   });
 
+  it('standard selection matches Codex but not non-native targets', () => {
+    const codex = makeSkill('codex-only', ['codex']);
+    const claude = makeSkill('claude-only', ['claude-code']);
+
+    expect(filterByTargetAgents(
+      [codex, claude],
+      ['agents-skills-standard'],
+    )).toEqual([codex]);
+    expect(skillMatchesAgents(codex, ['agents-skills-standard'])).toBe(true);
+  });
+
   it('skillMatchesAgents matches the same logic', () => {
     const a = makeSkill('a', ['claude-code']);
     expect(skillMatchesAgents(a, ['codex'])).toBe(false);
