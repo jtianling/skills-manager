@@ -19,7 +19,6 @@ import { promptConfirm } from '../utils/prompts.js';
 import { detectSourceType, normalizeCollectionRef } from '../utils/source-detection.js';
 import { getToken } from '../services/auth.js';
 import { installFromRegistry } from './install-registry.js';
-import { memberToSkillName } from './install-collection.js';
 import { normalizeLocalPath } from '../utils/url-normalize.js';
 import { ensureSetup } from './setup.js';
 
@@ -248,6 +247,40 @@ function looksLikeCollectionRef(input: string): boolean {
   return false;
 }
 
+/**
+ * Collection group members are skill keys. A freshly installed package
+ * reports its own; an unchanged one keeps the keys already in the snapshot,
+ * falling back to what is on disk when the snapshot predates skill keys.
+ */
+function collectionMemberSkillKeys(
+  packageName: string,
+  existingMembers: string[],
+  installedKeys: Map<string, string[]>,
+): string[] {
+  const justInstalled = installedKeys.get(packageName);
+  if (justInstalled && justInstalled.length > 0) {
+    return justInstalled;
+  }
+
+  const sourceKey = `registry/${packageName}`;
+  const tracked = existingMembers.filter((m) => m.startsWith(`${sourceKey}/`));
+  if (tracked.length > 0) {
+    return tracked;
+  }
+
+  const onDisk = skillsService
+    .getAllSkills()
+    .filter((skill) => skill.source === sourceKey)
+    .map((skill) => `${sourceKey}/${skill.name}`);
+  if (onDisk.length > 0) {
+    return onDisk;
+  }
+
+  // Nothing to expand from: carry a pre-skill-key snapshot entry forward
+  // rather than silently dropping the package out of the group.
+  return existingMembers.filter((m) => m === sourceKey);
+}
+
 async function updateCollectionGroup(input: string): Promise<void> {
   const ref = normalizeCollectionRef(input);
   const existing = groupsService.getCollectionGroup(ref);
@@ -276,20 +309,17 @@ async function updateCollectionGroup(input: string): Promise<void> {
     return;
   }
 
-  // Existing members are stored as source keys (registry/<pkg>)
-  const existingKeys = new Set(existing.members);
-  const desiredKeys: string[] = [];
-  const newMembers: typeof resolved.members = [];
+  const isTracked = (packageName: string): boolean => {
+    const sourceKey = `registry/${packageName}`;
+    return existing.members.some(
+      (m) => m === sourceKey || m.startsWith(`${sourceKey}/`),
+    );
+  };
 
-  for (const m of resolved.members) {
-    const key = `registry/${m.packageName}`;
-    desiredKeys.push(key);
-    if (!existingKeys.has(key)) {
-      newMembers.push(m);
-    }
-  }
+  const newMembers = resolved.members.filter((m) => !isTracked(m.packageName));
 
-  // Install new members
+  // Install new members, keeping each package's skill keys as installed
+  const installedKeys = new Map<string, string[]>();
   const newlyInstalled: string[] = [];
   for (const member of newMembers) {
     console.log(`\n=== Installing ${member.packageName}${member.pinnedVersion ? `@${member.pinnedVersion}` : ''} ===`);
@@ -302,16 +332,18 @@ async function updateCollectionGroup(input: string): Promise<void> {
         },
         { all: true },
       );
-      if (result.sourceKeys && result.sourceKeys.length > 0) {
-        newlyInstalled.push(...result.sourceKeys);
-      } else {
-        newlyInstalled.push(`registry/${member.packageName}`);
-      }
+      const keys = result.skillKeys ?? [];
+      installedKeys.set(member.packageName, keys);
+      newlyInstalled.push(...keys);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`Failed to install ${member.packageName}: ${msg}`);
     }
   }
+
+  const desiredKeys = resolved.members.flatMap((m) =>
+    collectionMemberSkillKeys(m.packageName, existing.members, installedKeys),
+  );
 
   // Members removed by the server: prune from group snapshot but don't uninstall
   const removed = existing.members.filter((k) => !desiredKeys.includes(k));
@@ -327,8 +359,6 @@ async function updateCollectionGroup(input: string): Promise<void> {
       `Note: ${removed.length} skill(s) no longer in collection — local copies kept. Run \`skillsmgr uninstall <name>\` to remove them.`,
     );
   }
-  // Use memberToSkillName to silence "unused import" until needed elsewhere
-  void memberToSkillName;
 }
 
 export async function executeUpdateWithOptions(

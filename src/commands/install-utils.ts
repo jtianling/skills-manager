@@ -77,7 +77,10 @@ export interface InstallResult {
   basePath: string;
   sourceKey: string;
   installedPaths?: string[];
+  /** Source keys (`sources.json` entry ids): rollback input, not group members. */
   sourceKeys?: string[];
+  /** Full skill keys (`{source}/{name}`), one per `installedPaths` entry. */
+  skillKeys?: string[];
   batchGroupName?: string;
   bundleInfo?: {
     id: string;

@@ -45,6 +45,7 @@ function buildDiscoveryError(source: string, failure: DiscoveryFailure): string 
 
 interface FetchOutcome {
   installedPaths: string[];
+  installedNames: string[];
   digests: Record<string, string>;
   failures: string[];
 }
@@ -56,6 +57,7 @@ async function fetchSelectedSkills(
   force?: boolean,
 ): Promise<FetchOutcome> {
   const installedPaths: string[] = [];
+  const installedNames: string[] = [];
   const failures: string[] = [];
   const digests: Record<string, string> = {};
 
@@ -82,13 +84,14 @@ async function fetchSelectedSkills(
       });
       digests[skill.name] = digest;
       installedPaths.push(skill.path);
+      installedNames.push(skill.name);
     } catch (error) {
       failures.push(`${skill.name}: ${(error as Error).message}`);
       console.error(`  ✗ ${skill.name}: ${(error as Error).message}`);
     }
   }
 
-  return { installedPaths, digests, failures };
+  return { installedPaths, installedNames, digests, failures };
 }
 
 function reportInstalled(
@@ -149,6 +152,7 @@ async function installSelected(
   return createInstallResult(
     outcome.installedPaths,
     outcome.installedPaths.map(() => sourceKey),
+    { skillKeys: outcome.installedNames.map((name) => `${sourceKey}/${name}`) },
   );
 }
 

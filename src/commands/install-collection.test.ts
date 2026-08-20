@@ -291,23 +291,55 @@ describe('executeInstallFromCollection', () => {
     ).rejects.toThrow('process.exit');
   });
 
-  it('upserts a collection group after at least one member installs', async () => {
+  function stubTwoPackCollection(): void {
     mockResolveCollection.mockResolvedValueOnce({
       members: [
-        { packageName: '@alice/a', pinnedVersion: '1.0.0', source: '@alice/kit' },
-        { packageName: '@alice/b', pinnedVersion: null, source: '@alice/kit' },
+        { packageName: 'pack-a', pinnedVersion: '1.0.0', source: '@alice/kit' },
+        { packageName: 'pack-b', pinnedVersion: null, source: '@alice/kit' },
       ],
       warnings: [],
     });
     mockInstallFromRegistry
-      .mockResolvedValueOnce({ sourceKeys: ['registry/@alice/a'] })
-      .mockResolvedValueOnce({ sourceKeys: ['registry/@alice/b'] });
+      .mockResolvedValueOnce({
+        sourceKeys: ['registry/pack-a', 'registry/pack-a'],
+        skillKeys: ['registry/pack-a/one', 'registry/pack-a/two'],
+      })
+      .mockResolvedValueOnce({
+        sourceKeys: ['registry/pack-b'],
+        skillKeys: ['registry/pack-b/three'],
+      });
+  }
+
+  const TWO_PACK_SKILL_KEYS = [
+    'registry/pack-a/one',
+    'registry/pack-a/two',
+    'registry/pack-b/three',
+  ];
+
+  it('upserts a collection group with one skill key per installed skill', async () => {
+    stubTwoPackCollection();
 
     await executeInstallFromCollection('@alice/kit', { all: true });
 
     expect(mockUpsertCollectionGroup).toHaveBeenCalledWith(
       '@alice/kit',
-      ['registry/@alice/a', 'registry/@alice/b'],
+      TWO_PACK_SKILL_KEYS,
+    );
+    const members = mockUpsertCollectionGroup.mock.calls[0][1] as string[];
+    expect(members).not.toContain('registry/pack-a');
+    expect(members).not.toContain('registry/pack-b');
+  });
+
+  it('writes the same skill keys to --group and the collection group', async () => {
+    stubTwoPackCollection();
+
+    await executeInstallFromCollection('@alice/kit', { all: true, group: 'tools' });
+
+    expect(mockAddSkill.mock.calls.map((call) => call[1])).toEqual(TWO_PACK_SKILL_KEYS);
+    expect(mockAddSkill.mock.calls.every((call) => call[0] === 'tools')).toBe(true);
+    expect(mockUpsertCollectionGroup).toHaveBeenCalledWith(
+      '@alice/kit',
+      TWO_PACK_SKILL_KEYS,
     );
   });
 

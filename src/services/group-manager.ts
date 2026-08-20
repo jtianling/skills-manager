@@ -216,7 +216,9 @@ export class GroupManager {
     }
 
     return {
-      ...createInstallResult(installedPaths, sourceKeys),
+      ...createInstallResult(installedPaths, sourceKeys, {
+        skillKeys: [...sourceKeys],
+      }),
       groupName,
     };
   }

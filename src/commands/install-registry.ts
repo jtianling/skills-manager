@@ -75,7 +75,10 @@ export async function installFromRegistry(
       const existingSkills = scanSkillDirectories(installDir);
       const existingPaths = existingSkills.map((s) => s.path);
       const existingKeys = existingSkills.map(() => `registry/${packageName}`);
-      return createInstallResult(existingPaths, existingKeys, { alreadyInstalled: true });
+      return createInstallResult(existingPaths, existingKeys, {
+        alreadyInstalled: true,
+        skillKeys: existingSkills.map((s) => `registry/${packageName}/${s.name}`),
+      });
     }
 
     if (!options.force) {
@@ -123,6 +126,7 @@ export async function installFromRegistry(
 
   const installedPaths = selectedSkills.map((s) => s.path);
   const sourceKeys = selectedSkills.map(() => sourceKey);
+  const skillKeys = selectedSkills.map((s) => `${sourceKey}/${s.name}`);
 
   console.log(`✓ Installed ${packageName}@${version}`);
   if (skills.length > 0) {
@@ -157,5 +161,5 @@ export async function installFromRegistry(
     });
   }
 
-  return createInstallResult(installedPaths, sourceKeys);
+  return createInstallResult(installedPaths, sourceKeys, { skillKeys });
 }

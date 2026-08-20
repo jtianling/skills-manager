@@ -126,9 +126,15 @@ export async function executeInstall(source: string | undefined, options: Instal
     }
 
     const groupName = options.group;
-    if (groupName && result.sourceKeys && result.sourceKeys.length > 0) {
+    const skillKeys = result.skillKeys ?? [];
+    if (groupName && (result.installedPaths?.length ?? 0) > 0) {
+      if (skillKeys.length === 0) {
+        throw new Error(
+          `Cannot add to group '${groupName}': the install produced no skill keys.`,
+        );
+      }
       const groupsService = new GroupsService();
-      for (const key of result.sourceKeys) {
+      for (const key of skillKeys) {
         groupsService.addSkill(groupName, key);
       }
     }
@@ -139,7 +145,7 @@ export async function executeInstall(source: string | undefined, options: Instal
         installed: {
           source,
           basePath: result.basePath,
-          skills: result.sourceKeys ?? [],
+          skills: skillKeys,
           group: groupName ?? null,
         },
       });

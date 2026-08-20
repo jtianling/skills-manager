@@ -66,7 +66,7 @@ export async function installFromLocalDir(source: string, options: InstallOption
   installSingleSkillToLocalTarget(skillDir, targetDir);
 
   console.log(`✓ Installed skill '${skillName}' to ${targetDir}`);
-  return createInstallResult([targetDir], [sourceKey]);
+  return createInstallResult([targetDir], [sourceKey], { skillKeys: [sourceKey] });
 }
 
 async function installFromLocalDirBatch(skillDir: string, options: InstallOptions): Promise<InstallResult> {
@@ -132,12 +132,14 @@ export async function installFromZip(source: string, options: InstallOptions, or
       : zipPath;
 
     return createInstallResult(installedPaths, sourceKeys, {
+      skillKeys: [...sourceKeys],
       bundleInfo: {
         id: makeBundleId('zip', bundleUrl),
         info: {
           type: 'zip',
           url: bundleUrl,
           selectionMode: isAll ? 'all' : 'subset',
+          // Bundle members are source keys: removal feeds them to removeSource().
           members: sourceKeys,
         },
       },

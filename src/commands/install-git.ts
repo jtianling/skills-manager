@@ -155,7 +155,9 @@ async function installSpecificSkillFromGit(
       cloned.commitSha,
     );
 
-    return createInstallResult([targetDir], [sourceKey]);
+    return createInstallResult([targetDir], [sourceKey], {
+      skillKeys: [`${sourceKey}/${skillName}`],
+    });
   } finally {
     cloned.cleanup();
   }
@@ -236,6 +238,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
     }
 
     const installedPaths: string[] = [];
+    const installedNamesInOrder: string[] = [];
     const allScriptFiles: string[] = [];
 
     for (const skill of selectedSkills) {
@@ -249,6 +252,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
 
       copyDir(skill.path, targetDir);
       installedPaths.push(targetDir);
+      installedNamesInOrder.push(skill.name);
       allScriptFiles.push(...findScriptFiles(targetDir));
     }
 
@@ -265,6 +269,7 @@ async function installRepoWithSelection(context: GitCloneContext): Promise<Insta
 
     console.log(`\n✓ Installed ${installedPaths.length} skill${installedPaths.length === 1 ? '' : 's'} to ${targetBase}`);
     return createInstallResult(installedPaths, [sourceKey], {
+      skillKeys: installedNamesInOrder.map((name) => `${sourceKey}/${name}`),
       bundleInfo: createGitBundleInfo(context, [sourceKey], isAll),
     });
   } finally {

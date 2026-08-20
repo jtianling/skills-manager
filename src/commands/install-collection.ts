@@ -189,7 +189,7 @@ export async function executeInstallFromCollection(
   // Install each member serially
   const results: CollectionInstallResult[] = [];
   const groupsService = new GroupsService();
-  const installedSourceKeys: string[] = [];
+  const installedSkillKeys: string[] = [];
 
   for (const member of resolved.members) {
     console.log(`\n=== Installing ${member.packageName}${member.pinnedVersion ? `@${member.pinnedVersion}` : ''} ===`);
@@ -202,8 +202,8 @@ export async function executeInstallFromCollection(
         },
         { ...options, all: true },
       );
-      if (result.sourceKeys) {
-        installedSourceKeys.push(...result.sourceKeys);
+      if (result.skillKeys) {
+        installedSkillKeys.push(...result.skillKeys);
       }
       results.push({
         packageName: member.packageName,
@@ -223,16 +223,19 @@ export async function executeInstallFromCollection(
   }
 
   // Group assignment (legacy --group <user-name>)
-  if (options.group && installedSourceKeys.length > 0) {
-    for (const key of installedSourceKeys) {
+  if (options.group && installedSkillKeys.length > 0) {
+    for (const key of installedSkillKeys) {
       groupsService.addSkill(options.group, key);
     }
   }
 
   // Auto-create / update collection group when at least one member installed
   let collectionGroupCreated = false;
-  if (installedSourceKeys.length > 0) {
-    const result = groupsService.upsertCollectionGroup(normalizedRef, installedSourceKeys);
+  if (installedSkillKeys.length > 0) {
+    const result = groupsService.upsertCollectionGroup(
+      normalizedRef,
+      installedSkillKeys,
+    );
     collectionGroupCreated = result.created;
   }
 
@@ -240,7 +243,7 @@ export async function executeInstallFromCollection(
   const failedList = results.filter((r) => r.status === 'failed');
 
   console.log(`\nInstalled: ${installedList.length}, Failed: ${failedList.length}`);
-  if (installedSourceKeys.length > 0) {
+  if (installedSkillKeys.length > 0) {
     console.log(
       collectionGroupCreated
         ? `Created collection group '${normalizedRef}'.`
@@ -256,7 +259,7 @@ export async function executeInstallFromCollection(
       installed: installedList,
       failed: failedList,
       warnings: resolved.warnings,
-      group: installedSourceKeys.length > 0 ? normalizedRef : null,
+      group: installedSkillKeys.length > 0 ? normalizedRef : null,
     });
   }
 

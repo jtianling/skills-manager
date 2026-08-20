@@ -79,7 +79,10 @@ describe('update <collection-ref>', () => {
       ],
       warnings: [],
     });
-    mockInstallFromRegistry.mockResolvedValueOnce({ sourceKeys: ['registry/@alice/b'] });
+    mockInstallFromRegistry.mockResolvedValueOnce({
+      sourceKeys: ['registry/@alice/b'],
+      skillKeys: ['registry/@alice/b/b-one', 'registry/@alice/b/b-two'],
+    });
 
     await executeUpdateWithOptions('@alice/kit');
 
@@ -90,7 +93,7 @@ describe('update <collection-ref>', () => {
     expect(mockInstallFromRegistry).toHaveBeenCalledTimes(1);
     expect(mockSetCollectionGroupMembers).toHaveBeenCalledWith(
       '@alice/kit',
-      ['registry/@alice/a', 'registry/@alice/b'],
+      ['registry/@alice/a', 'registry/@alice/b/b-one', 'registry/@alice/b/b-two'],
     );
   });
 
@@ -108,7 +111,11 @@ describe('update <collection-ref>', () => {
     mockGetCollectionGroup.mockReturnValue({
       kind: 'collection',
       ref: '@alice/kit',
-      members: ['registry/@alice/a', 'registry/@alice/b'],
+      members: [
+        'registry/@alice/a/a-one',
+        'registry/@alice/b/b-one',
+        'registry/@alice/b/b-two',
+      ],
       installedAt: '2026-01-01',
       updatedAt: '2026-01-01',
     });
@@ -123,14 +130,18 @@ describe('update <collection-ref>', () => {
     await executeUpdateWithOptions('@alice/kit');
 
     expect(mockInstallFromRegistry).not.toHaveBeenCalled();
-    expect(mockSetCollectionGroupMembers).toHaveBeenCalled();
+    expect(mockSetCollectionGroupMembers).toHaveBeenCalledWith('@alice/kit', [
+      'registry/@alice/a/a-one',
+      'registry/@alice/b/b-one',
+      'registry/@alice/b/b-two',
+    ]);
   });
 
   it('prunes removed members from snapshot but does not uninstall', async () => {
     mockGetCollectionGroup.mockReturnValue({
       kind: 'collection',
       ref: '@alice/kit',
-      members: ['registry/@alice/a', 'registry/@alice/dropped'],
+      members: ['registry/@alice/a/a-one', 'registry/@alice/dropped/gone'],
       installedAt: '2026-01-01',
       updatedAt: '2026-01-01',
     });
@@ -145,8 +156,49 @@ describe('update <collection-ref>', () => {
 
     expect(mockSetCollectionGroupMembers).toHaveBeenCalledWith(
       '@alice/kit',
-      ['registry/@alice/a'],
+      ['registry/@alice/a/a-one'],
     );
+  });
+
+  it('never writes a source key back over skill-key members', async () => {
+    mockGetCollectionGroup.mockReturnValue({
+      kind: 'collection',
+      ref: '@alice/kit',
+      members: ['registry/@alice/a/a-one', 'registry/@alice/a/a-two'],
+      installedAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    mockResolveCollection.mockResolvedValue({
+      members: [{ packageName: '@alice/a', pinnedVersion: null, source: '@alice/kit' }],
+      warnings: [],
+    });
+
+    await executeUpdateWithOptions('@alice/kit');
+
+    const [, written] = mockSetCollectionGroupMembers.mock.calls[0];
+    expect(written).toEqual(['registry/@alice/a/a-one', 'registry/@alice/a/a-two']);
+    expect(written).not.toContain('registry/@alice/a');
+  });
+
+  it('keeps a pre-skill-key member instead of dropping the package', async () => {
+    mockGetCollectionGroup.mockReturnValue({
+      kind: 'collection',
+      ref: '@alice/kit',
+      members: ['registry/@alice/a'],
+      installedAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    });
+    mockResolveCollection.mockResolvedValue({
+      members: [{ packageName: '@alice/a', pinnedVersion: null, source: '@alice/kit' }],
+      warnings: [],
+    });
+
+    await executeUpdateWithOptions('@alice/kit');
+
+    expect(mockInstallFromRegistry).not.toHaveBeenCalled();
+    expect(mockSetCollectionGroupMembers).toHaveBeenCalledWith('@alice/kit', [
+      'registry/@alice/a',
+    ]);
   });
 
   it('does not route bare owner/repo to collection sync', async () => {
