@@ -37,11 +37,12 @@ function atomicWrite(path: string, content: string): void {
 
 export interface SourceInfo {
   url: string;
-  type: 'official' | 'community' | 'custom' | 'registry';
+  type: 'official' | 'community' | 'custom' | 'registry' | 'well-known';
   repoName: string;
-  installMethod?: 'git' | 'zip' | 'local-copy' | 'registry';
+  installMethod?: 'git' | 'zip' | 'local-copy' | 'registry' | 'well-known';
   version?: string;
   registryUrl?: string;
+  skillDigests?: Record<string, string>;
   installedAt: string;
   updatedAt: string;
 }

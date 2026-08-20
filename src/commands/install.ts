@@ -12,6 +12,7 @@ import {
 import { installViaGitClone } from './install-git.js';
 import { installFromLocalDir, installFromRemoteZip, installFromZip } from './install-local.js';
 import { installFromRegistry } from './install-registry.js';
+import { installFromWellKnown } from './install-wellknown.js';
 import type { InstallResult } from './install-utils.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
 import { executeInstallFromCollection } from './install-collection.js';
@@ -42,6 +43,8 @@ async function installBySourceType(source: string, options: InstallOptions): Pro
     }
     case 'remote-url':
       return installViaGitClone(source, options);
+    case 'well-known':
+      return installFromWellKnown(source, options);
     case 'local-path':
       return installFromLocalDir(source, options);
     case 'registry': {

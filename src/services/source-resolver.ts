@@ -88,6 +88,8 @@ export class SourceResolver {
       }
       case 'remote-url':
         return this.resolveUrl(input);
+      case 'well-known':
+        return this.resolveWellKnownUrl(input);
       case 'owner-repo': {
         const normalized = input.replace(/\/+$/, '');
         const [owner, repo] = normalized.split('/');
@@ -272,6 +274,18 @@ export class SourceResolver {
 
     return createTarget(url, 'not-found', [], {
       reason: `No installed source found for URL: ${url}`,
+    });
+  }
+
+  /** Locate an installed well-known source purely from local state. */
+  private resolveWellKnownUrl(url: string): ResolvedTarget {
+    const matchedKeys = this.findSourceByNormalizedUrl(url);
+    if (matchedKeys.length > 0) {
+      return createTarget(url, 'source', matchedKeys, {});
+    }
+
+    return createTarget(url, 'not-found', [], {
+      reason: `No installed well-known source found for site: ${url}`,
     });
   }
 

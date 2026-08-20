@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   detectSourceType,
   hasExplicitLocalPrefix,
@@ -54,9 +54,55 @@ describe('detectSourceType', () => {
   });
 
   it('detects remote URLs', () => {
-    expect(detectSourceType('http://example.com/repo')).toBe('remote-url');
     expect(detectSourceType('https://github.com/owner/repo')).toBe('remote-url');
     expect(detectSourceType('git@github.com:owner/repo.git')).toBe('remote-url');
+  });
+
+  it('detects non-git-host http(s) URLs as well-known', () => {
+    expect(detectSourceType('https://docs.stripe.com')).toBe('well-known');
+    expect(detectSourceType('https://example.com/docs/guide')).toBe('well-known');
+    expect(detectSourceType('http://127.0.0.1:8787')).toBe('well-known');
+  });
+
+  it('keeps known git hosts as remote-url regardless of case', () => {
+    expect(detectSourceType('https://github.com/openai/skills')).toBe('remote-url');
+    expect(detectSourceType('https://gitlab.com/foo/bar')).toBe('remote-url');
+    expect(detectSourceType('https://GitHub.com/openai/skills')).toBe('remote-url');
+    expect(detectSourceType('https://raw.githubusercontent.com/o/r/main/a.md'))
+      .toBe('remote-url');
+    expect(detectSourceType('https://codeload.github.com/o/r/tar.gz/main'))
+      .toBe('remote-url');
+  });
+
+  it('keeps .git suffixed URLs as remote-url', () => {
+    expect(detectSourceType('https://git.company.com/team/skills.git')).toBe('remote-url');
+  });
+
+  it('keeps git@ SSH inputs as remote-url', () => {
+    expect(detectSourceType('git@example.com:foo/bar.git')).toBe('remote-url');
+  });
+
+  it('stays synchronous and issues no network request', () => {
+    const fetchSpy = vi.fn();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    try {
+      const inputs = [
+        'https://docs.stripe.com',
+        'https://github.com/openai/skills',
+        'https://git.company.com/team/skills.git',
+        'http://example.com/pack.zip',
+        './local',
+        'owner/repo',
+      ];
+      const results = inputs.map((input) => detectSourceType(input));
+
+      expect(results).not.toContain(undefined);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('detects owner/repo shorthand', () => {

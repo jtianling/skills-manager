@@ -16,7 +16,9 @@ import {
 } from '../utils/prompts.js';
 import { type RemoveOptions, type SkillInfo, type ToolName, collect } from '../types.js';
 import { detectArgFormat, findRepoInCentralRepository } from '../utils/repo-lookup.js';
-import { extractOwnerRepo } from '../utils/source-detection.js';
+import { detectSourceType, extractOwnerRepo } from '../utils/source-detection.js';
+import { normalizeGitUrl } from '../utils/url-normalize.js';
+import { SourcesService } from '../services/sources.js';
 import { interactiveCheckbox } from '../utils/interactive-select.js';
 import { TOOL_CONFIGS } from '../tools/configs.js';
 import { jsonOutput, jsonError } from '../utils/json-output.js';
@@ -350,6 +352,41 @@ async function removeByGroup(
   );
 }
 
+/**
+ * Turn an installed well-known site URL into the skill names it published, so
+ * `remove <site-url>` mirrors `remove <owner/repo>`. Unmatched input is passed
+ * through untouched and fails later as a plain skill name.
+ */
+function expandWellKnownSiteUrls(skillNames: string[]): string[] {
+  const candidates = skillNames.filter((arg) => detectSourceType(arg) === 'well-known');
+  if (candidates.length === 0) {
+    return skillNames;
+  }
+
+  const sources = new SourcesService().getAllSources();
+  const allSkills = new SkillsService(SKILLS_MANAGER_DIR).getAllSkills();
+
+  return skillNames.flatMap((arg) => {
+    if (!candidates.includes(arg)) {
+      return [arg];
+    }
+
+    const normalized = normalizeGitUrl(arg);
+    const keys = Object.entries(sources)
+      .filter(([key, info]) =>
+        key.startsWith('well-known/') && normalizeGitUrl(info.url) === normalized)
+      .map(([key]) => key);
+    if (keys.length === 0) {
+      return [arg];
+    }
+
+    const names = allSkills
+      .filter((skill) => keys.includes(skill.source))
+      .map((skill) => skill.name);
+    return names.length > 0 ? names : [arg];
+  });
+}
+
 async function removeByOwnerRepo(
   ownerRepo: string,
   options: RemoveOptions,
@@ -555,7 +592,7 @@ export async function executeRemove(
 
   await ensureSetup();
 
-  const skillNames = resolveSkillNames(name, options);
+  const skillNames = expandWellKnownSiteUrls(resolveSkillNames(name, options));
 
   if (options.group && skillNames.length > 0) {
     console.log('Cannot use --group with skill name argument.');

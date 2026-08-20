@@ -1,3 +1,4 @@
+import { mkdtempSync, renameSync, rmSync } from 'fs';
 import { join } from 'path';
 import { SKILLS_MANAGER_DIR } from '../constants.js';
 import { copyDir, fileExists, findScriptFiles, getDirectoriesInDir, readFileContent, removeDir, warnScriptFiles } from '../utils/fs.js';
@@ -6,6 +7,17 @@ import { GroupsService } from './groups.js';
 import { RegistryService } from './registry.js';
 import { cloneRepoToTemp, collectSkillsFromClone } from './repo-clone.js';
 import { SourceInfo, SourcesService } from './sources.js';
+import { discoverIndex, type DiscoveryHit } from './wellknown/discovery.js';
+import { fetchSkill } from './wellknown/fetch-skill.js';
+import type { WellKnownEntry } from './wellknown/index-schema.js';
+
+const KNOWN_SOURCE_TYPES = new Set<SourceInfo['type']>([
+  'official',
+  'community',
+  'custom',
+  'registry',
+  'well-known',
+]);
 
 export interface UpdateResult {
   updated: number;
@@ -183,6 +195,121 @@ export class SourceUpdater {
     return result;
   }
 
+  /**
+   * Re-discover the site index and reinstall only the skills whose digest
+   * moved. Never touches git: a well-known source has no repository.
+   */
+  async updateWellKnownSource(
+    key: string,
+    info: SourceInfo,
+    options: UpdateSourceOptions = {},
+  ): Promise<UpdateResult> {
+    const discovery = await discoverIndex(info.url);
+
+    if (!discovery.ok) {
+      console.log(`  ⚠ ${info.repoName}: no well-known index found at ${info.url}`);
+      const failed = createEmptyUpdateResult();
+      failed.failed++;
+      return failed;
+    }
+
+    const { result, digests } = await this.syncWellKnownSkills(
+      discovery.hit,
+      join(SKILLS_MANAGER_DIR, key),
+      info.skillDigests ?? {},
+      options,
+    );
+
+    this.sourcesService.addSource(key, {
+      url: info.url,
+      type: 'well-known',
+      repoName: info.repoName,
+      installMethod: info.installMethod,
+      skillDigests: digests,
+    });
+
+    return result;
+  }
+
+  /** Walk the locally installed skills of one site against the fresh index. */
+  private async syncWellKnownSkills(
+    hit: DiscoveryHit,
+    baseDir: string,
+    digests: Record<string, string>,
+    options: UpdateSourceOptions,
+  ): Promise<{ result: UpdateResult; digests: Record<string, string> }> {
+    const result = createEmptyUpdateResult();
+    const remoteEntries = new Map(hit.entries.map((entry) => [entry.name, entry]));
+    const next = { ...digests };
+
+    for (const local of getDirectoriesInDir(baseDir)) {
+      if (options.selectedSkillNames && !options.selectedSkillNames.has(local.name)) {
+        continue;
+      }
+
+      const entry = remoteEntries.get(local.name);
+      if (!entry) {
+        console.log(`  ⚠ ${local.name}: not found in remote`);
+        result.failed++;
+        continue;
+      }
+
+      try {
+        const digest = await this.syncWellKnownSkill(hit, entry, local.path, digests);
+        if (digest === null) {
+          console.log(`  ✓ ${local.name}: up to date`);
+          result.upToDate++;
+          continue;
+        }
+        next[local.name] = digest;
+        console.log(`  ↑ ${local.name}: updated`);
+        result.updated++;
+      } catch (error) {
+        console.log(
+          `  ✗ ${local.name}: failed to update (${(error as Error).message})`,
+        );
+        result.failed++;
+      }
+    }
+
+    return { result, digests: next };
+  }
+
+  /** Returns the new digest, or null when the local copy is already current. */
+  private async syncWellKnownSkill(
+    hit: DiscoveryHit,
+    entry: WellKnownEntry,
+    targetDir: string,
+    digests: Record<string, string>,
+  ): Promise<string | null> {
+    const known = digests[entry.name];
+    if (entry.version === '0.2.0' && known === entry.digest) {
+      return null;
+    }
+
+    const stagingRoot = mkdtempSync(join(SKILLS_MANAGER_DIR, '.wellknown-update-'));
+    const stagingDir = join(stagingRoot, entry.name);
+
+    try {
+      const { digest } = await fetchSkill(entry, {
+        origin: hit.origin,
+        wellKnownPath: hit.wellKnownPath,
+        destDir: stagingDir,
+      });
+
+      if (digest === known) {
+        return null;
+      }
+
+      removeDir(targetDir);
+      renameSync(stagingDir, targetDir);
+      warnScriptFiles(findScriptFiles(targetDir));
+      return digest;
+    } finally {
+      rmSync(stagingRoot, { recursive: true, force: true });
+    }
+  }
+
   async updateSource(
     key: string,
     info: SourceInfo,
@@ -190,6 +317,17 @@ export class SourceUpdater {
   ): Promise<UpdateResult> {
     if (info.type === 'registry') {
       return this.updateRegistrySource(key, info, options.targetVersion);
+    }
+
+    if (info.type === 'well-known') {
+      return this.updateWellKnownSource(key, info, options);
+    }
+
+    if (!KNOWN_SOURCE_TYPES.has(info.type)) {
+      console.log(
+        `  Skipping ${key.split('/').pop() || key}: unknown source type '${info.type}'`,
+      );
+      return { updated: 0, upToDate: 0, failed: 0, skipped: 1 };
     }
 
     if (info.installMethod === 'zip') {

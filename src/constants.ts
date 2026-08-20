@@ -5,8 +5,30 @@ export const SKILLS_MANAGER_DIR = join(homedir(), '.skills-manager');
 
 export const REGISTRY_URL = process.env.SKILLSMGR_REGISTRY || 'https://skillsmgr.dev';
 
-export const SKILL_SOURCES = ['official', 'community', 'custom', 'registry'] as const;
+export const SKILL_SOURCES = [
+  'official',
+  'community',
+  'custom',
+  'registry',
+  'well-known',
+] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
+
+// Hosts whose http(s) URLs are always treated as git remotes, never probed
+// for a well-known skills index.
+export const GIT_HOST_EXCLUSIONS = [
+  'github.com',
+  'gitlab.com',
+  'raw.githubusercontent.com',
+  'codeload.github.com',
+] as const;
+
+// Probed in order; the first path serving a valid index.json wins. Neither
+// suffix is registered with IANA, so this list is expected to change.
+export const WELL_KNOWN_PATHS = [
+  '.well-known/agent-skills',
+  '.well-known/skills',
+] as const;
 
 // Prefix marking a virtual group member as a dynamic reference to another
 // group (e.g. "group:develop"). Distinguishes references from skill keys,

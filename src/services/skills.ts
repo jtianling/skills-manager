@@ -56,7 +56,8 @@ export class SkillsService {
 
     // For official and community, we have an extra level (e.g., official/anthropic/skill-name)
     // For custom, skills are directly under custom/skill-name
-    if (sourcePrefix === 'custom') {
+    // For well-known, skills sit one level down under well-known/{host}/skill-name
+    if (sourcePrefix === 'custom' || sourcePrefix === 'well-known') {
       const topDirs = getDirectoriesInDir(sourceDir);
       for (const topDir of topDirs) {
         const skill = this.loadSkill(topDir.path, sourcePrefix);

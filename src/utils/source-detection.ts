@@ -1,3 +1,5 @@
+import { GIT_HOST_EXCLUSIONS } from '../constants.js';
+
 export type SourceType =
   | 'remote-zip'
   | 'local-zip'
@@ -6,6 +8,7 @@ export type SourceType =
   | 'owner-repo-skill'
   | 'local-path'
   | 'registry'
+  | 'well-known'
   | 'unknown';
 
 export interface RegistryDetectedSource {
@@ -145,6 +148,22 @@ export function extractOwnerRepo(input: string): string | null {
   return null;
 }
 
+function isGitHostUrl(input: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return true;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (GIT_HOST_EXCLUSIONS.some((host) => host === hostname)) {
+    return true;
+  }
+
+  return url.pathname.replace(/\/+$/, '').endsWith('.git');
+}
+
 export function detectSourceType(input: string): SourceType {
   if ((input.startsWith('http://') || input.startsWith('https://')) && isZipLikeExtension(input)) {
     return 'remote-zip';
@@ -154,7 +173,11 @@ export function detectSourceType(input: string): SourceType {
     return 'local-zip';
   }
 
-  if (input.startsWith('http://') || input.startsWith('https://') || input.startsWith('git@')) {
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    return isGitHostUrl(input) ? 'remote-url' : 'well-known';
+  }
+
+  if (input.startsWith('git@')) {
     return 'remote-url';
   }
 
