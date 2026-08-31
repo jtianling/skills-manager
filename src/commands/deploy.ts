@@ -412,6 +412,15 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
     deployer.deploySkill(skill, manifest.mode, refreshAgents);
   }
 
+  const repairedBridges: string[] = [];
+  for (const agentName of refreshAgents) {
+    const config = TOOL_CONFIGS[agentName];
+    if (!config || config.native || !config.symlinkDir) continue;
+    if (deployer.repairSymlinkBridge(config)) {
+      repairedBridges.push(config.symlinkDir);
+    }
+  }
+
   const refreshedAt = new Date().toISOString();
   const refreshedManifest = {
     ...manifest,
@@ -419,13 +428,16 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
   };
   manifestService.writeManifest(projectRoot, refreshedManifest);
 
+  let prunedRegistry: string[] = [];
   try {
-    new DeploymentsRegistryService().recordDeploy(projectRoot, {
+    const registryService = new DeploymentsRegistryService();
+    registryService.recordDeploy(projectRoot, {
       mode: refreshedManifest.mode,
       followGroups: refreshedManifest.followGroups,
       pinnedSkills: refreshedManifest.pinnedSkills,
       lastDeployedAt: refreshedAt,
     });
+    prunedRegistry = registryService.pruneStale();
   } catch (e) {
     console.warn(`⚠ Failed to update global deployments registry: ${(e as Error).message}`);
   }
@@ -437,6 +449,8 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
         kept: toKeep.map((s) => s.name),
         removed: toRemove.map((s) => s.name),
         warnings: resolved.warnings,
+        prunedRegistry,
+        repairedBridges,
       },
     });
     return;
@@ -447,6 +461,14 @@ async function executeDeployRefresh(options: DeployOptions): Promise<void> {
   );
   for (const s of toAdd) console.log(`  ✓ ${s.name} (added)`);
   for (const s of toRemove) console.log(`  ✗ ${s.name} (removed)`);
+  for (const symlinkDir of repairedBridges) {
+    console.log(`  ⚑ ${symlinkDir} → .agents/skills (bridge repaired)`);
+  }
+  if (prunedRegistry.length > 0) {
+    const plural = prunedRegistry.length === 1 ? 'y' : 'ies';
+    console.log(`Pruned ${prunedRegistry.length} stale registry entr${plural}:`);
+    for (const path of prunedRegistry) console.log(`  - ${path}`);
+  }
   console.log('Done.');
 }
 

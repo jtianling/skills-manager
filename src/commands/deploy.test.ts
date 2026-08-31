@@ -407,6 +407,156 @@ describe('deploy command', () => {
       );
     });
 
+    it('--refresh repairs a dangling agent symlink bridge', async () => {
+      writeGroupsJson({ dev: ['custom/my-skill'] });
+      writeFileSync(
+        join(testProjectDir, 'skillsmgr-deploy.json'),
+        JSON.stringify({
+          mode: 'link',
+          followGroups: ['dev'],
+          pinnedSkills: [],
+          deployedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+
+      const bridge = join(testProjectDir, '.claude', 'skills');
+      mkdirSync(join(testProjectDir, '.claude'), { recursive: true });
+      require('fs').symlinkSync(
+        join(tmpdir(), `skillsmgr-old-proj-${Date.now()}`, '.agents', 'skills'),
+        bridge,
+      );
+      expect(existsSync(bridge)).toBe(false);
+
+      await executeDeploy({ refresh: true });
+
+      expect(existsSync(bridge)).toBe(true);
+      expect(require('fs').realpathSync(bridge)).toBe(
+        require('fs').realpathSync(join(testProjectDir, '.agents', 'skills')),
+      );
+      expect(existsSync(join(bridge, 'my-skill'))).toBe(true);
+      // No side effect: agents without a configured bridge stay unconfigured.
+      expect(existsSync(join(testProjectDir, '.cursor'))).toBe(false);
+    });
+
+    it('--refresh leaves a correct bridge untouched', async () => {
+      writeGroupsJson({ dev: ['custom/my-skill'] });
+      writeFileSync(
+        join(testProjectDir, 'skillsmgr-deploy.json'),
+        JSON.stringify({
+          mode: 'link',
+          followGroups: ['dev'],
+          pinnedSkills: [],
+          deployedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+
+      const bridge = join(testProjectDir, '.claude', 'skills');
+      mkdirSync(join(testProjectDir, '.claude'), { recursive: true });
+      require('fs').symlinkSync(join(testProjectDir, '.agents', 'skills'), bridge);
+      const before = lstatSync(bridge).ctimeMs;
+
+      const writeSpy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+
+      await executeDeploy({ refresh: true, json: true });
+
+      expect(lstatSync(bridge).ctimeMs).toBe(before);
+      const parsed = JSON.parse(writeSpy.mock.calls.map((c) => String(c[0])).join(''));
+      expect(parsed.refreshed.repairedBridges).toEqual([]);
+    });
+
+    it('--refresh prunes stale registry entries', async () => {
+      writeGroupsJson({ dev: ['custom/my-skill'] });
+      writeFileSync(
+        join(testProjectDir, 'skillsmgr-deploy.json'),
+        JSON.stringify({
+          mode: 'link',
+          followGroups: ['dev'],
+          pinnedSkills: [],
+          deployedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+
+      const realProjectDir = require('fs').realpathSync(testProjectDir);
+      const goneDir = join(tmpdir(), `skillsmgr-gone-${Date.now()}`);
+      const liveDir = join(tmpdir(), `skillsmgr-live-${Date.now()}`);
+      mkdirSync(liveDir, { recursive: true });
+      writeFileSync(
+        join(testManagerDir, 'deployments.json'),
+        JSON.stringify({
+          version: '1.0',
+          deployments: {
+            [goneDir]: {
+              mode: 'link',
+              followGroups: [],
+              pinnedSkills: [],
+              lastDeployedAt: '2026-01-01T00:00:00.000Z',
+            },
+            [liveDir]: {
+              mode: 'link',
+              followGroups: [],
+              pinnedSkills: [],
+              lastDeployedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        }),
+      );
+
+      await executeDeploy({ refresh: true });
+
+      const registry = JSON.parse(
+        require('fs').readFileSync(join(testManagerDir, 'deployments.json'), 'utf-8'),
+      );
+      expect(registry.deployments[goneDir]).toBeUndefined();
+      expect(registry.deployments[liveDir]).toBeDefined();
+      expect(registry.deployments[realProjectDir]).toBeDefined();
+
+      const logged = vi.mocked(console.log).mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain(goneDir);
+
+      rmSync(liveDir, { recursive: true, force: true });
+    });
+
+    it('--refresh reports pruned paths in json output', async () => {
+      writeGroupsJson({ dev: ['custom/my-skill'] });
+      writeFileSync(
+        join(testProjectDir, 'skillsmgr-deploy.json'),
+        JSON.stringify({
+          mode: 'link',
+          followGroups: ['dev'],
+          pinnedSkills: [],
+          deployedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+
+      const goneDir = join(tmpdir(), `skillsmgr-gone-json-${Date.now()}`);
+      writeFileSync(
+        join(testManagerDir, 'deployments.json'),
+        JSON.stringify({
+          version: '1.0',
+          deployments: {
+            [goneDir]: {
+              mode: 'link',
+              followGroups: [],
+              pinnedSkills: [],
+              lastDeployedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        }),
+      );
+
+      const writeSpy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+
+      await executeDeploy({ refresh: true, json: true });
+
+      const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      const parsed = JSON.parse(output);
+      expect(parsed.refreshed.prunedRegistry).toEqual([goneDir]);
+    });
+
     it('--refresh warns on missing follow group and skips it', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       writeFileSync(

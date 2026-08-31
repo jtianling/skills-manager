@@ -6,6 +6,7 @@ import {
   linkDir,
   copyDir,
   isSymlink,
+  readSymlinkTarget,
   linkFile,
   copyFile,
 } from '../utils/fs.js';
@@ -197,6 +198,19 @@ export class Deployer {
     ensureDir(dirname(symlinkPath));
     linkDir(targetPath, symlinkPath);
     return true;
+  }
+
+  /** Re-point an existing bridge that no longer resolves to this project. */
+  repairSymlinkBridge(config: ToolConfig): boolean {
+    if (config.native || !config.symlinkDir) return false;
+
+    const symlinkPath = join(this.projectDir, config.symlinkDir);
+    if (!isSymlink(symlinkPath)) return false;
+
+    const expected = join(this.projectDir, AGENTS_SKILLS_DIR);
+    if (readSymlinkTarget(symlinkPath) === expected) return false;
+
+    return this.createSymlinkBridge(config);
   }
 
   removeSymlinkBridge(config: ToolConfig): boolean {
