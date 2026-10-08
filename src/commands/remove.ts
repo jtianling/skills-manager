@@ -546,6 +546,22 @@ async function interactiveRemove(): Promise<void> {
   );
 }
 
+function isPositionalGroup(name: string, options: RemoveOptions): boolean {
+  if (detectArgFormat(name) !== 'skill-name') return false;
+
+  const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
+  if (skillsService.findSkillsByName(name).length > 0) return false;
+
+  if (!options.global) {
+    const scanner = new DeploymentScanner(process.cwd(), SKILLS_MANAGER_DIR);
+    if (scanner.getDeployedSkills().some((skill) => skill.name === name)) {
+      return false;
+    }
+  }
+
+  return new GroupsService().getGroup(name) !== null;
+}
+
 export async function executeRemove(
   name: string | undefined,
   options: RemoveOptions = {},
@@ -601,6 +617,11 @@ export async function executeRemove(
 
   if (options.group) {
     await removeByGroup(options.group, options);
+    return;
+  }
+
+  if (name && skillNames.length === 1 && isPositionalGroup(name, options)) {
+    await removeByGroup(name, { ...options, all: true });
     return;
   }
 
@@ -724,7 +745,7 @@ export async function executeRemove(
 
 export const removeCommand = new Command('remove')
   .description('Remove a skill from the project (or globally with -g)')
-  .argument('[name]', 'Skill name to remove')
+  .argument('[name]', 'Skill name, group name, or owner/repo to remove')
   .option('--all', 'Remove all matching skills without prompting')
   .option('-y', 'Skip all prompts (implies --all --same-agents)')
   .option('-s, --skill <name>', 'Specific skill to remove (repeatable)', collect, [])
