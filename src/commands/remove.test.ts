@@ -167,11 +167,13 @@ describe('remove command', () => {
     expect(existsSync(deployedA)).toBe(false);
     expect(existsSync(deployedB)).toBe(false);
     expect(existsSync(deployedC)).toBe(true);
-    expect(groupsService.getGroupMembers('dev')).toEqual([]);
+    expect(groupsService.getGroupMembers('dev')).toEqual([
+      'custom/skill-a', 'custom/skill-b',
+    ]);
     expect(groupsService.getGroupMembers('other')).toEqual(['custom/skill-c']);
   });
 
-  it('supports --group with -g and cleans group references', async () => {
+  it('test_remove_global_group_preserves_group_references', async () => {
     createSkill(testManagerDir, 'custom', 'skill-a');
     createSkill(testManagerDir, 'custom', 'skill-b');
     const globalA = join(TOOL_CONFIGS['claude-code'].globalSkillsDir, 'skill-a');
@@ -190,7 +192,9 @@ describe('remove command', () => {
     });
 
     expect(existsSync(globalA)).toBe(false);
-    expect(groupsService.getGroupMembers('dev')).toEqual(['custom/skill-b']);
+    expect(groupsService.getGroupMembers('dev')).toEqual([
+      'custom/skill-a', 'custom/skill-b',
+    ]);
   });
 
   it('exits when group does not exist', async () => {

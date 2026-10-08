@@ -73,6 +73,9 @@ describe('remove positional group', () => {
     expect(existsSync(unrelated)).toBe(true);
     expect(existsSync(join(managerDir, 'custom', 'target', 'SKILL.md')))
       .toBe(true);
+    expect(groups.getGroupMembers('develop')).toEqual([
+      'custom/target', 'custom/not-deployed',
+    ]);
     expect(groups.getGroupMembers('other')).toEqual(['custom/unrelated']);
     expect(interactiveCheckbox).not.toHaveBeenCalled();
   });
@@ -115,6 +118,32 @@ describe('remove positional group', () => {
     expect(existsSync(member)).toBe(true);
     expect(groups.getGroupMembers('develop')).toEqual(['custom/member']);
   });
+
+  it.each(['name', 'all', 'interactive', 'repo'])(
+    'test_remove_%s_preserves_all_group_references', async (mode) => {
+      const source = 'community/owner/repo';
+      const target = createSkill('target', source);
+      const unrelated = createSkill('unrelated');
+      groups.addSkill('develop', `${source}/target`);
+      groups.addSkill('other', `${source}/target`);
+      groups.addSkill('other', 'custom/unrelated');
+      const before = groups.getGroup('develop');
+      const other = groups.getGroup('other');
+      vi.mocked(interactiveCheckbox).mockResolvedValue(['target']);
+
+      if (mode === 'name') await executeRemove('target');
+      if (mode === 'all') await executeRemove(undefined, { all: true });
+      if (mode === 'interactive') await executeRemove(undefined);
+      if (mode === 'repo') await executeRemove('owner/repo', { all: true });
+
+      expect(existsSync(target)).toBe(false);
+      expect(existsSync(unrelated)).toBe(mode !== 'all');
+      expect(groups.getGroup('develop')).toEqual(before);
+      expect(groups.getGroup('other')).toEqual(other);
+      expect(existsSync(join(managerDir, source, 'target', 'SKILL.md')))
+        .toBe(true);
+    },
+  );
 
   it('test_remove_empty_group_reports_no_deployed_members', async () => {
     groups.createGroup('develop');

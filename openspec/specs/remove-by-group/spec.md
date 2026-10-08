@@ -1,7 +1,7 @@
 # Remove by Group
 
 ## Purpose
-remove 命令的 --group 支持, 交互列表分组显示, 以及移除后的 group 引用清理.
+remove 命令的 --group 支持, 交互列表分组显示, 以及取消部署后的 group 引用保留.
 
 ## Requirements
 
@@ -65,19 +65,24 @@ remove 命令的 --group 支持, 交互列表分组显示, 以及移除后的 gr
 - **WHEN** 一个 skill 同时属于 `jt-tools` 和 `openspec` 两个 group
 - **THEN** 该 skill 只在第一个匹配的 group 下显示一次
 
-### Requirement: remove 后清理 group 引用
-`remove` 命令移除 skill 后 SHALL 调用 `GroupsService.removeSkillFromAll()` 清理 `groups.json` 中的引用.
+### Requirement: remove 后保留 group 引用
+`remove` SHALL 仅取消项目或全局 agent 中的部署, MUST NOT 删除任何虚拟 group 的成员引用.  `uninstall` 删除中央仓库 skill 时 SHALL 继续清理 group 引用.
 
-#### Scenario: 移除后清理 group 引用
-- **WHEN** 用户通过 `remove` 移除了 skill `jt-codex`
-- **AND** `jt-codex` 的 skill key 为 `custom/jt-codex`
-- **AND** `custom/jt-codex` 存在于 `jt-tools` group 中
-- **THEN** `groups.json` 中 `jt-tools` group 不再包含 `custom/jt-codex`
+#### Scenario: 取消部署后保留全部组引用
+- **WHEN** 用户通过 `remove` 取消部署 skill `jt-codex`
+- **AND** `custom/jt-codex` 同时属于 `develop` 和 `jt-tools`
+- **THEN** 两个 group 的成员引用 SHALL 均保持不变
+- **AND** 中央仓库中的 skill 文件 SHALL 保留
 
-#### Scenario: 全局移除后也清理引用
-- **WHEN** 用户通过 `remove -g` 全局移除了 skill
-- **THEN** 同样清理 `groups.json` 中对应的引用
+#### Scenario: 按组取消部署后可重新部署
+- **WHEN** 用户通过 `remove develop` 或 `remove --group develop --all` 取消部署
+- **THEN** `develop` 和其他 group 的成员引用 SHALL 保持不变
+- **AND** 用户 SHALL 能通过 `add develop` 重新部署原成员
+
+#### Scenario: 全局取消部署后保留引用
+- **WHEN** 用户通过 `remove -g` 全局取消部署 skill
+- **THEN** `groups.json` 中所有 group 的成员引用 SHALL 保持不变
 
 #### Scenario: skill 无 group 引用时不报错
-- **WHEN** 用户移除的 skill 不在任何 group 中
-- **THEN** 清理操作静默通过, 不报错
+- **WHEN** 用户取消部署的 skill 不在任何 group 中
+- **THEN** 取消部署 SHALL 正常完成

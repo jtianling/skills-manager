@@ -312,9 +312,7 @@ describe('remove --group E2E', () => {
     await tmux.pressKey('q');
   });
 
-  // --- group reference cleanup ---
-
-  it('remove cleans up group references in groups.json', async () => {
+  it('test_remove_preserves_group_references', async () => {
     createLocalSkill('cleanup-skill');
     await installSkill('cleanup-skill');
     await deploySkill('cleanup-skill');
@@ -333,9 +331,8 @@ describe('remove --group E2E', () => {
     await tmux.waitForText(/Removed|✓/, 10_000);
     tmux.destroy();
 
-    // Group reference should be cleaned up
     groups = readGroups();
-    expect(groups['cleanup-grp'] ?? []).not.toContain('custom/cleanup-skill');
+    expect(groups['cleanup-grp']).toEqual(['custom/cleanup-skill']);
   });
 
   it('remove skill not in any group does not error', async () => {

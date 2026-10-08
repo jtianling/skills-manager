@@ -116,15 +116,6 @@ function resolveDeployedSkills(
   }));
 }
 
-function cleanupGroupRefs(skillKeys: Array<string | null>): void {
-  const groupsService = new GroupsService();
-  const uniqueKeys = [...new Set(skillKeys.filter((skillKey): skillKey is string => Boolean(skillKey)))];
-
-  for (const skillKey of uniqueKeys) {
-    groupsService.removeSkillFromAll(skillKey);
-  }
-}
-
 function findMatchingRepoSkills(
   ownerRepo: string,
   scanner: DeploymentScanner,
@@ -305,11 +296,6 @@ async function removeByGroup(
       process.exit(1);
     }
 
-    cleanupGroupRefs(
-      deployedGroupSkills
-        .filter((skill) => removedNames.includes(skill.name))
-        .map((skill) => skillKeyOf(skill.source, skill.name)),
-    );
     return;
   }
 
@@ -345,11 +331,6 @@ async function removeByGroup(
   if (options.json) {
     jsonOutput({ removed });
   }
-  cleanupGroupRefs(
-    deployedGroupSkills
-      .filter((skill) => selectedSkillNames.includes(skill.name))
-      .map((skill) => skill.skillKey),
-  );
 }
 
 /**
@@ -427,11 +408,6 @@ async function removeByOwnerRepo(
       process.exit(1);
     }
 
-    cleanupGroupRefs(
-      repoSkills
-        .filter((skill) => removedNames.includes(skill.name))
-        .map((skill) => skillKeyOf(skill.source, skill.name)),
-    );
     return removedNames;
   }
 
@@ -497,11 +473,6 @@ async function removeByOwnerRepo(
   if (options.json) {
     jsonOutput({ removed: removedByRepo });
   }
-  cleanupGroupRefs(
-    resolvedSkills
-      .filter((skill) => selectedSkillNames.includes(skill.name))
-      .map((skill) => skill.skillKey),
-  );
   return selectedSkillNames;
 }
 
@@ -539,11 +510,6 @@ async function interactiveRemove(): Promise<void> {
   }
 
   removeSkillNames(selected, deployer);
-  cleanupGroupRefs(
-    deployedSkills
-      .filter((skill) => selected.includes(skill.name))
-      .map((skill) => skill.skillKey),
-  );
 }
 
 function isPositionalGroup(name: string, options: RemoveOptions): boolean {
@@ -650,7 +616,6 @@ export async function executeRemove(
     if (options.json) {
       jsonOutput({ removed });
     }
-    cleanupGroupRefs(deployedSkills.map((s) => s.skillKey));
     return;
   }
 
@@ -683,12 +648,6 @@ export async function executeRemove(
       }
     }
 
-    const skillsService = new SkillsService(SKILLS_MANAGER_DIR);
-    cleanupGroupRefs(
-      removedNames.flatMap((skillName) =>
-        skillsService.findSkillsByName(skillName).map((skill) => skillKeyOf(skill.source, skill.name))
-      ),
-    );
     return;
   }
 
@@ -735,12 +694,6 @@ export async function executeRemove(
   if (options.json) {
     jsonOutput({ removed });
   }
-
-  cleanupGroupRefs(
-    deployedSkills
-      .filter((skill) => plainSkillNames.includes(skill.name))
-      .map((skill) => skill.skillKey),
-  );
 }
 
 export const removeCommand = new Command('remove')

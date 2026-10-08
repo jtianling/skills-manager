@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'child_process';
 import {
-  existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -73,10 +73,15 @@ describe('positional group add/remove CLI', () => {
     run('add', 'unrelated', ...addFlags, ...copyFlags);
     run('add', 'develop', ...addFlags, ...copyFlags);
     expect(readdirSync(deployedDir).sort()).toEqual(['target', 'unrelated']);
+    const groupsBefore = readFileSync(join(managerDir, 'groups.json'), 'utf8');
     run('remove', 'develop', ...scope);
 
     expect(readdirSync(deployedDir)).toEqual(['unrelated']);
     expect(existsSync(join(installed, 'SKILL.md'))).toBe(true);
     expect(existsSync(join(deployedDir, 'unrelated', 'SKILL.md'))).toBe(true);
+    expect(readFileSync(join(managerDir, 'groups.json'), 'utf8'))
+      .toBe(groupsBefore);
+    run('add', 'develop', ...addFlags, ...copyFlags);
+    expect(readdirSync(deployedDir).sort()).toEqual(['target', 'unrelated']);
   });
 });

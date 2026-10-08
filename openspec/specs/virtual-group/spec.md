@@ -53,7 +53,7 @@
 - `renameGroup(oldName, newName)`: 重命名 group entry key.  仅 `groups.json` 改 key, 不动物理目录或 sources.json (物理 group 的完整 rename 由 `groupCommandRename` 协调多个 service)
 - `updatePhysicalGroupTimestamp(name)`: 仅刷新物理 group 的 `updatedAt` 字段
 
-`remove` 命令移除 skill 后 SHALL 调用 `removeSkillFromAll(skillKey)` 清理引用, 与 `uninstall` 行为对齐.
+`remove` 命令取消部署后 SHALL 保留所有 group 的成员引用.  `uninstall` 删除中央仓库 skill 后 SHALL 调用 `removeSkillFromAll(skillKey)` 清理引用.
 
 #### Scenario: getGroup 返回带 kind 的 GroupEntry
 - **WHEN** 物理 group `tdd-spec` 存在
