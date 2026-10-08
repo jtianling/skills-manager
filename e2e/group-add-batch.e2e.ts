@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupMembersMap, writeVirtualGroups } from './helpers/groups.js';
 
 describe('group add batch E2E', () => {
   let env: TestEnv;
@@ -17,15 +18,11 @@ describe('group add batch E2E', () => {
   });
 
   function readGroups(): Record<string, string[]> {
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    if (!existsSync(groupsPath)) return {};
-    return JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    return groupMembersMap(env.homeDir);
   }
 
   function writeGroups(data: Record<string, string[]>): void {
-    const dir = join(env.homeDir, '.skills-manager');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'groups.json'), JSON.stringify(data, null, 2));
+    writeVirtualGroups(env.homeDir, data);
   }
 
   function createLocalSkill(name: string, parentDir?: string): void {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupKind, installedSkillKeys } from './helpers/groups.js';
 
 describe('batch install same-name skill coexistence E2E', () => {
   let env: TestEnv;
@@ -100,10 +101,12 @@ describe('batch install same-name skill coexistence E2E', () => {
     await tmux.start('skillsmgr install ./grp-test --all', env.projectDir);
     await tmux.waitForText(/Installed|installed/, 15_000);
 
-    const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['grp-test']).toBeDefined();
-    expect(groups['grp-test']).toContain('custom/grp-test/grp-skill-a');
-    expect(groups['grp-test']).toContain('custom/grp-test/grp-skill-b');
+    // Batch install creates a physical group; its members live on disk
+    expect(groupKind(env.homeDir, 'grp-test')).toBe('local-batch');
+    expect(installedSkillKeys(env.homeDir, 'grp-test')).toEqual([
+      'custom/grp-test/grp-skill-a',
+      'custom/grp-test/grp-skill-b',
+    ]);
   });
 
   it('batch install detects installed by target path, not bare name', async () => {
@@ -126,9 +129,11 @@ describe('batch install same-name skill coexistence E2E', () => {
     expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'batch-dir', 'detect-test', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'batch-dir', 'other-skill', 'SKILL.md'))).toBe(true);
 
-    // Group should be created with both skills
-    const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['batch-dir']).toContain('custom/batch-dir/detect-test');
-    expect(groups['batch-dir']).toContain('custom/batch-dir/other-skill');
+    // Physical group covers both skills through the directory itself
+    expect(groupKind(env.homeDir, 'batch-dir')).toBe('local-batch');
+    expect(installedSkillKeys(env.homeDir, 'batch-dir')).toEqual([
+      'custom/batch-dir/detect-test',
+      'custom/batch-dir/other-skill',
+    ]);
   });
 });

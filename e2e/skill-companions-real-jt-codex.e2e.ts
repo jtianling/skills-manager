@@ -15,7 +15,24 @@ import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
  */
 
 const JT_CODEX_PATH = '/Users/jtianling/workspace/skills-workspace/skills/jt-codex';
-const FIXTURE_AVAILABLE = existsSync(join(JT_CODEX_PATH, 'skill.json'));
+
+/**
+ * The fixture is maintained in another repo, so it can lose the companion
+ * declaration this suite exercises. Treat that as "not available" rather
+ * than as a failure of skillsmgr.
+ */
+function fixtureDeclaresCompanion(): boolean {
+  const manifestPath = join(JT_CODEX_PATH, 'skill.json');
+  if (!existsSync(manifestPath)) return false;
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    return Boolean(manifest.companions?.[0]?.source);
+  } catch {
+    return false;
+  }
+}
+
+const FIXTURE_AVAILABLE = fixtureDeclaresCompanion();
 
 describe.skipIf(!FIXTURE_AVAILABLE)('skill-companions real jt-codex acceptance', () => {
   let env: TestEnv;

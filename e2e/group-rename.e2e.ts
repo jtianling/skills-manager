@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupMembersMap } from './helpers/groups.js';
 
 describe('group rename E2E', () => {
   let env: TestEnv;
@@ -17,9 +18,7 @@ describe('group rename E2E', () => {
   });
 
   function readGroups(): Record<string, string[]> {
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    if (!existsSync(groupsPath)) return {};
-    return JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    return groupMembersMap(env.homeDir);
   }
 
   function createLocalSkill(name: string): void {

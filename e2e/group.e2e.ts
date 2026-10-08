@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupMembers, groupNames, hasGroup } from './helpers/groups.js';
 
 describe('group E2E', () => {
   let env: TestEnv;
@@ -28,11 +29,6 @@ describe('group E2E', () => {
     );
   }
 
-  function readGroups(): Record<string, string[]> {
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    if (!existsSync(groupsPath)) return {};
-    return JSON.parse(readFileSync(groupsPath, 'utf-8'));
-  }
 
   it('group list shows no groups initially', async () => {
     await setup();
@@ -65,9 +61,9 @@ describe('group E2E', () => {
     expect(output).toContain('python');
 
     // Verify groups.json
-    const groups = readGroups();
-    expect(groups['my-tools']).toEqual([]);
-    expect(groups['python']).toEqual([]);
+    expect(groupNames(env.homeDir).sort()).toEqual(['my-tools', 'python']);
+    expect(groupMembers(env.homeDir, 'my-tools')).toEqual([]);
+    expect(groupMembers(env.homeDir, 'python')).toEqual([]);
   });
 
   it('group create rejects duplicate name', async () => {
@@ -97,8 +93,7 @@ describe('group E2E', () => {
     await tmux.waitForText(/Deleted group/, 10_000);
     tmux.destroy();
 
-    const groups = readGroups();
-    expect(groups['temp']).toBeUndefined();
+    expect(hasGroup(env.homeDir, 'temp')).toBe(false);
   });
 
   it('group delete nonexistent shows error', async () => {
@@ -134,8 +129,7 @@ describe('group E2E', () => {
     expect(output).not.toContain('custom/my-linter');
 
     // Verify groups.json
-    const groups = readGroups();
-    expect(groups['python']).toContain('custom/my-linter');
+    expect(groupMembers(env.homeDir, 'python')).toContain('custom/my-linter');
   });
 
   it('group add is idempotent for duplicate skill', async () => {
@@ -159,8 +153,8 @@ describe('group E2E', () => {
     expect(output).toContain('already in group');
 
     // Verify no duplicate in groups.json
-    const groups = readGroups();
-    expect(groups['tools'].filter((k: string) => k === 'custom/dup-skill')).toHaveLength(1);
+    const members = groupMembers(env.homeDir, 'tools');
+    expect(members.filter((k) => k === 'custom/dup-skill')).toHaveLength(1);
   });
 
   it('group remove removes skill from group', async () => {
@@ -185,8 +179,7 @@ describe('group E2E', () => {
     tmux.destroy();
 
     // Group should be empty
-    const groups = readGroups();
-    expect(groups['cleanup']).toEqual([]);
+    expect(groupMembers(env.homeDir, 'cleanup')).toEqual([]);
 
     // Skill still exists in central repo (not uninstalled)
     const skillDir = join(env.homeDir, '.skills-manager', 'custom', 'removable');
@@ -203,8 +196,7 @@ describe('group E2E', () => {
     tmux.destroy();
 
     // Verify group has the skill
-    let groups = readGroups();
-    expect(groups['auto-grp']).toContain('custom/ephemeral');
+    expect(groupMembers(env.homeDir, 'auto-grp')).toContain('custom/ephemeral');
 
     // Uninstall the skill
     tmux = new TmuxSession(env);
@@ -213,7 +205,6 @@ describe('group E2E', () => {
     tmux.destroy();
 
     // Group should no longer reference the skill
-    groups = readGroups();
-    expect(groups['auto-grp'] ?? []).not.toContain('custom/ephemeral');
+    expect(groupMembers(env.homeDir, 'auto-grp')).not.toContain('custom/ephemeral');
   });
 });

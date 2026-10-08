@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupKind, groupMembers, installedSkillKeys } from './helpers/groups.js';
 
 describe('install directory as group E2E', () => {
   let env: TestEnv;
@@ -108,10 +109,11 @@ describe('install directory as group E2E', () => {
     await tmux.start('skillsmgr install ./auto-group --all', env.projectDir);
     await tmux.waitForText(/Installed|installed/, 15_000);
 
-    const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['auto-group']).toBeDefined();
-    expect(groups['auto-group']).toContain('custom/auto-group/ag-skill-a');
-    expect(groups['auto-group']).toContain('custom/auto-group/ag-skill-b');
+    expect(groupKind(env.homeDir, 'auto-group')).toBe('local-batch');
+    expect(installedSkillKeys(env.homeDir, 'auto-group')).toEqual([
+      'custom/auto-group/ag-skill-a',
+      'custom/auto-group/ag-skill-b',
+    ]);
   });
 
   it('--group overrides auto group name but physical directory stays', async () => {
@@ -125,10 +127,12 @@ describe('install directory as group E2E', () => {
     // Physical path uses original directory name
     expect(existsSync(join(env.homeDir, '.skills-manager', 'custom', 'orig-dir', 'override-skill', 'SKILL.md'))).toBe(true);
 
-    // Group uses --group name, not directory name
-    const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['my-custom-group']).toContain('custom/orig-dir/override-skill');
-    expect(groups['orig-dir']).toBeUndefined();
+    // --group adds a virtual group on top; the physical one still stands
+    expect(groupKind(env.homeDir, 'my-custom-group')).toBe('virtual');
+    expect(groupMembers(env.homeDir, 'my-custom-group')).toEqual([
+      'custom/orig-dir/override-skill',
+    ]);
+    expect(groupKind(env.homeDir, 'orig-dir')).toBe('local-batch');
   });
 
   it('list command discovers skills in two-layer custom directory', async () => {
@@ -160,8 +164,9 @@ describe('install directory as group E2E', () => {
     await tmux.start('skillsmgr group add another-group tl-skill');
     await tmux.waitForText(/Added|added/i, 15_000);
 
-    const groups = readJson('groups.json') as Record<string, string[]>;
-    expect(groups['another-group']).toContain('custom/two-layer/tl-skill');
+    expect(groupMembers(env.homeDir, 'another-group')).toContain(
+      'custom/two-layer/tl-skill',
+    );
   });
 
   it('uninstall cleans up empty parent directory after removing last skill', async () => {

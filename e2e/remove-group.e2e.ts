@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TmuxSession, createTestEnv, type TestEnv } from './helpers/tmux.js';
+import { groupMembersMap } from './helpers/groups.js';
 import { getDeployedSkillNames } from './helpers/skills.js';
 
 describe('remove --group E2E', () => {
@@ -48,9 +49,7 @@ describe('remove --group E2E', () => {
   }
 
   function readGroups(): Record<string, string[]> {
-    const groupsPath = join(env.homeDir, '.skills-manager', 'groups.json');
-    if (!existsSync(groupsPath)) return {};
-    return JSON.parse(readFileSync(groupsPath, 'utf-8'));
+    return groupMembersMap(env.homeDir);
   }
 
   function getDeployedDir(): string {
