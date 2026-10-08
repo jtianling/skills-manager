@@ -1,0 +1,18 @@
+experimental_use_rmcp_client = true
+
+[mcp_servers.cross-agent-teams-mcp]
+type = "streamable-http"
+url = "http://127.0.0.1:9100/mcp"
+bearer_token_env_var = "CROSS_AGENT_TEAMS_MCP_TOKEN"
+
+[mcp_servers.cross-agent-teams-mcp.tools.register_agent]
+approval_mode = "approve"
+
+[mcp_servers.cross-agent-teams-mcp.tools.send_message]
+approval_mode = "approve"
+
+[projects."/Users/jtianling/workspace/cross-agent-teams-mcp"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
