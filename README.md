@@ -199,6 +199,7 @@ Limitations:
 
 - Zip sources still require a manual reinstall; `update` / `uninstall` do not handle them directly
 - A local batch directory resolves to a physical group: `update ./batch-dir` syncs the whole group, `uninstall ./batch-dir` removes the whole group
+- Bare `update` reconciles all tracked git repository bundles just like `update owner/repo`: full-repo installs gain new skills, subset installs keep their selection, and removed skills stay local unless `--sync` is passed. Standalone local skills and local physical groups are left untouched
 - Physical group `update` removes local members that no longer exist in the source by default. Pass `--keep-local` to preserve those orphaned members
 - `-v` / `--verbose` expands per-member status for physical group updates; the default collapses up-to-date items and only shows changes
 - `update code-review@1.2.0` switches to the specified version — it is not a "check for latest" command

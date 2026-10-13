@@ -375,8 +375,11 @@ export async function executeUpdateWithOptions(
 
   let allSources = sourcesService.getAllSources();
   const skippedLocalCount = source ? 0 : countStandaloneLocalSkills();
+  const gitBundles = source ? [] : Object.entries(sourcesService.getAllBundles())
+    .filter(([, bundle]) => bundle.type === 'git');
 
-  if (!source && Object.keys(allSources).length === 0 && skippedLocalCount === 0) {
+  if (!source && Object.keys(allSources).length === 0 &&
+      gitBundles.length === 0 && skippedLocalCount === 0) {
     console.log('No installed sources found.');
     console.log('\nRun: skillsmgr install anthropics/skills');
     return;
@@ -515,9 +518,40 @@ export async function executeUpdateWithOptions(
   let totalUpToDate = 0;
   let totalFailed = 0;
   let totalSkipped = 0;
+  let totalAdded = 0;
+  let totalRemovedKept = 0;
+  let totalRemovedHard = 0;
+  const bundledSourceKeys = new Set<string>();
+
+  // Reconcile repo bundles before individual sources so selection and deletion
+  // semantics match `update <repo>`, without updating bundle members twice.
+  for (const [bundleId, bundle] of gitBundles) {
+    for (const member of bundle.members) {
+      bundledSourceKeys.add(member);
+    }
+    console.log(`${bundleId}:`);
+    try {
+      const result = await bundleManager.sync(bundleId, {
+        sync: options.sync,
+        verbose: options.verbose,
+      });
+      totalUpdated += result.updated;
+      totalUpToDate += result.upToDate;
+      totalFailed += result.failed;
+      totalSkipped += result.addedSkipped;
+      totalAdded += result.added;
+      totalRemovedKept += result.removedKept;
+      totalRemovedHard += result.removedHard;
+    } catch (error) {
+      totalFailed++;
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`  ✗ Failed to sync bundle: ${message}`);
+    }
+    console.log();
+  }
 
   for (const [key, info] of Object.entries(allSources)) {
-    if (info.installMethod === 'local-copy') {
+    if (bundledSourceKeys.has(key) || info.installMethod === 'local-copy') {
       continue;
     }
 
@@ -530,7 +564,14 @@ export async function executeUpdateWithOptions(
     console.log();
   }
 
-  console.log(`Done! ${totalUpdated} updated, ${totalUpToDate} up to date, ${totalFailed} failed, ${totalSkipped} skipped`);
+  const bundleSummary = gitBundles.length > 0
+    ? `${totalAdded} added, ${totalRemovedKept} removed (kept), ` +
+      `${totalRemovedHard} removed, `
+    : '';
+  console.log(
+    `Done! ${totalUpdated} updated, ${bundleSummary}` +
+    `${totalUpToDate} up to date, ${totalFailed} failed, ${totalSkipped} skipped`,
+  );
   if (skippedLocalCount > 0) {
     console.log(
       `${skippedLocalCount} local skill(s) skipped. Use \`skillsmgr update ./path\` to update a local skill.`,
@@ -545,9 +586,9 @@ export const updateCommand = new Command('update')
   .description('Update installed skills to latest version')
   .argument('[source]', 'Specific source to update (e.g., "anthropic")')
   .option('-y, --force', 'Skip rebind confirmation when a moved local path is detected')
-  .option('--sync', 'Compatibility flag, physical groups sync by default')
+  .option('--sync', 'Remove orphaned repo bundle members; physical groups sync by default')
   .option('--keep-local', 'Keep orphaned skills when updating a physical group')
-  .option('-v, --verbose', 'Show every physical group member status during sync')
+  .option('-v, --verbose', 'Show every bundle or physical group member status during sync')
   .action(async (source: string | undefined, options: UpdateOptions) => {
     await executeUpdateWithOptions(source, options);
   });
